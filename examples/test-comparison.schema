@@ -1,0 +1,15 @@
+// Test comparison operators
+let i = 0
+let n = 5
+
+print("i < n:")
+print(i < n)
+
+print("i > n:")
+print(i > n)
+
+print("Testing in while loop:")
+while i < 3 {
+  print(i)
+  i = i + 1
+}

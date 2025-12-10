@@ -1,0 +1,32 @@
+// Simple heap example
+
+print("MinHeap example:")
+let minHeap = MinHeap()
+
+minHeap.push(5)
+minHeap.push(3)
+minHeap.push(7)
+minHeap.push(1)
+minHeap.push(9)
+
+print("Heap size:")
+print(minHeap.size())
+
+print("Popping elements in sorted order:")
+while minHeap.size() > 0 {
+  print(minHeap.pop())
+}
+
+print("\nMaxHeap example:")
+let maxHeap = MaxHeap()
+
+maxHeap.push(5)
+maxHeap.push(3)
+maxHeap.push(7)
+maxHeap.push(1)
+maxHeap.push(9)
+
+print("Popping elements in reverse sorted order:")
+while maxHeap.size() > 0 {
+  print(maxHeap.pop())
+}

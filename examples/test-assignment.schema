@@ -1,0 +1,38 @@
+// Test assignment statements
+
+// Simple variable assignment
+let x = 5
+print("Initial x:")
+print(x)
+
+x = 10
+print("After x = 10:")
+print(x)
+
+// Arithmetic with assignment
+x = x + 5
+print("After x = x + 5:")
+print(x)
+
+// Array element assignment
+let arr = [1, 2, 3]
+print("Initial array:")
+print(arr)
+
+arr[0] = 100
+print("After arr[0] = 100:")
+print(arr)
+
+// Map assignment
+let m = Map()
+m.set("a", 1)
+m.set("b", 2)
+print("Map value of 'a':")
+print(m.get("a"))
+
+// Counter loop test
+let i = 0
+while i < 5 {
+  print(i)
+  i = i + 1
+}

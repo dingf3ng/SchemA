@@ -1,0 +1,99 @@
+// Dijkstra's shortest path algorithm
+
+fn dijkstra(graph, start, n) {
+  let dist = Map()
+  let visited = Set()
+  let pq = MinHeap()
+
+  // Initialize distances
+  let i = 0
+  while i < n {
+    dist.set(i, Infinity)
+    i = i + 1
+  }
+
+  dist.set(start, 0)
+  pq.push(0)
+
+  let nodeMap = Map()
+  nodeMap.set(0, start)
+
+  while pq.size() > 0 {
+    let currentDist = pq.pop()
+
+    // Find node with this distance
+    let current = -1
+    let j = 0
+    while j < n {
+      if !visited.has(j) {
+        if dist.get(j) == currentDist {
+          current = j
+        }
+      }
+      j = j + 1
+    }
+
+    if current == -1 {
+      return dist
+    }
+
+    if visited.has(current) {
+      return dist
+    }
+
+    visited.add(current)
+
+    let neighbors = graph.getNeighbors(current)
+
+    // Process each neighbor
+    let k = 0
+    while k < neighbors.length() {
+      let edge = neighbors[k]
+      let neighbor = edge["to"]
+      let weight = edge["weight"]
+
+      if !visited.has(neighbor) {
+        let newDist = dist.get(current) + weight
+
+        if newDist < dist.get(neighbor) {
+          dist.set(neighbor, newDist)
+          pq.push(newDist)
+        }
+      }
+
+      k = k + 1
+    }
+  }
+
+  return dist
+}
+
+// Create a weighted graph
+let g = Graph(true)
+
+// Add vertices
+g.addVertex(0)
+g.addVertex(1)
+g.addVertex(2)
+g.addVertex(3)
+g.addVertex(4)
+
+// Add edges with weights
+g.addEdge(0, 1, 4)
+g.addEdge(0, 2, 1)
+g.addEdge(2, 1, 2)
+g.addEdge(1, 3, 1)
+g.addEdge(2, 3, 5)
+g.addEdge(3, 4, 3)
+
+print("Running Dijkstra from node 0:")
+let distances = dijkstra(g, 0, 5)
+
+let idx = 0
+while idx < 5 {
+  print("Distance to node")
+  print(idx)
+  print(":")
+  print(distances.get(idx))
+  idx = idx + 1
+}

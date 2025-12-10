@@ -1,0 +1,95 @@
+// SchemA Quickstart Example
+// A simple program demonstrating the language basics
+
+print("=== Welcome to SchemA ===")
+print("A DSL for Data Structures and Algorithms")
+
+// Variables
+let x = 42
+let message = "Hello from SchemA!"
+print(message)
+
+// Functions
+fn fibonacci(n) {
+  if n <= 1 {
+    return n
+  }
+  return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+print("\nFibonacci sequence:")
+let i = 0
+while i < 10 {
+  print(fibonacci(i))
+  i = i + 1
+}
+
+// Binary Search
+fn binarySearch(arr, target) {
+  let left = 0
+  let right = arr.length() - 1
+
+  while left <= right {
+    let mid = (left + right) / 2
+    let midVal = arr[mid]
+
+    if midVal == target {
+      return mid
+    }
+
+    if midVal < target {
+      left = mid + 1
+    } else {
+      right = mid - 1
+    }
+  }
+
+  return -1
+}
+
+print("\n=== Binary Search ===")
+let sortedArr = [1, 3, 5, 7, 9, 11, 13, 15]
+print("Array:")
+print(sortedArr)
+print("Searching for 7...")
+let index = binarySearch(sortedArr, 7)
+print("Found at index:")
+print(index)
+
+// Priority Queue (MinHeap) example
+print("\n=== Priority Queue (MinHeap) ===")
+let pq = MinHeap()
+pq.push(10)
+pq.push(5)
+pq.push(20)
+pq.push(1)
+pq.push(15)
+
+print("Processing tasks by priority:")
+while pq.size() > 0 {
+  print(pq.pop())
+}
+
+print("\n=== Set Operations ===")
+let uniqueNumbers = Set()
+let numbers = [1, 2, 3, 2, 1, 4, 3, 5]
+for num in numbers {
+  uniqueNumbers.add(num)
+}
+print("Original array:")
+print(numbers)
+print("Unique count:")
+print(uniqueNumbers.size())
+
+print("\n=== Map (Dictionary) ===")
+let grades = Map()
+grades.set("Alice", 95)
+grades.set("Bob", 87)
+grades.set("Charlie", 92)
+
+print("Alice's grade:")
+print(grades.get("Alice"))
+print("Total students:")
+print(grades.size())
+
+print("\nSchemA language demo complete!")

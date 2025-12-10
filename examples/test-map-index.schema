@@ -1,0 +1,14 @@
+let m = Map()
+m.set("weight", 5)
+
+let w1 = m.get("weight")
+print("Using .get():")
+print(w1)
+
+let w2 = m["weight"]
+print("Using []:")
+print(w2)
+
+let test = w2 < 10
+print("w2 < 10:")
+print(test)

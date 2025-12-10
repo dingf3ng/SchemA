@@ -1,0 +1,11 @@
+print("Hello SchemA")
+
+fn add(a, b) {
+  return a + b
+}
+
+let result = add(3, 5)
+print(result)
+
+let arr = [1, 2, 3]
+print(arr)

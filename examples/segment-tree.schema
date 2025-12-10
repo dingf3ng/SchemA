@@ -1,0 +1,69 @@
+// Segment Tree for range queries
+
+fn buildSegmentTree(arr, tree, node, start, end) {
+  if start == end {
+    tree[node] = arr[start]
+    return
+  }
+
+  let mid = (start + end) / 2
+  let leftChild = 2 * node + 1
+  let rightChild = 2 * node + 2
+
+  buildSegmentTree(arr, tree, leftChild, start, mid)
+  buildSegmentTree(arr, tree, rightChild, mid + 1, end)
+
+  tree[node] = tree[leftChild] + tree[rightChild]
+}
+
+fn queryRange(tree, node, start, end, l, r) {
+  // No overlap
+  if r < start {
+    return 0
+  }
+  if l > end {
+    return 0
+  }
+
+  // Complete overlap
+  if l <= start {
+    if r >= end {
+      return tree[node]
+    }
+  }
+
+  // Partial overlap
+  let mid = (start + end) / 2
+  let leftChild = 2 * node + 1
+  let rightChild = 2 * node + 2
+
+  let leftSum = queryRange(tree, leftChild, start, mid, l, r)
+  let rightSum = queryRange(tree, rightChild, mid + 1, end, l, r)
+
+  return leftSum + rightSum
+}
+
+// Create array
+let arr = [1, 3, 5, 7, 9, 11]
+let n = 6
+
+// Build segment tree (size needs to be 4*n for safety)
+let tree = []
+let i = 0
+while i < 24 {
+  tree.push(0)
+  i = i + 1
+}
+
+buildSegmentTree(arr, tree, 0, 0, n - 1)
+
+print("Array:")
+print(arr)
+
+print("Sum of range [1, 3]:")
+let sum1 = queryRange(tree, 0, 0, n - 1, 1, 3)
+print(sum1)
+
+print("Sum of range [0, 5]:")
+let sum2 = queryRange(tree, 0, 0, n - 1, 0, 5)
+print(sum2)

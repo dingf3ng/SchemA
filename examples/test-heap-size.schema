@@ -1,0 +1,15 @@
+let pq = MinHeap()
+pq.push(5)
+pq.push(3)
+
+let s = pq.size()
+print("Heap size:")
+print(s)
+
+let test = s > 0
+print("s > 0:")
+print(test)
+
+let direct = pq.size() > 0
+print("pq.size() > 0:")
+print(direct)

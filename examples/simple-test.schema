@@ -1,0 +1,70 @@
+// Simple SchemA Test
+
+print("=== SchemA Language Test ===")
+
+// Functions
+fn add(a, b) {
+  return a + b
+}
+
+fn factorial(n) {
+  if n <= 1 {
+    return 1
+  }
+  return n * factorial(n - 1)
+}
+
+print("5 + 3 =")
+print(add(5, 3))
+
+print("Factorial of 5:")
+print(factorial(5))
+
+// Arrays
+let numbers = [10, 20, 30, 40, 50]
+print("\nArray:")
+print(numbers)
+print("First element:")
+print(numbers[0])
+print("Third element:")
+print(numbers[2])
+
+print("\n=== MinHeap ===")
+let heap = MinHeap()
+heap.push(15)
+heap.push(3)
+heap.push(25)
+heap.push(7)
+
+print("Heap elements in order:")
+let h1 = heap.pop()
+print(h1)
+let h2 = heap.pop()
+print(h2)
+let h3 = heap.pop()
+print(h3)
+let h4 = heap.pop()
+print(h4)
+
+print("\n=== Set ===")
+let mySet = Set()
+mySet.add(100)
+mySet.add(200)
+mySet.add(100)
+print("Set size (100 added twice):")
+print(mySet.size())
+print("Has 100:")
+print(mySet.has(100))
+print("Has 300:")
+print(mySet.has(300))
+
+print("\n=== Map ===")
+let myMap = Map()
+myMap.set("name", "SchemA")
+myMap.set("type", "DSL")
+print("Name:")
+print(myMap.get("name"))
+print("Type:")
+print(myMap.get("type"))
+
+print("\nAll tests passed!")

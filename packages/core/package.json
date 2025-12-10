@@ -1,14 +1,17 @@
 {
   "name": "@schema/core",
   "version": "1.0.0",
-  "description": "",
+  "description": "SchemA - A DSL for Data Structures and Algorithms",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "schema": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node dist/cli.js ../../examples/simple-heap.schema"
   },
-  "keywords": [],
+  "keywords": ["dsl", "algorithms", "data-structures", "education"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
