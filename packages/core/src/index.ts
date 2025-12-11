@@ -1,22 +1,18 @@
-import { Lexer } from './lexer';
-import { Parser } from './parser';
+import { AntlrParser } from './parser';
 import { Interpreter } from './interpreter';
-import { TypeChecker } from './type-checker';
+import { TypeChecker } from './typechecker';
 
-export { Lexer } from './lexer';
-export { Parser } from './parser';
+export { AntlrParser } from './parser';
 export { Interpreter } from './interpreter';
-export { TypeChecker } from './type-checker';
+export { TypeChecker } from './typechecker';
 export * from './types';
 export * from './runtime/values';
 export * from './runtime/data-structures';
 
+// New ANTLR-based API (recommended)
 export function run(code: string): string[] {
-  const lexer = new Lexer(code);
-  const tokens = lexer.tokenize();
-
-  const parser = new Parser(tokens);
-  const ast = parser.parse();
+  const parser = new AntlrParser();
+  const ast = parser.parse(code);
 
   const typeChecker = new TypeChecker();
   typeChecker.check(ast);
@@ -26,11 +22,8 @@ export function run(code: string): string[] {
 }
 
 export function runWithoutTypeCheck(code: string): string[] {
-  const lexer = new Lexer(code);
-  const tokens = lexer.tokenize();
-
-  const parser = new Parser(tokens);
-  const ast = parser.parse();
+  const parser = new AntlrParser();
+  const ast = parser.parse(code);
 
   const interpreter = new Interpreter();
   return interpreter.evaluate(ast);
