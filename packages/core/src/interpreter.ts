@@ -23,8 +23,8 @@ import {
   MaxHeapMap,
   Graph,
   LazyRange,
-  SchemaBinaryTree,
-  SchemaAVLTree,
+  BinaryTree,
+  AVLTree,
 } from './runtime/data-structures';
 
 class ReturnException {
@@ -166,14 +166,14 @@ export class Interpreter {
     this.globalEnv.define('BinaryTree', {
       type: 'native-function',
       fn: () => {
-        return { type: 'binarytree', value: new SchemaBinaryTree<any>() };
+        return { type: 'binarytree', value: new BinaryTree<any>() };
       },
     });
 
     this.globalEnv.define('AVLTree', {
       type: 'native-function',
       fn: () => {
-        return { type: 'avltree', value: new SchemaAVLTree<any>() };
+        return { type: 'avltree', value: new AVLTree<any>() };
       },
     });
 
@@ -723,6 +723,45 @@ export class Interpreter {
               fn: (value: RuntimeValue) => {
                 const v = this.runtimeValueToKey(value);
                 return { type: 'boolean', value: object.value.search(v) };
+              },
+            };
+          }
+          if (propertyName === 'inOrderTraversal') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const elements = object.value.inOrderTraversal().map((val) => {
+                  return this.runtimeValueToKey(val);
+                });
+                const arr = new SchemaArray<RuntimeValue>();
+                elements.forEach((el) => arr.push(el));
+                return { type: 'array', value: arr };
+              },
+            };
+          }
+          if (propertyName === 'preOrderTraversal') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const elements = object.value.preOrderTraversal().map((val) => {
+                  return this.runtimeValueToKey(val);
+                });
+                const arr = new SchemaArray<RuntimeValue>();
+                elements.forEach((el) => arr.push(el));
+                return { type: 'array', value: arr };
+              },
+            };
+          }
+          if (propertyName === 'postOrderTraversal') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const elements = object.value.postOrderTraversal().map((val) => {
+                  return this.runtimeValueToKey(val);
+                });
+                const arr = new SchemaArray<RuntimeValue>();
+                elements.forEach((el) => arr.push(el));
+                return { type: 'array', value: arr };
               },
             };
           }

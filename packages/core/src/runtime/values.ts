@@ -8,8 +8,8 @@ import {
   Graph,
   LazyRange,
   HeapMap,
-  SchemaBinaryTree,
-  SchemaAVLTree,
+  BinaryTree,
+  AVLTree,
 } from './data-structures';
 
 export type RuntimeValue =
@@ -24,8 +24,8 @@ export type RuntimeValue =
   | { type: 'minheap'; value: MinHeap<any> }
   | { type: 'maxheap'; value: MaxHeap<any> }
   | { type: 'heapMap'; value: HeapMap<any, any> }
-  | { type: 'binarytree'; value: SchemaBinaryTree<any> }
-  | { type: 'avltree'; value: SchemaAVLTree<any> }
+  | { type: 'binarytree'; value: BinaryTree<any> }
+  | { type: 'avltree'; value: AVLTree<any> }
   | { type: 'graph'; value: Graph<any> }
   | { type: 'range'; value: LazyRange }
   | {

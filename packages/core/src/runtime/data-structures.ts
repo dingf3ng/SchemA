@@ -480,7 +480,7 @@ export class TreeNode<T> {
   }
 }
 
-export class SchemaBinaryTree<T> {
+export class BinaryTree<T> {
   root: TreeNode<T> | null = null;
   protected compareFn: (a: T, b: T) => number;
 
@@ -618,7 +618,7 @@ export class SchemaBinaryTree<T> {
   }
 }
 
-export class SchemaAVLTree<T> extends SchemaBinaryTree<T> {
+export class AVLTree<T> extends BinaryTree<T> {
 
   insert(value: T): void {
     this.root = this.insertNode(this.root, value);
@@ -709,5 +709,50 @@ export class SchemaAVLTree<T> extends SchemaBinaryTree<T> {
 
   toString(): string {
     return `AVLTree[${this.inOrderTraversal().join(', ')}]`;
+  }
+}
+
+export class TreeMap<K, V> {
+  private avlTree: AVLTree<{ key: K; value: V }>;
+  private compareFn: (a: K, b: K) => number;
+
+  constructor(compareFn?: (a: K, b: K) => number) {
+    this.compareFn =
+      compareFn ||
+      ((a: any, b: any) => {
+        if (a < b) return -1;
+        if (a > b) return 1;
+        return 0;
+      });
+    this.avlTree = new AVLTree<{ key: K; value: V }>((a, b) =>
+      this.compareFn(a.key, b.key)
+    );
+  }
+
+  set(key: K, value: V): void {
+    this.avlTree.insert({ key, value });
+  }
+
+  // Note: This is a simple implementation and may not retrieve the latest value if duplicate keys are inserted.
+  get(key: K): V | undefined {
+    const nodes = this.avlTree.inOrderTraversal();
+    for (const node of nodes) {
+      if (this.compareFn(node.key, key) === 0) {
+        return node.value;
+      }
+    }
+    return undefined;
+  }
+
+  has(key: K): boolean {
+    return this.get(key) !== undefined;
+  }
+
+  toString(): string {
+    const entries = this.avlTree
+      .inOrderTraversal()
+      .map((kv) => `${kv.key}: ${kv.value}`)
+      .join(', ');
+    return `TreeMap{${entries}}`;
   }
 }
