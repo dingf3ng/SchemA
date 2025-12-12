@@ -48,7 +48,7 @@ export class SchemaArray<T> {
       if (typeof item === 'object' && item !== null && 'type' in item) {
         // Handle RuntimeValue objects
         const rv = item as any;
-        if (rv.type === 'number' || rv.type === 'string' || rv.type === 'boolean') {
+        if (rv.type === 'int' || rv.type === 'float' || rv.type === 'string' || rv.type === 'boolean') {
           return rv.value;
         }
       }
@@ -354,6 +354,60 @@ export class MaxHeap<T> {
 export interface Edge<T> {
   to: T;
   weight: number;
+}
+
+export class LazyRange {
+  private start: number;
+  private end: number | undefined;
+  private inclusive: boolean;
+
+  constructor(start: number, end: number | undefined, inclusive: boolean) {
+    this.start = start;
+    this.end = end;
+    this.inclusive = inclusive;
+  }
+
+  get isInfinite(): boolean {
+    return this.end === undefined;
+  }
+
+  // Generate values up to a limit (for iteration)
+  *generate(): Generator<number> {
+    if (this.end === undefined) {
+      // Infinite range
+      let current = this.start;
+      while (true) {
+        yield current;
+        current++;
+      }
+    } else {
+      // Finite range
+      const endValue = this.inclusive ? this.end : this.end - 1;
+      for (let i = this.start; i <= endValue; i++) {
+        yield i;
+      }
+    }
+  }
+
+  // Convert to array (only for finite ranges)
+  toArray(): number[] {
+    if (this.isInfinite) {
+      throw new Error('Cannot convert infinite range to array');
+    }
+    const result: number[] = [];
+    for (const value of this.generate()) {
+      result.push(value);
+    }
+    return result;
+  }
+
+  toString(): string {
+    if (this.isInfinite) {
+      return `Range(${this.start}..)`;
+    }
+    const op = this.inclusive ? '...' : '..';
+    return `Range(${this.start}${op}${this.end})`;
+  }
 }
 
 export class Graph<T> {

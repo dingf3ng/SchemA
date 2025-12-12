@@ -34,7 +34,11 @@ typeAnnotation
     ;
 
 variableDeclaration
-    : 'let' IDENTIFIER (':' typeAnnotation)? ('=' expression)?
+    : 'let' variableDeclarator (',' variableDeclarator)*
+    ;
+
+variableDeclarator
+    : IDENTIFIER (':' typeAnnotation)? ('=' expression)?
     ;
 
 assignmentStatement
@@ -92,7 +96,15 @@ equality
     ;
 
 comparison
-    : addition (('<' | '<=' | '>' | '>=') addition)*
+    : range (('<' | '<=' | '>' | '>=') range)*
+    ;
+
+range
+    : shift (('..' | '...') shift?)?
+    ;
+
+shift
+    : addition (('<<' | '>>') addition)*
     ;
 
 addition
@@ -100,12 +112,13 @@ addition
     ;
 
 multiplication
-    : unary (('*' | '/' | '%') unary)*
+    : unary (('*' | '/' | '/.' | '%') unary)*
     ;
 
 unary
-    : ('-' | '!') unary
-    | postfix
+    : ('-' | '!') unary     # UnaryOp
+    | ('..' | '...') shift  # PrefixRange
+    | postfix               # PostfixExpr
     ;
 
 postfix
@@ -156,6 +169,7 @@ STRING
 
 IDENTIFIER
     : [a-zA-Z_][a-zA-Z0-9_]*
+    | '_'
     ;
 
 // Whitespace and Comments

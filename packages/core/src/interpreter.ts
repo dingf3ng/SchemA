@@ -20,6 +20,7 @@ import {
   MinHeap,
   MaxHeap,
   Graph,
+  LazyRange,
 } from './runtime/data-structures';
 
 class ReturnException {
@@ -103,7 +104,6 @@ export class Interpreter {
       fn: (...args: RuntimeValue[]) => {
         const output = args.map(runtimeValueToString).join(' ');
         this.output.push(output);
-        console.log(output);
         return { type: 'null', value: null };
       },
     });
@@ -145,8 +145,8 @@ export class Interpreter {
       },
     });
 
-    this.globalEnv.define('Infinity', {
-      type: 'number',
+    this.globalEnv.define('Inf', {
+      type: 'float',
       value: Infinity,
     });
   }
@@ -219,13 +219,18 @@ export class Interpreter {
   }
 
   private evaluateVariableDeclaration(stmt: VariableDeclaration): void {
-    let value: RuntimeValue = { type: 'null', value: null };
+    for (const declarator of stmt.declarations) {
+      let value: RuntimeValue = { type: 'null', value: null };
 
-    if (stmt.initializer) {
-      value = this.evaluateExpression(stmt.initializer);
+      if (declarator.initializer) {
+        value = this.evaluateExpression(declarator.initializer);
+      }
+
+      // Skip binding if the variable name is '_' (unnamed variable)
+      if (declarator.name !== '_') {
+        this.currentEnv.define(declarator.name, value);
+      }
     }
-
-    this.currentEnv.define(stmt.name, value);
   }
 
   private captureEnvironment(): Map<string, RuntimeValue> {
@@ -241,6 +246,10 @@ export class Interpreter {
 
     // Handle simple identifier assignment
     if (stmt.target.type === 'Identifier') {
+      // Cannot assign to underscore
+      if (stmt.target.name === '_') {
+        throw new Error('Cannot assign to underscore (_)');
+      }
       // Check if variable exists (will throw if undefined during lookup)
       try {
         this.evaluateExpression(stmt.target); // This will throw if variable doesn't exist
@@ -270,7 +279,7 @@ export class Interpreter {
       const object = this.evaluateExpression(stmt.target.object);
       const index = this.evaluateExpression(stmt.target.index);
 
-      if (object.type === 'array' && index.type === 'number') {
+      if (object.type === 'array' && index.type === 'int') {
         object.value.set(index.value, value);
         return;
       }
@@ -311,31 +320,68 @@ export class Interpreter {
 
     if (iterable.type === 'array') {
       iterable.value.forEach((item) => {
-        this.currentEnv.define(stmt.variable, item);
+        // Skip binding if the variable name is '_' (unnamed variable)
+        if (stmt.variable !== '_') {
+          this.currentEnv.define(stmt.variable, item);
+        }
         this.evaluateStatement(stmt.body);
       });
     } else if (iterable.type === 'set') {
       iterable.value.forEach((item) => {
-        const runtimeItem =
-          typeof item === 'number'
-            ? { type: 'number' as const, value: item }
-            : typeof item === 'string'
-              ? { type: 'string' as const, value: item }
-              : { type: 'null' as const, value: null };
-        this.currentEnv.define(stmt.variable, runtimeItem);
+        let runtimeItem: RuntimeValue;
+        if (typeof item === 'number') {
+          runtimeItem = Number.isInteger(item)
+            ? { type: 'int', value: item }
+            : { type: 'float', value: item };
+        } else if (typeof item === 'string') {
+          runtimeItem = { type: 'string', value: item };
+        } else if (typeof item === 'boolean') {
+          runtimeItem = { type: 'boolean', value: item };
+        } else if (typeof item === 'object' && item !== null && 'type' in item) {
+          runtimeItem = item as RuntimeValue;
+        } else {
+          runtimeItem = { type: 'null', value: null };
+        }
+        // Skip binding if the variable name is '_' (unnamed variable)
+        if (stmt.variable !== '_') {
+          this.currentEnv.define(stmt.variable, runtimeItem);
+        }
         this.evaluateStatement(stmt.body);
       });
     } else if (iterable.type === 'map') {
       iterable.value.forEach((value, key) => {
-        const runtimeKey =
-          typeof key === 'number'
-            ? { type: 'number' as const, value: key }
-            : typeof key === 'string'
-              ? { type: 'string' as const, value: key }
-              : { type: 'null' as const, value: null };
-        this.currentEnv.define(stmt.variable, runtimeKey);
+        let runtimeKey: RuntimeValue;
+        if (typeof key === 'number') {
+          runtimeKey = Number.isInteger(key)
+            ? { type: 'int', value: key }
+            : { type: 'float', value: key };
+        } else if (typeof key === 'string') {
+          runtimeKey = { type: 'string', value: key };
+        } else if (typeof key === 'boolean') {
+          runtimeKey = { type: 'boolean', value: key };
+        } else if (typeof key === 'object' && key !== null && 'type' in key) {
+          runtimeKey = key as RuntimeValue;
+        } else {
+          runtimeKey = { type: 'null', value: null };
+        }
+        // Skip binding if the variable name is '_' (unnamed variable)
+        if (stmt.variable !== '_') {
+          this.currentEnv.define(stmt.variable, runtimeKey);
+        }
         this.evaluateStatement(stmt.body);
       });
+    } else if (iterable.type === 'range') {
+      iterable.value.generate();
+      // Support for infinite ranges - use the generator
+      const limit = 1000; // Safety limit for infinite ranges
+      for (const value of iterable.value.generate()) {
+        const runtimeValue: RuntimeValue = { type: 'int', value };
+        // Skip binding if the variable name is '_' (unnamed variable)
+        if (stmt.variable !== '_') {
+          this.currentEnv.define(stmt.variable, runtimeValue);
+        }
+        this.evaluateStatement(stmt.body);
+      }
     }
 
     this.currentEnv = savedEnv;
@@ -362,7 +408,12 @@ export class Interpreter {
   private evaluateExpression(expr: Expression): RuntimeValue {
     switch (expr.type) {
       case 'NumberLiteral':
-        return { type: 'number', value: expr.value };
+        // Check if the number is an integer or float
+        if (Number.isInteger(expr.value)) {
+          return { type: 'int', value: expr.value };
+        } else {
+          return { type: 'float', value: expr.value };
+        }
 
       case 'StringLiteral':
         return { type: 'string', value: expr.value };
@@ -376,6 +427,10 @@ export class Interpreter {
       }
 
       case 'Identifier': {
+        // Underscore cannot be used as a value
+        if (expr.name === '_') {
+          throw new Error('Underscore (_) cannot be used as a value');
+        }
         const value = this.currentEnv.get(expr.name);
         if (value === undefined) {
           throw new Error(`Undefined variable: ${expr.name}`);
@@ -390,10 +445,13 @@ export class Interpreter {
         const operand = this.evaluateExpression(expr.operand);
 
         if (expr.operator === '-') {
-          if (operand.type !== 'number') {
-            throw new Error('Unary minus requires number operand');
+          if (operand.type === 'int') {
+            return { type: 'int', value: -operand.value };
+          } else if (operand.type === 'float') {
+            return { type: 'float', value: -operand.value };
+          } else {
+            throw new Error('Unary minus requires int or float operand');
           }
-          return { type: 'number', value: -operand.value };
         }
 
         if (expr.operator === '!') {
@@ -412,10 +470,10 @@ export class Interpreter {
 
         if (object.type === 'array') {
           if (propertyName === 'length') {
-            return { 
-              type: 'native-function', 
+            return {
+              type: 'native-function',
               fn: () => {
-                return { type: 'number', value: object.value.length }
+                return { type: 'int', value: object.value.length }
               }
              };
           }
@@ -443,7 +501,7 @@ export class Interpreter {
             return {
               type: 'native-function',
               fn: () => {
-                return { type: 'number', value: object.value.size };
+                return { type: 'int', value: object.value.size };
               },
             };
           }
@@ -482,7 +540,7 @@ export class Interpreter {
             return {
               type: 'native-function',
               fn: () => {
-                return { type: 'number', value: object.value.size };
+                return { type: 'int', value: object.value.size };
               },
             };
           }
@@ -512,7 +570,7 @@ export class Interpreter {
             return {
               type: 'native-function',
               fn: () => {
-                return { type: 'number', value: object.value.size };
+                return { type: 'int', value: object.value.size };
               },
             };
           }
@@ -532,7 +590,9 @@ export class Interpreter {
               fn: () => {
                 const val = object.value.pop();
                 return val !== undefined
-                  ? { type: 'number', value: val }
+                  ? Number.isInteger(val)
+                    ? { type: 'int', value: val }
+                    : { type: 'float', value: val }
                   : { type: 'null', value: null };
               },
             };
@@ -543,7 +603,9 @@ export class Interpreter {
               fn: () => {
                 const val = object.value.peek();
                 return val !== undefined
-                  ? { type: 'number', value: val }
+                  ? Number.isInteger(val)
+                    ? { type: 'int', value: val }
+                    : { type: 'float', value: val }
                   : { type: 'null', value: null };
               },
             };
@@ -572,7 +634,7 @@ export class Interpreter {
                 const f = this.runtimeValueToKey(from);
                 const t = this.runtimeValueToKey(to);
                 const w =
-                  weight && weight.type === 'number' ? weight.value : 1;
+                  weight && (weight.type === 'int' || weight.type === 'float') ? weight.value : 1;
                 object.value.addEdge(f, t, w);
                 return { type: 'null', value: null };
               },
@@ -587,8 +649,8 @@ export class Interpreter {
                 const arr = new SchemaArray<RuntimeValue>();
                 neighbors.forEach((edge) => {
                   const obj = new SchemaMap<any, RuntimeValue>();
-                  obj.set('to', { type: 'number', value: edge.to as number });
-                  obj.set('weight', { type: 'number', value: edge.weight });
+                  obj.set('to', { type: 'int', value: edge.to as number });
+                  obj.set('weight', { type: 'int', value: edge.weight });
                   arr.push({ type: 'map', value: obj });
                 });
                 return { type: 'array', value: arr };
@@ -604,7 +666,7 @@ export class Interpreter {
         const object = this.evaluateExpression(expr.object);
         const index = this.evaluateExpression(expr.index);
 
-        if (object.type === 'array' && index.type === 'number') {
+        if (object.type === 'array' && index.type === 'int') {
           return (
             object.value.get(index.value) || { type: 'null', value: null }
           );
@@ -618,48 +680,265 @@ export class Interpreter {
         throw new Error('Invalid index expression');
       }
 
+      case 'RangeExpression': {
+        const inclusive = expr.inclusive;
+        
+        // Handle string range expressions like "aa".."bb", "a".."z"
+        if (expr.start) {
+          const startVal = this.evaluateExpression(expr.start);
+          if (startVal.type === 'string') {
+            return this.evaluateStringRange(startVal.value, expr.end, inclusive);
+          }
+        }
+        
+        // Handle integer range expressions like 1..3, 1...3, ..3, 0..
+        let start: number // There must be a start (possibly default)
+        let end: number | undefined;
+
+        if (expr.start) {
+          const startVal = this.evaluateExpression(expr.start);
+          if (startVal.type === 'int') {
+            start = startVal.value;
+          } else {
+            throw new Error('Range start must be an integer or string');
+          }
+        } else {
+          start = 0; // Default start for integer ranges
+        }
+        // Evaluate start (default to 0 if not provided)
+
+        // Evaluate end (undefined for infinite ranges)
+        if (expr.end) {
+          const endVal = this.evaluateExpression(expr.end);
+          if (endVal.type === 'int') {
+            end = endVal.value;
+          } else {
+            throw new Error('Range end must be an integer');
+          }
+        } else {
+          end = undefined; // Infinite range
+        }
+
+        // Create and return the range
+        const range = new LazyRange(start, end, inclusive);
+
+        // If it's a finite range, convert to array for immediate use
+        // Otherwise, return the range object for lazy evaluation
+        if (!range.isInfinite) {
+          const elements = range.toArray().map(val => ({ type: 'int' as const, value: val }));
+          return { type: 'array', value: new SchemaArray(elements) };
+        } else {
+          return { type: 'range', value: range };
+        }
+      }
+
       default:
         throw new Error(`Unknown expression type: ${(expr as any).type}`);
     }
+  }
+
+  private evaluateStringRange(start: string, endExpr: Expression | undefined, inclusive: boolean): RuntimeValue {
+    if (!endExpr) {
+      throw new Error('String ranges must have both start and end');
+    }
+
+    const endVal = this.evaluateExpression(endExpr);
+    if (endVal.type !== 'string') {
+      throw new Error('String range end must be a string');
+    }
+
+    const end = endVal.value;
+
+    // Generate string range
+    const result: RuntimeValue[] = [];
+
+    // Simple implementation for same-length strings
+    if (start.length !== end.length) {
+      throw new Error('String range start and end must have the same length');
+    }
+
+    if (start.length === 1) {
+      // Single character range like 'a'..'z'
+      const startCode = start.charCodeAt(0);
+      const endCode = end.charCodeAt(0);
+      const finalCode = inclusive ? endCode : endCode - 1;
+
+      for (let code = startCode; code <= finalCode; code++) {
+        result.push({ type: 'string', value: String.fromCharCode(code) });
+      }
+    } else {
+      // Multi-character range like "aa".."bb"
+      const current = start.split('');
+      const endChars = end.split('');
+      const maxIterations = 10000; // Safety limit
+      let iterations = 0;
+
+      while (iterations < maxIterations) {
+        result.push({ type: 'string', value: current.join('') });
+
+        if (current.join('') === end) {
+          if (!inclusive) {
+            result.pop(); // Remove the end if not inclusive
+          }
+          break;
+        }
+
+        if (inclusive && current.join('') === end) {
+          break;
+        }
+
+        // Increment the string (rightmost character first)
+        let carry = true;
+        for (let i = current.length - 1; i >= 0 && carry; i--) {
+          const charCode = current[i].charCodeAt(0);
+          if (charCode < endChars[i].charCodeAt(0) || (i > 0 && charCode < 122)) {
+            current[i] = String.fromCharCode(charCode + 1);
+            carry = false;
+          } else if (i > 0) {
+            current[i] = 'a';
+          } else {
+            carry = false;
+            break;
+          }
+        }
+
+        iterations++;
+      }
+    }
+
+    return { type: 'array', value: new SchemaArray(result) };
   }
 
   private evaluateBinaryExpression(expr: any): RuntimeValue {
     const left = this.evaluateExpression(expr.left);
     const right = this.evaluateExpression(expr.right);
 
+    // Arithmetic: +, -, *, % (work on int and float)
     if (expr.operator === '+') {
-      if (left.type === 'number' && right.type === 'number') {
-        return { type: 'number', value: left.value + right.value };
+      if (left.type === 'int' && right.type === 'int') {
+        return { type: 'int', value: left.value + right.value };
+      }
+      if (left.type === 'float' && right.type === 'float') {
+        return { type: 'float', value: left.value + right.value };
+      }
+      if ((left.type === 'int' || left.type === 'float') &&
+          (right.type === 'int' || right.type === 'float')) {
+        return { type: 'float', value: left.value + right.value };
       }
       if (left.type === 'string' && right.type === 'string') {
         return { type: 'string', value: left.value + right.value };
       }
+      throw new Error(`Cannot add ${left.type} and ${right.type}`);
     }
 
     if (expr.operator === '-') {
-      if (left.type === 'number' && right.type === 'number') {
-        return { type: 'number', value: left.value - right.value };
+      if (left.type === 'int' && right.type === 'int') {
+        return { type: 'int', value: left.value - right.value };
       }
+      if (left.type === 'float' && right.type === 'float') {
+        return { type: 'float', value: left.value - right.value };
+      }
+      if ((left.type === 'int' || left.type === 'float') &&
+          (right.type === 'int' || right.type === 'float')) {
+        return { type: 'float', value: left.value - right.value };
+      }
+      throw new Error(`Cannot subtract ${right.type} from ${left.type}`);
     }
 
     if (expr.operator === '*') {
-      if (left.type === 'number' && right.type === 'number') {
-        return { type: 'number', value: left.value * right.value };
+      if (left.type === 'int' && right.type === 'int') {
+        return { type: 'int', value: left.value * right.value };
       }
+      if (left.type === 'float' && right.type === 'float') {
+        return { type: 'float', value: left.value * right.value };
+      }
+      if ((left.type === 'int' || left.type === 'float') &&
+          (right.type === 'int' || right.type === 'float')) {
+        return { type: 'float', value: left.value * right.value };
+      }
+      throw new Error(`Cannot multiply ${left.type} and ${right.type}`);
     }
 
+    // Integer division: / (requires both operands to be int, returns int)
     if (expr.operator === '/') {
-      if (left.type === 'number' && right.type === 'number') {
-        return { type: 'number', value: left.value / right.value };
+      if (left.type === 'int' && right.type === 'int') {
+        return { type: 'int', value: Math.floor(left.value / right.value) };
       }
+      throw new Error(`Integer division requires both operands to be int`);
+    }
+
+    // Float division: /. (works on int or float, returns float)
+    if (expr.operator === '/.') {
+      if ((left.type === 'int' || left.type === 'float') &&
+          (right.type === 'int' || right.type === 'float')) {
+        return { type: 'float', value: left.value / right.value };
+      }
+      throw new Error(`Float division requires numeric operands`);
     }
 
     if (expr.operator === '%') {
-      if (left.type === 'number' && right.type === 'number') {
-        return { type: 'number', value: left.value % right.value };
+      if (left.type === 'int' && right.type === 'int') {
+        return { type: 'int', value: left.value % right.value };
       }
+      if (left.type === 'float' && right.type === 'float') {
+        return { type: 'float', value: left.value % right.value };
+      }
+      if ((left.type === 'int' || left.type === 'float') &&
+          (right.type === 'int' || right.type === 'float')) {
+        return { type: 'float', value: left.value % right.value };
+      }
+      throw new Error(`Modulo requires numeric operands`);
     }
 
+    // Bitwise shift operators: << and >> (require both operands to be int)
+    if (expr.operator === '<<') {
+      if (left.type === 'int' && right.type === 'int') {
+        return { type: 'int', value: left.value << right.value };
+      }
+      throw new Error(`Left shift requires both operands to be int`);
+    }
+
+    if (expr.operator === '>>') {
+      if (left.type === 'int' && right.type === 'int') {
+        return { type: 'int', value: left.value >> right.value };
+      }
+      throw new Error(`Right shift requires both operands to be int`);
+    }
+
+    // Comparison operators: work on int or float
+    if (expr.operator === '<') {
+      if ((left.type === 'int' || left.type === 'float') &&
+          (right.type === 'int' || right.type === 'float')) {
+        return { type: 'boolean', value: left.value < right.value };
+      }
+      throw new Error(`Cannot compare ${left.type} < ${right.type}`);
+    }
+
+    if (expr.operator === '<=') {
+      if ((left.type === 'int' || left.type === 'float') &&
+          (right.type === 'int' || right.type === 'float')) {
+        return { type: 'boolean', value: left.value <= right.value };
+      }
+      throw new Error(`Cannot compare ${left.type} <= ${right.type}`);
+    }
+
+    if (expr.operator === '>') {
+      if ((left.type === 'int' || left.type === 'float') &&
+          (right.type === 'int' || right.type === 'float')) {
+        return { type: 'boolean', value: left.value > right.value };
+      }
+      throw new Error(`Cannot compare ${left.type} > ${right.type}`);
+    }
+
+    if (expr.operator === '>=') {
+      if ((left.type === 'int' || left.type === 'float') &&
+          (right.type === 'int' || right.type === 'float')) {
+        return { type: 'boolean', value: left.value >= right.value };
+      }
+      throw new Error(`Cannot compare ${left.type} >= ${right.type}`);
+    }
+
+    // Equality operators
     if (expr.operator === '==') {
       return { type: 'boolean', value: this.valuesEqual(left, right) };
     }
@@ -668,31 +947,7 @@ export class Interpreter {
       return { type: 'boolean', value: !this.valuesEqual(left, right) };
     }
 
-    if (expr.operator === '<') {
-      if (left.type === 'number' && right.type === 'number') {
-        return { type: 'boolean', value: left.value < right.value };
-      }
-      throw new Error(`Cannot compare ${left.type} < ${right.type}`);
-    }
-
-    if (expr.operator === '<=') {
-      if (left.type === 'number' && right.type === 'number') {
-        return { type: 'boolean', value: left.value <= right.value };
-      }
-    }
-
-    if (expr.operator === '>') {
-      if (left.type === 'number' && right.type === 'number') {
-        return { type: 'boolean', value: left.value > right.value };
-      }
-    }
-
-    if (expr.operator === '>=') {
-      if (left.type === 'number' && right.type === 'number') {
-        return { type: 'boolean', value: left.value >= right.value };
-      }
-    }
-
+    // Logical operators
     if (expr.operator === '&&') {
       return { type: 'boolean', value: isTruthy(left) && isTruthy(right) };
     }
@@ -750,7 +1005,11 @@ export class Interpreter {
   private valuesEqual(left: RuntimeValue, right: RuntimeValue): boolean {
     if (left.type !== right.type) return false;
 
-    if (left.type === 'number' && right.type === 'number') {
+    if (left.type === 'int' && right.type === 'int') {
+      return left.value === right.value;
+    }
+
+    if (left.type === 'float' && right.type === 'float') {
       return left.value === right.value;
     }
 
@@ -770,9 +1029,9 @@ export class Interpreter {
   }
 
   private runtimeValueToKey(value: RuntimeValue): any {
-    if (value.type === 'number') return value.value;
+    if (value.type === 'int' || value.type === 'float') return value.value;
     if (value.type === 'string') return value.value;
     if (value.type === 'boolean') return value.value;
-    throw new Error('Invalid key type');
+    return value;
   }
 }

@@ -1,0 +1,49 @@
+// Test range operators
+
+// Test 1: Basic integer range with .. (exclusive end)
+let range1 = 1..3
+print(range1)
+
+// Test 2: Basic integer range with ... (inclusive end)
+let range2 = 1...3
+print(range2)
+
+// Test 3: Range with default start (..3)
+let range3 = ..3
+print(range3)
+
+// Test 4: String range with ..
+let strRange1 = "a".."c"
+print(strRange1)
+
+// Test 5: String range with ...
+let strRange2 = "a"..."c"
+print(strRange2)
+
+// Test 6: Multi-character string range
+let strRange3 = "aa"..."bb"
+print(strRange3)
+
+// Test 7: Underscore binder in for loop
+let count = 0
+for _ in 1...3 {
+    count = count + 1
+}
+print(count)
+
+// Test 8: Use range in for loop
+for i in 1...5 {
+    print(i)
+}
+
+// Test 9: Nested loops with underscore
+for i in 1..3 {
+    for _ in 1..3 {
+        print(i)
+    }
+}
+
+// Test 10: infinite range
+// for i in 3.. {
+//    print(i)
+// }

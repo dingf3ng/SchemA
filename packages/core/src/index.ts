@@ -20,11 +20,3 @@ export function run(code: string): string[] {
   const interpreter = new Interpreter();
   return interpreter.evaluate(ast);
 }
-
-export function runWithoutTypeCheck(code: string): string[] {
-  const parser = new AntlrParser();
-  const ast = parser.parse(code);
-
-  const interpreter = new Interpreter();
-  return interpreter.evaluate(ast);
-}

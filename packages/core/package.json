@@ -11,7 +11,9 @@
     "antlr": "antlr4ts -visitor src/SchemA.g4 -o src/generated",
     "prebuild": "npm run antlr",
     "build": "tsc",
-    "test": "node dist/cli.js ../../examples/simple-heap.schema"
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [
     "dsl",

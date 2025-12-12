@@ -59,6 +59,7 @@ export type ASTNodeType =
   | 'CallExpression'
   | 'MemberExpression'
   | 'IndexExpression'
+  | 'RangeExpression'
   | 'Identifier'
   | 'NumberLiteral'
   | 'StringLiteral'
@@ -98,11 +99,17 @@ export interface Parameter {
   typeAnnotation?: TypeAnnotation;
 }
 
-export interface VariableDeclaration extends ASTNode {
-  type: 'VariableDeclaration';
+export interface VariableDeclarator {
   name: string;
   typeAnnotation?: TypeAnnotation;
   initializer?: Expression;
+  line: number;
+  column: number;
+}
+
+export interface VariableDeclaration extends ASTNode {
+  type: 'VariableDeclaration';
+  declarations: VariableDeclarator[];
 }
 
 export interface AssignmentStatement extends ASTNode {
@@ -140,6 +147,13 @@ export interface IndexExpression extends ASTNode {
   type: 'IndexExpression';
   object: Expression;
   index: Expression;
+}
+
+export interface RangeExpression extends ASTNode {
+  type: 'RangeExpression';
+  start?: Expression;
+  end?: Expression;
+  inclusive: boolean; // true for '...', false for '..'
 }
 
 export interface Identifier extends ASTNode {
@@ -235,6 +249,7 @@ export type Expression =
   | CallExpression
   | MemberExpression
   | IndexExpression
+  | RangeExpression
   | Identifier
   | NumberLiteral
   | StringLiteral

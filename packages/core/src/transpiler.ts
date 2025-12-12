@@ -17,6 +17,8 @@ import {
   LogicalAndContext,
   EqualityContext,
   ComparisonContext,
+  RangeContext,
+  ShiftContext,
   AdditionContext,
   MultiplicationContext,
   UnaryContext,
@@ -152,12 +154,22 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
   }
 
   visitVariableDeclaration(ctx: VariableDeclarationContext): VariableDeclaration {
+    const declarators = ctx.variableDeclarator().map(declaratorCtx => this.visit(declaratorCtx));
+
+    return {
+      type: 'VariableDeclaration',
+      declarations: declarators,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitVariableDeclarator(ctx: any): any {
     const name = ctx.IDENTIFIER().text;
     const typeAnnotation = ctx.typeAnnotation() ? this.visit(ctx.typeAnnotation()!) : undefined;
     const initializer = ctx.expression() ? this.visit(ctx.expression()!) : undefined;
 
     return {
-      type: 'VariableDeclaration',
       name,
       typeAnnotation,
       initializer,
@@ -327,6 +339,58 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
   }
 
   visitComparison(ctx: ComparisonContext): Expression {
+    const children = ctx.range();
+    if (children.length === 1) {
+      return this.visit(children[0]);
+    }
+
+    let expr = this.visit(children[0]);
+    for (let i = 1; i < children.length; i++) {
+      const opIndex = i - 1;
+      const operator = ctx.getChild(opIndex * 2 + 1).text;
+      expr = {
+        type: 'BinaryExpression',
+        operator,
+        left: expr,
+        right: this.visit(children[i]),
+        line: ctx.start.line,
+        column: ctx.start.charPositionInLine + 1,
+      };
+    }
+    return expr;
+  }
+
+  visitRange(ctx: RangeContext): Expression {
+    const children = ctx.shift();
+    
+    // Check if we have an operator (childCount > 1 means we have at least start and operator)
+    if (ctx.childCount > 1) {
+        const start = this.visit(children[0]);
+        const end = children.length > 1 ? this.visit(children[1]) : undefined;
+
+        // Check which operator was used
+        const operatorNode = ctx.getChild(1);
+        const operatorText = operatorNode.text;
+        const inclusive = operatorText === '...';
+
+        return {
+          type: 'RangeExpression',
+          start,
+          end,
+          inclusive,
+          line: ctx.start.line,
+          column: ctx.start.charPositionInLine + 1,
+        };
+    }
+
+    if (children.length === 1) {
+      return this.visit(children[0]);
+    }
+    
+    throw new Error('Invalid range expression');
+  }
+
+  visitShift(ctx: any): Expression {
     const children = ctx.addition();
     if (children.length === 1) {
       return this.visit(children[0]);
@@ -393,16 +457,16 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
   }
 
   visitUnary(ctx: UnaryContext): Expression {
-    const postfixCtx = ctx.postfix();
-    if (postfixCtx) {
-      return this.visit(postfixCtx);
-    }
+    // Delegate to the appropriate labeled alternative
+    return this.visitChildren(ctx);
+  }
 
+  visitUnaryOp(ctx: any): Expression {
     // It's a unary operator followed by another unary expression
     const operator = ctx.getChild(0).text;
-    // Get the nested unary expression by finding it in children
-    const nestedUnary = ctx.getRuleContext(0, UnaryContext);
-    const operand = this.visit(nestedUnary!);
+    // Get the nested unary expression
+    const nestedUnary = ctx.unary();
+    const operand = this.visit(nestedUnary);
 
     return {
       type: 'UnaryExpression',
@@ -411,6 +475,26 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
       line: ctx.start.line,
       column: ctx.start.charPositionInLine + 1,
     };
+  }
+
+  visitPrefixRange(ctx: any): Expression {
+    // Handle prefix range like ..3 or ...5
+    const operator = ctx.getChild(0).text;
+    const inclusive = operator === '...';
+    const end = this.visit(ctx.shift());
+
+    return {
+      type: 'RangeExpression',
+      start: undefined,  // No start means default to 0
+      end,
+      inclusive,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitPostfixExpr(ctx: any): Expression {
+    return this.visit(ctx.postfix());
   }
 
   visitPostfix(ctx: PostfixContext): Expression {

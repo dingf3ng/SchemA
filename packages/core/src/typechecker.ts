@@ -1,7 +1,9 @@
 import { Program, Statement, Expression, TypeAnnotation } from './types';
 
 export type Type =
-  | { kind: 'number' }
+  | { kind: 'any' }
+  | { kind: 'int' }
+  | { kind: 'float' }
   | { kind: 'string' }
   | { kind: 'boolean' }
   | { kind: 'void' }
@@ -10,6 +12,7 @@ export type Type =
   | { kind: 'set'; elementType: Type }
   | { kind: 'heap'; elementType: Type }
   | { kind: 'graph'; nodeType: Type }
+  | { kind: 'range' }
   | {
       kind: 'function';
       parameters: Type[];
@@ -30,38 +33,41 @@ export class TypeChecker {
   private initializeBuiltins(): void {
     // Built-in functions
     this.functionEnv.set('print', {
-      parameters: [{ kind: 'string' }],
+      parameters: [{ kind: 'any' }],
       returnType: { kind: 'void' },
     });
 
+    // Polymorphic built-in data structures
     this.functionEnv.set('MinHeap', {
       parameters: [],
-      returnType: { kind: 'heap', elementType: { kind: 'number' } },
+      returnType: { kind: 'heap', elementType: { kind: 'any' } },
     });
 
     this.functionEnv.set('MaxHeap', {
       parameters: [],
-      returnType: { kind: 'heap', elementType: { kind: 'number' } },
+      returnType: { kind: 'heap', elementType: { kind: 'any' } },
     });
 
     this.functionEnv.set('Graph', {
-      parameters: [],
-      returnType: { kind: 'graph', nodeType: { kind: 'number' } },
+      parameters: [{ kind: 'boolean' }],
+      returnType: { kind: 'graph', nodeType: { kind: 'any' } },
     });
 
     this.functionEnv.set('Map', {
       parameters: [],
       returnType: {
         kind: 'map',
-        keyType: { kind: 'number' },
-        valueType: { kind: 'number' },
+        keyType: { kind: 'any' },
+        valueType: { kind: 'any' },
       },
     });
 
     this.functionEnv.set('Set', {
       parameters: [],
-      returnType: { kind: 'set', elementType: { kind: 'number' } },
+      returnType: { kind: 'set', elementType: { kind: 'any' } },
     });
+
+    this.typeEnv.set('Inf', { kind: 'float' });
   }
 
   public check(program: Program): void {
@@ -76,12 +82,12 @@ export class TypeChecker {
         const paramTypes: Type[] = stmt.parameters.map((p) =>
           p.typeAnnotation
             ? this.resolveTypeAnnotation(p.typeAnnotation)
-            : { kind: 'number' }
+            : { kind: 'any' }
         );
 
         const returnType: Type = stmt.returnType
           ? this.resolveTypeAnnotation(stmt.returnType)
-          : { kind: 'void' };
+          : { kind: 'any' };
 
         this.functionEnv.set(stmt.name, {
           parameters: paramTypes,
@@ -101,19 +107,21 @@ export class TypeChecker {
       }
 
       case 'VariableDeclaration': {
-        let varType: Type;
+        for (const declarator of stmt.declarations) {
+          let varType: Type;
 
-        if (stmt.initializer) {
-          varType = this.inferType(stmt.initializer);
-        } else if (stmt.typeAnnotation) {
-          varType = this.resolveTypeAnnotation(stmt.typeAnnotation);
-        } else {
-          throw new Error(
-            `Variable ${stmt.name} must have either type annotation or initializer`
-          );
+          if (declarator.initializer) {
+            varType = this.inferType(declarator.initializer);
+          } else if (declarator.typeAnnotation) {
+            varType = this.resolveTypeAnnotation(declarator.typeAnnotation);
+          } else {
+            throw new Error(
+              `Variable ${declarator.name} must have either type annotation or initializer, at ${declarator.line}, ${declarator.column}`
+            );
+          }
+
+          this.typeEnv.set(declarator.name, varType);
         }
-
-        this.typeEnv.set(stmt.name, varType);
         break;
       }
 
@@ -135,19 +143,28 @@ export class TypeChecker {
         if (
           iterableType.kind !== 'array' &&
           iterableType.kind !== 'set' &&
-          iterableType.kind !== 'map'
+          iterableType.kind !== 'map' &&
+          iterableType.kind !== 'range' &&
+          iterableType.kind !== 'any'
         ) {
           throw new Error(
-            `Cannot iterate over non-iterable type ${iterableType.kind}`
+            `Cannot iterate over non-iterable type ${iterableType.kind}, at ${stmt.iterable.line}, ${stmt.iterable.column}`
           );
         }
 
         const savedEnv = new Map(this.typeEnv);
 
-        if (iterableType.kind === 'array' || iterableType.kind === 'set') {
-          this.typeEnv.set(stmt.variable, iterableType.elementType);
-        } else {
-          this.typeEnv.set(stmt.variable, iterableType.keyType);
+        // Skip binding if variable name is '_'
+        if (stmt.variable !== '_') {
+          if (iterableType.kind === 'array' || iterableType.kind === 'set') {
+            this.typeEnv.set(stmt.variable, iterableType.elementType);
+          } else if (iterableType.kind === 'map') {
+            this.typeEnv.set(stmt.variable, iterableType.keyType);
+          } else if (iterableType.kind === 'range') {
+            this.typeEnv.set(stmt.variable, { kind: 'int' });
+          } else if (iterableType.kind === 'any') {
+            this.typeEnv.set(stmt.variable, { kind: 'any' });
+          }
         }
 
         this.checkStatement(stmt.body);
@@ -176,7 +193,7 @@ export class TypeChecker {
     const actualType = this.inferType(expr);
     if (!this.typesEqual(actualType, expectedType)) {
       throw new Error(
-        `Type mismatch: expected ${this.typeToString(expectedType)}, got ${this.typeToString(actualType)}`
+        `Type mismatch: expected ${this.typeToString(expectedType)}, got ${this.typeToString(actualType)}, at ${expr.line}, ${expr.column}`
       );
     }
   }
@@ -184,7 +201,7 @@ export class TypeChecker {
   private inferType(expr: Expression): Type {
     switch (expr.type) {
       case 'NumberLiteral':
-        return { kind: 'number' };
+        return { kind: 'int' };
 
       case 'StringLiteral':
         return { kind: 'string' };
@@ -194,31 +211,121 @@ export class TypeChecker {
 
       case 'ArrayLiteral':
         if (expr.elements.length === 0) {
-          return { kind: 'array', elementType: { kind: 'number' } };
+          return { kind: 'array', elementType: { kind: 'any' } };
         }
         const elementType = this.inferType(expr.elements[0]);
         return { kind: 'array', elementType };
 
       case 'Identifier': {
+        // Underscore cannot be used as a value
+        if (expr.name === '_') {
+          throw new Error(`Underscore (_) cannot be used as a value, at ${expr.line}, ${expr.column}`);
+        }
         const type = this.typeEnv.get(expr.name);
         if (!type) {
-          throw new Error(`Undefined variable: ${expr.name}`);
+          throw new Error(`Undefined variable: ${expr.name}, at ${expr.line}, ${expr.column}`);
         }
         return type;
+      }
+
+      case 'RangeExpression': {
+        // Range expressions can be int..int or string..string
+        if (expr.start) {
+          const startType = this.inferType(expr.start);
+          if (expr.end) {
+            const endType = this.inferType(expr.end);
+            // Both must be the same type
+            if (startType.kind === 'int' && endType.kind === 'int') {
+              // Finite integer range returns an array of integers
+              return { kind: 'array', elementType: { kind: 'int' } };
+            } else if (startType.kind === 'string' && endType.kind === 'string') {
+              // String range returns an array of strings
+              return { kind: 'array', elementType: { kind: 'string' } };
+            } else if (startType.kind === 'any' || endType.kind === 'any') {
+              return { kind: 'array', elementType: { kind: 'any' } };
+            } else {
+              throw new Error(`Range start and end must be the same type (int or string), at ${expr.line}, ${expr.column}`);
+            }
+          } else {
+            // Infinite range (e.g., 0..)
+            if (startType.kind === 'int' || startType.kind === 'any') {
+              return { kind: 'range' };
+            } else {
+              throw new Error(`Infinite ranges are only supported for integers, at ${expr.line}, ${expr.column}`);
+            }
+          }
+        } else {
+          // Start defaults to 0
+          if (expr.end) {
+            const endType = this.inferType(expr.end);
+            if (endType.kind === 'int' || endType.kind === 'any') {
+              return { kind: 'array', elementType: { kind: 'int' } };
+            } else {
+              throw new Error(`Range with default start (0) requires integer end, at ${expr.line}, ${expr.column}`);
+            }
+          } else {
+            // Both start and end are missing - should not happen
+            throw new Error(`Range must have at least a start or end, at ${expr.line}, ${expr.column}`);
+          }
+        }
       }
 
       case 'BinaryExpression': {
         const leftType = this.inferType(expr.left);
         const rightType = this.inferType(expr.right);
 
-        if (
-          ['+', '-', '*', '/', '%'].includes(expr.operator) &&
-          leftType.kind === 'number' &&
-          rightType.kind === 'number'
-        ) {
-          return { kind: 'number' };
+        if (leftType.kind === 'any' || rightType.kind === 'any') {
+           if (['<', '<=', '>', '>=', '==', '!=', '&&', '||'].includes(expr.operator)) {
+             return { kind: 'boolean' };
+           }
+           return { kind: 'any' };
         }
 
+        // Arithmetic operators: +, -, *, % (work on int and float)
+        if (['+', '-', '*', '%'].includes(expr.operator)) {
+          // int op int = int
+          if (leftType.kind === 'int' && rightType.kind === 'int') {
+            return { kind: 'int' };
+          }
+          // float op float = float
+          if (leftType.kind === 'float' && rightType.kind === 'float') {
+            return { kind: 'float' };
+          }
+          // int op float = float or float op int = float
+          if ((leftType.kind === 'int' || leftType.kind === 'float') &&
+              (rightType.kind === 'int' || rightType.kind === 'float')) {
+            return { kind: 'float' };
+          }
+        }
+
+        // Integer division operator: / (requires both operands to be int, returns int)
+        if (
+          expr.operator === '/' &&
+          leftType.kind === 'int' &&
+          rightType.kind === 'int'
+        ) {
+          return { kind: 'int' };
+        }
+
+        // Float division operator: /. (works on int or float, returns float)
+        if (
+          expr.operator === '/.' &&
+          (leftType.kind === 'int' || leftType.kind === 'float') &&
+          (rightType.kind === 'int' || rightType.kind === 'float')
+        ) {
+          return { kind: 'float' };
+        }
+
+        // Bitwise shift operators: << and >> (require both operands to be int)
+        if (
+          ['<<', '>>'].includes(expr.operator) &&
+          leftType.kind === 'int' &&
+          rightType.kind === 'int'
+        ) {
+          return { kind: 'int' };
+        }
+
+        // String concatenation
         if (
           expr.operator === '+' &&
           leftType.kind === 'string' &&
@@ -227,13 +334,24 @@ export class TypeChecker {
           return { kind: 'string' };
         }
 
+        // Comparison operators (work on int or float)
         if (
-          ['==', '!=', '<', '<=', '>', '>='].includes(expr.operator) &&
+          ['<', '<=', '>', '>='].includes(expr.operator) &&
+          (leftType.kind === 'int' || leftType.kind === 'float') &&
+          (rightType.kind === 'int' || rightType.kind === 'float')
+        ) {
+          return { kind: 'boolean' };
+        }
+
+        // Equality operators
+        if (
+          ['==', '!='].includes(expr.operator) &&
           this.typesEqual(leftType, rightType)
         ) {
           return { kind: 'boolean' };
         }
 
+        // Logical operators
         if (
           ['&&', '||'].includes(expr.operator) &&
           leftType.kind === 'boolean' &&
@@ -243,15 +361,24 @@ export class TypeChecker {
         }
 
         throw new Error(
-          `Invalid binary operation: ${this.typeToString(leftType)} ${expr.operator} ${this.typeToString(rightType)}`
+          `Invalid binary operation: ${this.typeToString(leftType)} ${expr.operator} ${this.typeToString(rightType)}, at ${expr.line}, ${expr.column}`
         );
       }
 
       case 'UnaryExpression': {
         const operandType = this.inferType(expr.operand);
 
-        if (expr.operator === '-' && operandType.kind === 'number') {
-          return { kind: 'number' };
+        if (operandType.kind === 'any') {
+            if (expr.operator === '!') return { kind: 'boolean' };
+            return { kind: 'any' };
+        }
+
+        if (expr.operator === '-') {
+          if (operandType.kind === 'int') {
+            return { kind: 'int' };
+          } else if (operandType.kind === 'float') {
+            return { kind: 'float' };
+          }
         }
 
         if (expr.operator === '!' && operandType.kind === 'boolean') {
@@ -265,33 +392,62 @@ export class TypeChecker {
 
       case 'CallExpression': {
         const callee = expr.callee;
+        let funcType: Type;
+
         if (callee.type === 'Identifier') {
-          const funcType = this.functionEnv.get(callee.name);
-          if (!funcType) {
-            throw new Error(`Undefined function: ${callee.name}`);
+          const envType = this.functionEnv.get(callee.name);
+          if (envType) {
+             funcType = {
+                 kind: 'function',
+                 parameters: envType.parameters,
+                 returnType: envType.returnType
+             };
+          } else {
+             try {
+                 funcType = this.inferType(callee);
+             } catch (e) {
+                 throw new Error(`Undefined function: ${callee.name}, at ${callee.line}, ${callee.column}`);
+             }
           }
-
-          if (expr.arguments.length !== funcType.parameters.length) {
-            throw new Error(
-              `Function ${callee.name} expects ${funcType.parameters.length} arguments, got ${expr.arguments.length}`
-            );
-          }
-
-          for (let i = 0; i < expr.arguments.length; i++) {
-            this.checkExpression(expr.arguments[i], funcType.parameters[i]);
-          }
-
-          return funcType.returnType;
+        } else {
+          funcType = this.inferType(callee);
         }
-        throw new Error('Only identifier call expressions are supported');
+
+        if (funcType.kind === 'any') {
+            return { kind: 'any' };
+        }
+
+        if (funcType.kind !== 'function') {
+             throw new Error(`Cannot call non-function type: ${this.typeToString(funcType)}, at ${expr.line}, ${expr.column}`);
+        }
+
+        if (expr.arguments.length !== funcType.parameters.length) {
+            throw new Error(
+              `Function expects ${funcType.parameters.length} arguments, got ${expr.arguments.length}, at ${expr.line}, ${expr.column}`
+            );
+        }
+
+        for (let i = 0; i < expr.arguments.length; i++) {
+            this.checkExpression(expr.arguments[i], funcType.parameters[i]);
+        }
+
+        return funcType.returnType;
       }
 
       case 'MemberExpression': {
         const objectType = this.inferType(expr.object);
 
+        if (objectType.kind === 'any') {
+            return { kind: 'any' };
+        }
+
         if (objectType.kind === 'array') {
           if (expr.property.name === 'length') {
-            return { kind: 'number' };
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: { kind: 'int' },
+            };
           }
           if (expr.property.name === 'push') {
             return {
@@ -304,7 +460,11 @@ export class TypeChecker {
 
         if (objectType.kind === 'map') {
           if (expr.property.name === 'size') {
-            return { kind: 'number' };
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: { kind: 'int' },
+            };
           }
           if (expr.property.name === 'get') {
             return {
@@ -322,8 +482,94 @@ export class TypeChecker {
           }
         }
 
+        if (objectType.kind === 'set') {
+          if (expr.property.name === 'size') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: { kind: 'int' },
+            };
+          }
+          if (expr.property.name === 'add') {
+            return {
+              kind: 'function',
+              parameters: [objectType.elementType],
+              returnType: { kind: 'void' },
+            };
+          }
+          if (expr.property.name === 'has') {
+            return {
+              kind: 'function',
+              parameters: [objectType.elementType],
+              returnType: { kind: 'boolean' },
+            };
+          }
+          if (expr.property.name === 'delete') {
+            return {
+              kind: 'function',
+              parameters: [objectType.elementType],
+              returnType: { kind: 'void' },
+            };
+          }
+        }
+
+        if (objectType.kind === 'heap') {
+          if (expr.property.name === 'push') {
+            return {
+              kind: 'function',
+              parameters: [objectType.elementType],
+              returnType: { kind: 'void' },
+            };
+          }
+          if (expr.property.name === 'pop') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: objectType.elementType,
+            };
+          }
+          if (expr.property.name === 'peek') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: objectType.elementType,
+            };
+          }
+          if (expr.property.name === 'size') {
+             return {
+                 kind: 'function',
+                 parameters: [],
+                 returnType: { kind: 'int' }
+             };
+          }
+        }
+
+        if (objectType.kind === 'graph') {
+          if (expr.property.name === 'addVertex') {
+            return {
+              kind: 'function',
+              parameters: [objectType.nodeType],
+              returnType: { kind: 'void' },
+            };
+          }
+          if (expr.property.name === 'addEdge') {
+            return {
+              kind: 'function',
+              parameters: [objectType.nodeType, objectType.nodeType, { kind: 'int' }],
+              returnType: { kind: 'void' },
+            };
+          }
+          if (expr.property.name === 'getNeighbors') {
+            return {
+              kind: 'function',
+              parameters: [objectType.nodeType],
+              returnType: { kind: 'array', elementType: { kind: 'any' } },
+            };
+          }
+        }
+
         throw new Error(
-          `Property ${expr.property.name} does not exist on type ${this.typeToString(objectType)}`
+          `Property ${expr.property.name} does not exist on type ${this.typeToString(objectType)}, at ${expr.line}, ${expr.column}`
         );
       }
 
@@ -331,7 +577,11 @@ export class TypeChecker {
         const objectType = this.inferType(expr.object);
         const indexType = this.inferType(expr.index);
 
-        if (objectType.kind === 'array' && indexType.kind === 'number') {
+        if (objectType.kind === 'any') {
+            return { kind: 'any' };
+        }
+
+        if (objectType.kind === 'array' && indexType.kind === 'int') {
           return objectType.elementType;
         }
 
@@ -341,20 +591,24 @@ export class TypeChecker {
         }
 
         throw new Error(
-          `Cannot index type ${this.typeToString(objectType)} with ${this.typeToString(indexType)}`
+          `Cannot index type ${this.typeToString(objectType)} with ${this.typeToString(indexType)}, at ${expr.line}, ${expr.column}`,
         );
       }
 
       default:
-        throw new Error(`Unknown expression type: ${(expr as any).type}`);
+        throw new Error(`Unknown expression type: ${(expr as any).type}, at ${expr.line}, ${expr.column}`);
     }
   }
 
   private resolveTypeAnnotation(annotation: TypeAnnotation): Type {
     switch (annotation.name) {
+      case 'any':
+        return { kind: 'any' };
       case 'int':
       case 'number':
-        return { kind: 'number' };
+        return { kind: 'int' };
+      case 'float':
+        return { kind: 'float' };
       case 'string':
         return { kind: 'string' };
       case 'bool':
@@ -368,7 +622,7 @@ export class TypeChecker {
           !annotation.typeParameters ||
           annotation.typeParameters.length !== 1
         ) {
-          throw new Error('Array type requires exactly one type parameter');
+          throw new Error(`Array type requires exactly one type parameter, at ${annotation.line}, ${annotation.column}`);
         }
         return {
           kind: 'array',
@@ -380,7 +634,7 @@ export class TypeChecker {
           !annotation.typeParameters ||
           annotation.typeParameters.length !== 2
         ) {
-          throw new Error('Map type requires exactly two type parameters');
+          throw new Error(`Map type requires exactly two type parameters, at ${annotation.line}, ${annotation.column}`);
         }
         return {
           kind: 'map',
@@ -393,7 +647,7 @@ export class TypeChecker {
           !annotation.typeParameters ||
           annotation.typeParameters.length !== 1
         ) {
-          throw new Error('Set type requires exactly one type parameter');
+          throw new Error(`Set type requires exactly one type parameter, at ${annotation.line}, ${annotation.column}`);
         }
         return {
           kind: 'set',
@@ -406,7 +660,7 @@ export class TypeChecker {
           !annotation.typeParameters ||
           annotation.typeParameters.length !== 1
         ) {
-          return { kind: 'heap', elementType: { kind: 'number' } };
+          return { kind: 'heap', elementType: { kind: 'int' } };
         }
         return {
           kind: 'heap',
@@ -418,7 +672,7 @@ export class TypeChecker {
           !annotation.typeParameters ||
           annotation.typeParameters.length !== 1
         ) {
-          return { kind: 'graph', nodeType: { kind: 'number' } };
+          return { kind: 'graph', nodeType: { kind: 'int' } };
         }
         return {
           kind: 'graph',
@@ -431,6 +685,7 @@ export class TypeChecker {
   }
 
   private typesEqual(t1: Type, t2: Type): boolean {
+    if (t1.kind === 'any' || t2.kind === 'any') return true;
     if (t1.kind !== t2.kind) return false;
 
     if (t1.kind === 'array' && t2.kind === 'array') {
@@ -461,14 +716,20 @@ export class TypeChecker {
 
   private typeToString(type: Type): string {
     switch (type.kind) {
-      case 'number':
-        return 'number';
+      case 'any':
+        return 'any';
+      case 'int':
+        return 'int';
+      case 'float':
+        return 'float';
       case 'string':
         return 'string';
       case 'boolean':
         return 'boolean';
       case 'void':
         return 'void';
+      case 'range':
+        return 'Range';
       case 'array':
         return `Array<${this.typeToString(type.elementType)}>`;
       case 'map':

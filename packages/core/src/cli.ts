@@ -2,7 +2,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { runWithoutTypeCheck } from './index';
+import { run } from './index';
 
 function main() {
   const args = process.argv.slice(2);
@@ -24,7 +24,7 @@ function main() {
   const code = fs.readFileSync(filepath, 'utf-8');
 
   try {
-    const output = runWithoutTypeCheck(code);
+    const output = run(code);
     console.log('\n--- Program Output ---');
     output.forEach((line) => console.log(line));
   } catch (error) {

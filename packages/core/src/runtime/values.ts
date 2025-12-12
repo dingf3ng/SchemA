@@ -6,10 +6,12 @@ import {
   MinHeap,
   MaxHeap,
   Graph,
+  LazyRange,
 } from './data-structures';
 
 export type RuntimeValue =
-  | { type: 'number'; value: number }
+  | { type: 'int'; value: number }
+  | { type: 'float'; value: number }
   | { type: 'string'; value: string }
   | { type: 'boolean'; value: boolean }
   | { type: 'null'; value: null }
@@ -19,6 +21,7 @@ export type RuntimeValue =
   | { type: 'minheap'; value: MinHeap<any> }
   | { type: 'maxheap'; value: MaxHeap<any> }
   | { type: 'graph'; value: Graph<any> }
+  | { type: 'range'; value: LazyRange }
   | {
       type: 'function';
       parameters: Parameter[];
@@ -32,7 +35,9 @@ export type RuntimeValue =
 
 export function runtimeValueToString(value: RuntimeValue): string {
   switch (value.type) {
-    case 'number':
+    case 'int':
+      return value.value.toString();
+    case 'float':
       return value.value.toString();
     case 'string':
       return value.value;
@@ -52,6 +57,8 @@ export function runtimeValueToString(value: RuntimeValue): string {
       return value.value.toString();
     case 'graph':
       return value.value.toString();
+    case 'range':
+      return value.value.toString();
     case 'function':
       return '<function>';
     case 'native-function':
@@ -62,7 +69,7 @@ export function runtimeValueToString(value: RuntimeValue): string {
 export function isTruthy(value: RuntimeValue): boolean {
   if (value.type === 'boolean') return value.value;
   if (value.type === 'null') return false;
-  if (value.type === 'number') return value.value !== 0;
+  if (value.type === 'int' || value.type === 'float') return value.value !== 0;
   if (value.type === 'string') return value.value.length > 0;
   return true;
 }
