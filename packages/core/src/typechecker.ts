@@ -12,6 +12,8 @@ export type Type =
   | { kind: 'set'; elementType: Type }
   | { kind: 'heap'; elementType: Type }
   | { kind: 'heapMap'; keyType: Type; valueType: Type }
+  | { kind: 'binarytree'; elementType: Type }
+  | { kind: 'avltree'; elementType: Type }
   | { kind: 'graph'; nodeType: Type }
   | { kind: 'range' }
   | {
@@ -78,6 +80,16 @@ export class TypeChecker {
     this.functionEnv.set('Set', {
       parameters: [],
       returnType: { kind: 'set', elementType: { kind: 'any' } },
+    });
+
+    this.functionEnv.set('BinaryTree', {
+      parameters: [],
+      returnType: { kind: 'binarytree', elementType: { kind: 'any' } },
+    });
+
+    this.functionEnv.set('AVLTree', {
+      parameters: [],
+      returnType: { kind: 'avltree', elementType: { kind: 'any' } },
     });
 
     this.typeEnv.set('Inf', { kind: 'float' });
@@ -603,6 +615,30 @@ export class TypeChecker {
           }
         }
 
+        if (objectType.kind === 'binarytree' || objectType.kind === 'avltree') {
+          if (expr.property.name === 'insert') {
+            return {
+              kind: 'function',
+              parameters: [objectType.elementType],
+              returnType: { kind: 'void' },
+            };
+          }
+          if (expr.property.name === 'search') {
+            return {
+              kind: 'function',
+              parameters: [objectType.elementType],
+              returnType: { kind: 'boolean' },
+            };
+          }
+          if (expr.property.name === 'getHeight') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: { kind: 'int' },
+            };
+          }
+        }
+
         if (objectType.kind === 'graph') {
           if (expr.property.name === 'addVertex') {
             return {
@@ -752,6 +788,30 @@ export class TypeChecker {
           nodeType: this.resolveTypeAnnotation(annotation.typeParameters[0]),
         };
 
+      case 'BinaryTree':
+        if (
+          !annotation.typeParameters ||
+          annotation.typeParameters.length !== 1
+        ) {
+          return { kind: 'binarytree', elementType: { kind: 'any' } };
+        }
+        return {
+          kind: 'binarytree',
+          elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]),
+        };
+
+      case 'AVLTree':
+        if (
+          !annotation.typeParameters ||
+          annotation.typeParameters.length !== 1
+        ) {
+          return { kind: 'avltree', elementType: { kind: 'any' } };
+        }
+        return {
+          kind: 'avltree',
+          elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]),
+        };
+
       default:
         throw new Error(`Unknown type: ${annotation.name}`);
     }
@@ -791,6 +851,14 @@ export class TypeChecker {
       return this.typesEqual(t1.nodeType, t2.nodeType);
     }
 
+    if (t1.kind === 'binarytree' && t2.kind === 'binarytree') {
+      return this.typesEqual(t1.elementType, t2.elementType);
+    }
+
+    if (t1.kind === 'avltree' && t2.kind === 'avltree') {
+      return this.typesEqual(t1.elementType, t2.elementType);
+    }
+
     return true;
   }
 
@@ -816,6 +884,10 @@ export class TypeChecker {
         return `Map<${this.typeToString(type.keyType)}, ${this.typeToString(type.valueType)}>`;
       case 'set':
         return `Set<${this.typeToString(type.elementType)}>`;
+      case 'binarytree':
+        return `BinaryTree<${this.typeToString(type.elementType)}>`;
+      case 'avltree':
+        return `AVLTree<${this.typeToString(type.elementType)}>`;
       case 'heap':
         return `Heap<${this.typeToString(type.elementType)}>`;
       case 'heapMap':

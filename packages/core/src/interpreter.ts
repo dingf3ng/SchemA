@@ -23,6 +23,8 @@ import {
   MaxHeapMap,
   Graph,
   LazyRange,
+  SchemaBinaryTree,
+  SchemaAVLTree,
 } from './runtime/data-structures';
 
 class ReturnException {
@@ -158,6 +160,20 @@ export class Interpreter {
       type: 'native-function',
       fn: () => {
         return { type: 'set', value: new SchemaSet<any>() };
+      },
+    });
+
+    this.globalEnv.define('BinaryTree', {
+      type: 'native-function',
+      fn: () => {
+        return { type: 'binarytree', value: new SchemaBinaryTree<any>() };
+      },
+    });
+
+    this.globalEnv.define('AVLTree', {
+      type: 'native-function',
+      fn: () => {
+        return { type: 'avltree', value: new SchemaAVLTree<any>() };
       },
     });
 
@@ -685,6 +701,36 @@ export class Interpreter {
                    return { type: 'boolean', value: val };
                 }
                 return val as RuntimeValue;
+              },
+            };
+          }
+        }
+
+        if (object.type === 'binarytree' || object.type === 'avltree') {
+          if (propertyName === 'insert') {
+            return {
+              type: 'native-function',
+              fn: (value: RuntimeValue) => {
+                const v = this.runtimeValueToKey(value);
+                object.value.insert(v);
+                return { type: 'null', value: null };
+              },
+            };
+          }
+          if (propertyName === 'search') {
+            return {
+              type: 'native-function',
+              fn: (value: RuntimeValue) => {
+                const v = this.runtimeValueToKey(value);
+                return { type: 'boolean', value: object.value.search(v) };
+              },
+            };
+          }
+          if (propertyName === 'getHeight') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                return { type: 'int', value: object.value.getHeight() };
               },
             };
           }

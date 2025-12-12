@@ -468,3 +468,209 @@ export class Graph<T> {
     return result;
   }
 }
+
+export class TreeNode<T> {
+  value: T;
+  left: TreeNode<T> | null = null;
+  right: TreeNode<T> | null = null;
+  height: number = 1;
+
+  constructor(value: T) {
+    this.value = value;
+  }
+}
+
+export class SchemaBinaryTree<T> {
+  root: TreeNode<T> | null = null;
+  protected compareFn: (a: T, b: T) => number;
+
+  constructor(compareFn?: (a: T, b: T) => number) {
+    this.compareFn =
+      compareFn ||
+      ((a: any, b: any) => {
+        if (a < b) return -1;
+        if (a > b) return 1;
+        return 0;
+      });
+  }
+
+  insert(value: T): void {
+    this.root = this.insertNode(this.root, value);
+  }
+
+  protected insertNode(node: TreeNode<T> | null, value: T): TreeNode<T> {
+    if (!node) {
+      return new TreeNode(value);
+    }
+
+    if (this.compareFn(value, node.value) < 0) {
+      node.left = this.insertNode(node.left, value);
+    } else {
+      node.right = this.insertNode(node.right, value);
+    }
+    return node;
+  }
+
+  search(value: T): boolean {
+    return this.searchNode(this.root, value);
+  }
+
+  private searchNode(node: TreeNode<T> | null, value: T): boolean {
+    if (!node) return false;
+    const cmp = this.compareFn(value, node.value);
+    if (cmp === 0) return true;
+    if (cmp < 0) return this.searchNode(node.left, value);
+    return this.searchNode(node.right, value);
+  }
+
+  getHeight(): number {
+    return this.calculateHeight(this.root);
+  }
+
+  private calculateHeight(node: TreeNode<T> | null): number {
+    if (!node) return 0;
+    return 1 + Math.max(this.calculateHeight(node.left), this.calculateHeight(node.right));
+  }
+
+  preOrderTraversal(): T[] {
+    const result: T[] = [];
+    this.preOrder(this.root, result);
+    return result;
+  }
+
+  //TODO: Optimizations: Tail recursion for preOrder, inOrder, postOrder
+  private preOrder(node: TreeNode<T> | null, result: T[]): void {
+    if (node) {
+      result.push(node.value);
+      this.preOrder(node.left, result);
+      this.preOrder(node.right, result);
+    }
+  }
+
+  inOrderTraversal(): T[] {
+    const result: T[] = [];
+    this.inOrder(this.root, result);
+    return result;
+  }
+
+  private inOrder(node: TreeNode<T> | null, result: T[]): void {
+    if (node) {
+      this.inOrder(node.left, result);
+      result.push(node.value);
+      this.inOrder(node.right, result);
+    }
+  }
+
+  postOrderTraversal(): T[] {
+    const result: T[] = [];
+    this.postOrder(this.root, result);
+    return result;
+  }
+
+  private postOrder(node: TreeNode<T> | null, result: T[]): void {
+    if (node) {
+      this.postOrder(node.left, result);
+      this.postOrder(node.right, result);
+      result.push(node.value);
+    }
+  }
+
+
+  toString(): string {
+    return `BinaryTree[${this.inOrderTraversal().join(', ')}]`;
+  }
+}
+
+export class SchemaAVLTree<T> extends SchemaBinaryTree<T> {
+
+  insert(value: T): void {
+    this.root = this.insertNode(this.root, value);
+  }
+
+  protected insertNode(node: TreeNode<T> | null, value: T): TreeNode<T> {
+    if (!node) {
+      return new TreeNode(value);
+    }
+
+    const cmp = this.compareFn(value, node.value);
+
+    if (cmp < 0) {
+      node.left = this.insertNode(node.left, value);
+    } else if (cmp > 0) {
+      node.right = this.insertNode(node.right, value);
+    } else {
+      return node;
+    }
+
+    node.height = 1 + Math.max(this.height(node.left), this.height(node.right));
+
+    const balance = this.getBalance(node);
+
+    // Left Left Case
+    if (balance > 1 && this.compareFn(value, node.left!.value) < 0) {
+      return this.rightRotate(node);
+    }
+
+    // Right Right Case
+    if (balance < -1 && this.compareFn(value, node.right!.value) > 0) {
+      return this.leftRotate(node);
+    }
+
+    // Left Right Case
+    if (balance > 1 && this.compareFn(value, node.left!.value) > 0) {
+      node.left = this.leftRotate(node.left!);
+      return this.rightRotate(node);
+    }
+
+    // Right Left Case
+    if (balance < -1 && this.compareFn(value, node.right!.value) < 0) {
+      node.right = this.rightRotate(node.right!);
+      return this.leftRotate(node);
+    }
+
+    return node;
+  }
+
+  private height(node: TreeNode<T> | null): number {
+    return node ? node.height : 0;
+  }
+
+  private getBalance(node: TreeNode<T> | null): number {
+    if (!node) return 0;
+    return this.height(node.left) - this.height(node.right);
+  }
+
+  private rightRotate(y: TreeNode<T>): TreeNode<T> {
+    const x = y.left!;
+    const T2 = x.right;
+
+    x.right = y;
+    y.left = T2;
+
+    y.height = Math.max(this.height(y.left), this.height(y.right)) + 1;
+    x.height = Math.max(this.height(x.left), this.height(x.right)) + 1;
+
+    return x;
+  }
+
+  private leftRotate(x: TreeNode<T>): TreeNode<T> {
+    const y = x.right!;
+    const T2 = y.left;
+
+    y.left = x;
+    x.right = T2;
+
+    x.height = Math.max(this.height(x.left), this.height(x.right)) + 1;
+    y.height = Math.max(this.height(y.left), this.height(y.right)) + 1;
+
+    return y;
+  }
+
+  getHeight(): number {
+    return this.height(this.root);
+  }
+
+  toString(): string {
+    return `AVLTree[${this.inOrderTraversal().join(', ')}]`;
+  }
+}

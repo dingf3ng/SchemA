@@ -1,0 +1,31 @@
+print("Binary Tree Test")
+let bt = BinaryTree()
+bt.insert(5)
+bt.insert(3)
+bt.insert(7)
+bt.insert(1)
+bt.insert(9)
+
+print("Height of BT:")
+print(bt.getHeight()) 
+
+print("Search 7 in BT:")
+print(bt.search(7))
+print("Search 10 in BT:")
+print(bt.search(10))
+
+print("\nAVL Tree Test")
+let avl = AVLTree()
+avl.insert(1)
+avl.insert(2)
+avl.insert(3)
+avl.insert(4)
+avl.insert(5)
+avl.insert(6)
+avl.insert(7)
+
+print("Height of AVL:")
+print(avl.getHeight()) 
+
+print("Search 5 in AVL:")
+print(avl.search(5))
