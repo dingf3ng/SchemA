@@ -7,6 +7,7 @@ import {
   MaxHeap,
   Graph,
   LazyRange,
+  HeapMap,
 } from './data-structures';
 
 export type RuntimeValue =
@@ -20,6 +21,7 @@ export type RuntimeValue =
   | { type: 'set'; value: SchemaSet<any> }
   | { type: 'minheap'; value: MinHeap<any> }
   | { type: 'maxheap'; value: MaxHeap<any> }
+  | { type: 'heapMap'; value: HeapMap<any, any> }
   | { type: 'graph'; value: Graph<any> }
   | { type: 'range'; value: LazyRange }
   | {
@@ -54,6 +56,8 @@ export function runtimeValueToString(value: RuntimeValue): string {
     case 'minheap':
       return value.value.toString();
     case 'maxheap':
+      return value.value.toString();
+    case 'heapMap':
       return value.value.toString();
     case 'graph':
       return value.value.toString();

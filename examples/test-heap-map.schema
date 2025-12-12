@@ -1,0 +1,21 @@
+// Test MinHeapMap
+let minHeap = MinHeapMap()
+minHeap.push("a", 10)
+minHeap.push("b", 5)
+minHeap.push("c", 20)
+
+print("MinHeapMap peek:", minHeap.peek()) // Should be "b" (value 5)
+print("MinHeapMap pop:", minHeap.pop())  // Should be "b"
+print("MinHeapMap peek after pop:", minHeap.peek()) // Should be "a" (value 10)
+print("MinHeapMap size:", minHeap.size())   // Should be 2
+
+// Test MaxHeapMap
+let maxHeap = MaxHeapMap()
+maxHeap.push("x", 10)
+maxHeap.push("y", 5)
+maxHeap.push("z", 20)
+
+print("MaxHeapMap peek:", maxHeap.peek()) // Should be "z" (value 20)
+print("MaxHeapMap pop:", maxHeap.pop())  // Should be "z"
+print("MaxHeapMap peek after pop:", maxHeap.peek()) // Should be "x" (value 10)
+print("MaxHeapMap size:", maxHeap.size())   // Should be 2

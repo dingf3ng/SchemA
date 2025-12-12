@@ -1,3 +1,5 @@
+export * from './heap-map';
+
 export class SchemaArray<T> {
   private data: T[] = [];
 

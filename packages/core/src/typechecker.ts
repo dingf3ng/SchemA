@@ -11,19 +11,21 @@ export type Type =
   | { kind: 'map'; keyType: Type; valueType: Type }
   | { kind: 'set'; elementType: Type }
   | { kind: 'heap'; elementType: Type }
+  | { kind: 'heapMap'; keyType: Type; valueType: Type }
   | { kind: 'graph'; nodeType: Type }
   | { kind: 'range' }
   | {
-      kind: 'function';
-      parameters: Type[];
-      returnType: Type;
-    };
+    kind: 'function';
+    parameters: Type[];
+    returnType: Type;
+    variadic?: boolean;
+  };
 
 export class TypeChecker {
   private typeEnv: Map<string, Type> = new Map();
   private functionEnv: Map<
     string,
-    { parameters: Type[]; returnType: Type }
+    { parameters: Type[]; returnType: Type; variadic?: boolean }
   > = new Map();
 
   constructor() {
@@ -35,6 +37,7 @@ export class TypeChecker {
     this.functionEnv.set('print', {
       parameters: [{ kind: 'any' }],
       returnType: { kind: 'void' },
+      variadic: true,
     });
 
     // Polymorphic built-in data structures
@@ -46,6 +49,16 @@ export class TypeChecker {
     this.functionEnv.set('MaxHeap', {
       parameters: [],
       returnType: { kind: 'heap', elementType: { kind: 'any' } },
+    });
+
+    this.functionEnv.set('MinHeapMap', {
+      parameters: [],
+      returnType: { kind: 'heapMap', keyType: { kind: 'any' }, valueType: { kind: 'any' } },
+    });
+
+    this.functionEnv.set('MaxHeapMap', {
+      parameters: [],
+      returnType: { kind: 'heapMap', keyType: { kind: 'any' }, valueType: { kind: 'any' } },
     });
 
     this.functionEnv.set('Graph', {
@@ -275,10 +288,10 @@ export class TypeChecker {
         const rightType = this.inferType(expr.right);
 
         if (leftType.kind === 'any' || rightType.kind === 'any') {
-           if (['<', '<=', '>', '>=', '==', '!=', '&&', '||'].includes(expr.operator)) {
-             return { kind: 'boolean' };
-           }
-           return { kind: 'any' };
+          if (['<', '<=', '>', '>=', '==', '!=', '&&', '||'].includes(expr.operator)) {
+            return { kind: 'boolean' };
+          }
+          return { kind: 'any' };
         }
 
         // Arithmetic operators: +, -, *, % (work on int and float)
@@ -293,7 +306,7 @@ export class TypeChecker {
           }
           // int op float = float or float op int = float
           if ((leftType.kind === 'int' || leftType.kind === 'float') &&
-              (rightType.kind === 'int' || rightType.kind === 'float')) {
+            (rightType.kind === 'int' || rightType.kind === 'float')) {
             return { kind: 'float' };
           }
         }
@@ -369,8 +382,8 @@ export class TypeChecker {
         const operandType = this.inferType(expr.operand);
 
         if (operandType.kind === 'any') {
-            if (expr.operator === '!') return { kind: 'boolean' };
-            return { kind: 'any' };
+          if (expr.operator === '!') return { kind: 'boolean' };
+          return { kind: 'any' };
         }
 
         if (expr.operator === '-') {
@@ -397,38 +410,53 @@ export class TypeChecker {
         if (callee.type === 'Identifier') {
           const envType = this.functionEnv.get(callee.name);
           if (envType) {
-             funcType = {
-                 kind: 'function',
-                 parameters: envType.parameters,
-                 returnType: envType.returnType
-             };
+            funcType = {
+              kind: 'function',
+              parameters: envType.parameters,
+              returnType: envType.returnType,
+              variadic: envType.variadic
+            };
           } else {
-             try {
-                 funcType = this.inferType(callee);
-             } catch (e) {
-                 throw new Error(`Undefined function: ${callee.name}, at ${callee.line}, ${callee.column}`);
-             }
+            try {
+              // infer for error reporting
+              funcType = this.inferType(callee);
+            } catch (e) {
+              throw new Error(`Undefined function: ${callee.name}, at ${callee.line}, ${callee.column}`);
+            }
           }
         } else {
+          // infer for error reporting
           funcType = this.inferType(callee);
         }
 
         if (funcType.kind === 'any') {
-            return { kind: 'any' };
+          return { kind: 'any' };
         }
 
         if (funcType.kind !== 'function') {
-             throw new Error(`Cannot call non-function type: ${this.typeToString(funcType)}, at ${expr.line}, ${expr.column}`);
+          throw new Error(`Cannot call non-function type: ${this.typeToString(funcType)}, at ${expr.line}, ${expr.column}`);
         }
 
-        if (expr.arguments.length !== funcType.parameters.length) {
+        if (funcType.variadic) {
+          for (let i = 0; i < expr.arguments.length; i++) {
+            if (i < funcType.parameters.length) {
+              this.checkExpression(expr.arguments[i], funcType.parameters[i]);
+            } else if (funcType.parameters.length > 0) {
+              this.checkExpression(expr.arguments[i], funcType.parameters[funcType.parameters.length - 1]);
+            } else {
+              throw new Error(`Variadic function must have at least one parameter type, at ${expr.line}, ${expr.column}`);
+            }
+          }
+        } else {
+          if (expr.arguments.length !== funcType.parameters.length) {
             throw new Error(
               `Function expects ${funcType.parameters.length} arguments, got ${expr.arguments.length}, at ${expr.line}, ${expr.column}`
             );
-        }
+          }
 
-        for (let i = 0; i < expr.arguments.length; i++) {
+          for (let i = 0; i < expr.arguments.length; i++) {
             this.checkExpression(expr.arguments[i], funcType.parameters[i]);
+          }
         }
 
         return funcType.returnType;
@@ -438,7 +466,7 @@ export class TypeChecker {
         const objectType = this.inferType(expr.object);
 
         if (objectType.kind === 'any') {
-            return { kind: 'any' };
+          return { kind: 'any' };
         }
 
         if (objectType.kind === 'array') {
@@ -536,11 +564,42 @@ export class TypeChecker {
             };
           }
           if (expr.property.name === 'size') {
-             return {
-                 kind: 'function',
-                 parameters: [],
-                 returnType: { kind: 'int' }
-             };
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: { kind: 'int' }
+            };
+          }
+        }
+
+        if (objectType.kind === 'heapMap') {
+          if (expr.property.name === 'push') {
+            return {
+              kind: 'function',
+              parameters: [objectType.keyType, objectType.valueType],
+              returnType: { kind: 'void' },
+            };
+          }
+          if (expr.property.name === 'pop') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: objectType.keyType,
+            };
+          }
+          if (expr.property.name === 'peek') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: objectType.keyType,
+            };
+          }
+          if (expr.property.name === 'size') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: { kind: 'int' }
+            };
           }
         }
 
@@ -578,7 +637,7 @@ export class TypeChecker {
         const indexType = this.inferType(expr.index);
 
         if (objectType.kind === 'any') {
-            return { kind: 'any' };
+          return { kind: 'any' };
         }
 
         if (objectType.kind === 'array' && indexType.kind === 'int') {
@@ -667,6 +726,20 @@ export class TypeChecker {
           elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]),
         };
 
+      case 'MinHeapMap':
+      case 'MaxHeapMap':
+        if (
+          !annotation.typeParameters ||
+          annotation.typeParameters.length !== 2
+        ) {
+          return { kind: 'heapMap', keyType: { kind: 'any' }, valueType: { kind: 'any' } };
+        }
+        return {
+          kind: 'heapMap',
+          keyType: this.resolveTypeAnnotation(annotation.typeParameters[0]),
+          valueType: this.resolveTypeAnnotation(annotation.typeParameters[1]),
+        };
+
       case 'Graph':
         if (
           !annotation.typeParameters ||
@@ -707,6 +780,13 @@ export class TypeChecker {
       return this.typesEqual(t1.elementType, t2.elementType);
     }
 
+    if (t1.kind === 'heapMap' && t2.kind === 'heapMap') {
+      return (
+        this.typesEqual(t1.keyType, t2.keyType) &&
+        this.typesEqual(t1.valueType, t2.valueType)
+      );
+    }
+
     if (t1.kind === 'graph' && t2.kind === 'graph') {
       return this.typesEqual(t1.nodeType, t2.nodeType);
     }
@@ -738,6 +818,8 @@ export class TypeChecker {
         return `Set<${this.typeToString(type.elementType)}>`;
       case 'heap':
         return `Heap<${this.typeToString(type.elementType)}>`;
+      case 'heapMap':
+        return `HeapMap<${this.typeToString(type.keyType)}, ${this.typeToString(type.valueType)}>`;
       case 'graph':
         return `Graph<${this.typeToString(type.nodeType)}>`;
       case 'function':

@@ -19,6 +19,8 @@ import {
   SchemaSet,
   MinHeap,
   MaxHeap,
+  MinHeapMap,
+  MaxHeapMap,
   Graph,
   LazyRange,
 } from './runtime/data-structures';
@@ -102,7 +104,7 @@ export class Interpreter {
     this.globalEnv.define('print', {
       type: 'native-function',
       fn: (...args: RuntimeValue[]) => {
-        const output = args.map(runtimeValueToString).join(' ');
+        const output = args.map(runtimeValueToString).join('');
         this.output.push(output);
         return { type: 'null', value: null };
       },
@@ -119,6 +121,20 @@ export class Interpreter {
       type: 'native-function',
       fn: () => {
         return { type: 'maxheap', value: new MaxHeap<number>() };
+      },
+    });
+
+    this.globalEnv.define('MinHeapMap', {
+      type: 'native-function',
+      fn: () => {
+        return { type: 'heapMap', value: new MinHeapMap<any, number>() };
+      },
+    });
+
+    this.globalEnv.define('MaxHeapMap', {
+      type: 'native-function',
+      fn: () => {
+        return { type: 'heapMap', value: new MaxHeapMap<any, number>() };
       },
     });
 
@@ -612,6 +628,68 @@ export class Interpreter {
           }
         }
 
+        if (object.type === 'heapMap') {
+          if (propertyName === 'size') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                return { type: 'int', value: object.value.size };
+              },
+            };
+          }
+          if (propertyName === 'push') {
+            return {
+              type: 'native-function',
+              fn: (key: RuntimeValue, value: RuntimeValue) => {
+                const k = this.runtimeValueToKey(key);
+                const v = this.runtimeValueToKey(value);
+                object.value.push(k, v);
+                return { type: 'null', value: null };
+              },
+            };
+          }
+          if (propertyName === 'pop') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const val = object.value.pop();
+                if (val === undefined) return { type: 'null', value: null };
+                
+                if (typeof val === 'number') {
+                   return Number.isInteger(val) ? { type: 'int', value: val } : { type: 'float', value: val };
+                }
+                if (typeof val === 'string') {
+                   return { type: 'string', value: val };
+                }
+                if (typeof val === 'boolean') {
+                   return { type: 'boolean', value: val };
+                }
+                return val as RuntimeValue;
+              },
+            };
+          }
+          if (propertyName === 'peek') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const val = object.value.peek();
+                if (val === undefined) return { type: 'null', value: null };
+                
+                if (typeof val === 'number') {
+                   return Number.isInteger(val) ? { type: 'int', value: val } : { type: 'float', value: val };
+                }
+                if (typeof val === 'string') {
+                   return { type: 'string', value: val };
+                }
+                if (typeof val === 'boolean') {
+                   return { type: 'boolean', value: val };
+                }
+                return val as RuntimeValue;
+              },
+            };
+          }
+        }
+
         if (object.type === 'graph') {
           if (propertyName === 'addVertex') {
             return {
@@ -911,7 +989,7 @@ export class Interpreter {
           (right.type === 'int' || right.type === 'float')) {
         return { type: 'boolean', value: left.value < right.value };
       }
-      throw new Error(`Cannot compare ${left.type} < ${right.type}`);
+      throw new Error(`Cannot compare ${left.type} < ${right.type}. At line ${expr.line}, column ${expr.column}`);
     }
 
     if (expr.operator === '<=') {
@@ -919,7 +997,7 @@ export class Interpreter {
           (right.type === 'int' || right.type === 'float')) {
         return { type: 'boolean', value: left.value <= right.value };
       }
-      throw new Error(`Cannot compare ${left.type} <= ${right.type}`);
+      throw new Error(`Cannot compare ${left.type} <= ${right.type}. At line ${expr.line}, column ${expr.column}`);
     }
 
     if (expr.operator === '>') {
@@ -927,7 +1005,7 @@ export class Interpreter {
           (right.type === 'int' || right.type === 'float')) {
         return { type: 'boolean', value: left.value > right.value };
       }
-      throw new Error(`Cannot compare ${left.type} > ${right.type}`);
+      throw new Error(`Cannot compare ${left.type} > ${right.type}. At line ${expr.line}, column ${expr.column}`);
     }
 
     if (expr.operator === '>=') {
@@ -935,7 +1013,7 @@ export class Interpreter {
           (right.type === 'int' || right.type === 'float')) {
         return { type: 'boolean', value: left.value >= right.value };
       }
-      throw new Error(`Cannot compare ${left.type} >= ${right.type}`);
+      throw new Error(`Cannot compare ${left.type} >= ${right.type}. At line ${expr.line}, column ${expr.column}`);
     }
 
     // Equality operators
