@@ -538,12 +538,19 @@ export class SchemaBinaryTree<T> {
     return result;
   }
 
-  //TODO: Optimizations: Tail recursion for preOrder, inOrder, postOrder
+  // Iterative preOrder traversal using explicit stack (optimization)
   private preOrder(node: TreeNode<T> | null, result: T[]): void {
-    if (node) {
-      result.push(node.value);
-      this.preOrder(node.left, result);
-      this.preOrder(node.right, result);
+    if (!node) return;
+    
+    const stack: TreeNode<T>[] = [node];
+    
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      result.push(current.value);
+      
+      // Push right first so left is processed first (LIFO)
+      if (current.right) stack.push(current.right);
+      if (current.left) stack.push(current.left);
     }
   }
 
@@ -553,11 +560,26 @@ export class SchemaBinaryTree<T> {
     return result;
   }
 
+  // Iterative inOrder traversal using explicit stack (optimization)
   private inOrder(node: TreeNode<T> | null, result: T[]): void {
-    if (node) {
-      this.inOrder(node.left, result);
-      result.push(node.value);
-      this.inOrder(node.right, result);
+    if (!node) return;
+    
+    const stack: TreeNode<T>[] = [];
+    let current: TreeNode<T> | null = node;
+    
+    while (current !== null || stack.length > 0) {
+      // Traverse to the leftmost node
+      while (current !== null) {
+        stack.push(current);
+        current = current.left;
+      }
+      
+      // Current is null here, pop from stack
+      current = stack.pop()!;
+      result.push(current.value);
+      
+      // Visit right subtree
+      current = current.right;
     }
   }
 
@@ -567,11 +589,26 @@ export class SchemaBinaryTree<T> {
     return result;
   }
 
+  // Iterative postOrder traversal using two stacks (optimization)
   private postOrder(node: TreeNode<T> | null, result: T[]): void {
-    if (node) {
-      this.postOrder(node.left, result);
-      this.postOrder(node.right, result);
-      result.push(node.value);
+    if (!node) return;
+    
+    const stack1: TreeNode<T>[] = [node];
+    const stack2: TreeNode<T>[] = [];
+    
+    // First pass: reverse postorder (root, right, left)
+    while (stack1.length > 0) {
+      const current = stack1.pop()!;
+      stack2.push(current);
+      
+      // Push left first, then right (so right is processed first)
+      if (current.left) stack1.push(current.left);
+      if (current.right) stack1.push(current.right);
+    }
+    
+    // Second pass: pop from stack2 to get correct postorder
+    while (stack2.length > 0) {
+      result.push(stack2.pop()!.value);
     }
   }
 
