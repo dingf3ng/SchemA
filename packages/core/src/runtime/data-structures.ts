@@ -48,7 +48,7 @@ export class SchemaArray<T> {
   toString(): string {
     const items = this.data.map(item => {
       if (typeof item === 'object' && item !== null && 'type' in item) {
-        // Handle RuntimeValue objects - import runtimeValueToString if needed
+        // TODO: Handle RuntimeTypeBinder objects - import RuntimeTypeBinderToString if needed
         const rv = item as any;
         if (rv.type === 'tuple' || rv.type === 'record') {
           // For complex types, use their own toString or a simplified representation

@@ -12,7 +12,7 @@ import {
   BlockStatement,
   ExpressionStatement,
 } from './types';
-import { RuntimeValue, runtimeValueToString, isTruthy } from './runtime/values';
+import { RuntimeTypeBinder, RuntimeTypeBinderToString, isTruthy } from './runtime/values';
 import {
   SchemaArray,
   SchemaMap,
@@ -28,22 +28,22 @@ import {
 } from './runtime/data-structures';
 
 class ReturnException {
-  constructor(public value: RuntimeValue) {}
+  constructor(public value: RuntimeTypeBinder) {}
 }
 
 class Environment {
-  private bindings: Map<string, RuntimeValue> = new Map();
+  private bindings: Map<string, RuntimeTypeBinder> = new Map();
   private parent: Environment | null = null;
 
   constructor(parent: Environment | null = null) {
     this.parent = parent;
   }
 
-  define(name: string, value: RuntimeValue): void {
+  define(name: string, value: RuntimeTypeBinder): void {
     this.bindings.set(name, value);
   }
 
-  get(name: string): RuntimeValue {
+  get(name: string): RuntimeTypeBinder {
     if (this.bindings.has(name)) {
       return this.bindings.get(name)!;
     }
@@ -53,7 +53,7 @@ class Environment {
     throw new Error(`Undefined variable: ${name}`);
   }
 
-  set(name: string, value: RuntimeValue): void {
+  set(name: string, value: RuntimeTypeBinder): void {
     if (this.bindings.has(name)) {
       this.bindings.set(name, value);
       return;
@@ -76,13 +76,13 @@ class Environment {
   }
 
   // For compatibility with existing code that uses Map methods
-  entries(): IterableIterator<[string, RuntimeValue]> {
-    const allEntries = new Map<string, RuntimeValue>();
+  entries(): IterableIterator<[string, RuntimeTypeBinder]> {
+    const allEntries = new Map<string, RuntimeTypeBinder>();
     this.collectAllBindings(allEntries);
     return allEntries.entries();
   }
 
-  private collectAllBindings(result: Map<string, RuntimeValue>): void {
+  private collectAllBindings(result: Map<string, RuntimeTypeBinder>): void {
     if (this.parent) {
       this.parent.collectAllBindings(result);
     }
@@ -105,8 +105,8 @@ export class Interpreter {
   private initializeBuiltins(): void {
     this.globalEnv.define('print', {
       type: 'native-function',
-      fn: (...args: RuntimeValue[]) => {
-        const output = args.map(runtimeValueToString).join(' ');
+      fn: (...args: RuntimeTypeBinder[]) => {
+        const output = args.map(RuntimeTypeBinderToString).join(' ');
         this.output.push(output);
         return { type: 'null', value: null };
       },
@@ -142,7 +142,7 @@ export class Interpreter {
 
     this.globalEnv.define('Graph', {
       type: 'native-function',
-      fn: (directed?: RuntimeValue) => {
+      fn: (directed?: RuntimeTypeBinder) => {
         const isDirected =
           directed && directed.type === 'boolean' ? directed.value : false;
         return { type: 'graph', value: new Graph<any>(isDirected) };
@@ -152,7 +152,7 @@ export class Interpreter {
     this.globalEnv.define('Map', {
       type: 'native-function',
       fn: () => {
-        return { type: 'map', value: new SchemaMap<any, RuntimeValue>() };
+        return { type: 'map', value: new SchemaMap<any, RuntimeTypeBinder>() };
       },
     });
 
@@ -237,7 +237,7 @@ export class Interpreter {
   }
 
   private evaluateFunctionDeclaration(stmt: FunctionDeclaration): void {
-    const funcValue: RuntimeValue = {
+    const funcValue: RuntimeTypeBinder = {
       type: 'function',
       parameters: stmt.parameters,
       body: stmt.body,
@@ -252,7 +252,7 @@ export class Interpreter {
 
   private evaluateVariableDeclaration(stmt: VariableDeclaration): void {
     for (const declarator of stmt.declarations) {
-      let value: RuntimeValue = { type: 'null', value: null };
+      let value: RuntimeTypeBinder = { type: 'null', value: null };
 
       if (declarator.initializer) {
         value = this.evaluateExpression(declarator.initializer);
@@ -265,8 +265,8 @@ export class Interpreter {
     }
   }
 
-  private captureEnvironment(): Map<string, RuntimeValue> {
-    const captured = new Map<string, RuntimeValue>();
+  private captureEnvironment(): Map<string, RuntimeTypeBinder> {
+    const captured = new Map<string, RuntimeTypeBinder>();
     for (const [key, value] of this.currentEnv.entries()) {
       captured.set(key, value);
     }
@@ -317,7 +317,7 @@ export class Interpreter {
       }
 
       if (object.type === 'map') {
-        const key = this.runtimeValueToKey(index);
+        const key = this.RuntimeTypeBinderToKey(index);
         object.value.set(key, value);
         return;
       }
@@ -360,7 +360,7 @@ export class Interpreter {
       });
     } else if (iterable.type === 'set') {
       iterable.value.forEach((item) => {
-        let runtimeItem: RuntimeValue;
+        let runtimeItem: RuntimeTypeBinder;
         if (typeof item === 'number') {
           runtimeItem = Number.isInteger(item)
             ? { type: 'int', value: item }
@@ -370,7 +370,7 @@ export class Interpreter {
         } else if (typeof item === 'boolean') {
           runtimeItem = { type: 'boolean', value: item };
         } else if (typeof item === 'object' && item !== null && 'type' in item) {
-          runtimeItem = item as RuntimeValue;
+          runtimeItem = item as RuntimeTypeBinder;
         } else {
           runtimeItem = { type: 'null', value: null };
         }
@@ -382,7 +382,7 @@ export class Interpreter {
       });
     } else if (iterable.type === 'map') {
       iterable.value.forEach((value, key) => {
-        let runtimeKey: RuntimeValue;
+        let runtimeKey: RuntimeTypeBinder;
         if (typeof key === 'number') {
           runtimeKey = Number.isInteger(key)
             ? { type: 'int', value: key }
@@ -392,7 +392,7 @@ export class Interpreter {
         } else if (typeof key === 'boolean') {
           runtimeKey = { type: 'boolean', value: key };
         } else if (typeof key === 'object' && key !== null && 'type' in key) {
-          runtimeKey = key as RuntimeValue;
+          runtimeKey = key as RuntimeTypeBinder;
         } else {
           runtimeKey = { type: 'null', value: null };
         }
@@ -407,10 +407,10 @@ export class Interpreter {
       // Support for infinite ranges - use the generator
       const limit = 1000; // Safety limit for infinite ranges
       for (const value of iterable.value.generate()) {
-        const runtimeValue: RuntimeValue = { type: 'int', value };
+        const RuntimeTypeBinder: RuntimeTypeBinder = { type: 'int', value };
         // Skip binding if the variable name is '_' (unnamed variable)
         if (stmt.variable !== '_') {
-          this.currentEnv.define(stmt.variable, runtimeValue);
+          this.currentEnv.define(stmt.variable, RuntimeTypeBinder);
         }
         this.evaluateStatement(stmt.body);
       }
@@ -437,7 +437,7 @@ export class Interpreter {
     this.currentEnv = savedEnv;
   }
 
-  private evaluateExpression(expr: Expression): RuntimeValue {
+  private evaluateExpression(expr: Expression): RuntimeTypeBinder {
     switch (expr.type) {
       case 'IntegerLiteral':
         return { type: 'int', value: expr.value };
@@ -510,7 +510,7 @@ export class Interpreter {
           if (propertyName === 'push') {
             return {
               type: 'native-function',
-              fn: (item: RuntimeValue) => {
+              fn: (item: RuntimeTypeBinder) => {
                 object.value.push(item);
                 return { type: 'null', value: null };
               },
@@ -538,8 +538,8 @@ export class Interpreter {
           if (propertyName === 'get') {
             return {
               type: 'native-function',
-              fn: (key: RuntimeValue) => {
-                const k = this.runtimeValueToKey(key);
+              fn: (key: RuntimeTypeBinder) => {
+                const k = this.RuntimeTypeBinderToKey(key);
                 return object.value.get(k) || { type: 'null', value: null };
               },
             };
@@ -547,8 +547,8 @@ export class Interpreter {
           if (propertyName === 'set') {
             return {
               type: 'native-function',
-              fn: (key: RuntimeValue, value: RuntimeValue) => {
-                const k = this.runtimeValueToKey(key);
+              fn: (key: RuntimeTypeBinder, value: RuntimeTypeBinder) => {
+                const k = this.RuntimeTypeBinderToKey(key);
                 object.value.set(k, value);
                 return { type: 'null', value: null };
               },
@@ -557,8 +557,8 @@ export class Interpreter {
           if (propertyName === 'has') {
             return {
               type: 'native-function',
-              fn: (key: RuntimeValue) => {
-                const k = this.runtimeValueToKey(key);
+              fn: (key: RuntimeTypeBinder) => {
+                const k = this.RuntimeTypeBinderToKey(key);
                 return { type: 'boolean', value: object.value.has(k) };
               },
             };
@@ -566,8 +566,8 @@ export class Interpreter {
           if (propertyName === 'deleteWithKey') {
             return {
               type: 'native-function',
-              fn: (key: RuntimeValue) => {
-                const k = this.runtimeValueToKey(key);
+              fn: (key: RuntimeTypeBinder) => {
+                const k = this.RuntimeTypeBinderToKey(key);
                 object.value.delete(k);
                 return { type: 'null', value: null };
               },
@@ -577,9 +577,9 @@ export class Interpreter {
             return {
               type: 'native-function',
               fn: () => {
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 object.value.forEach((_, key) => {
-                  arr.push(this.runtimeValueToKey(key));
+                  arr.push(this.RuntimeTypeBinderToKey(key));
                 });
                 return { type: 'array', value: arr };
               },
@@ -589,7 +589,7 @@ export class Interpreter {
             return {
               type: 'native-function',
               fn: () => {
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 object.value.forEach((value) => {
                   arr.push(value);
                 });
@@ -601,12 +601,12 @@ export class Interpreter {
             return {
               type: 'native-function',
               fn: () => {
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 object.value.forEach((value, key) => {
                   // Create a tuple (key, value)
-                  const tuple: RuntimeValue = {
+                  const tuple: RuntimeTypeBinder = {
                     type: 'tuple',
-                    elements: [this.keyToRuntimeValue(key), value],
+                    elements: [this.keyToRuntimeTypeBinder(key), value],
                   };
                   arr.push(tuple);
                 });
@@ -629,8 +629,8 @@ export class Interpreter {
           if (propertyName === 'add') {
             return {
               type: 'native-function',
-              fn: (item: RuntimeValue) => {
-                const k = this.runtimeValueToKey(item);
+              fn: (item: RuntimeTypeBinder) => {
+                const k = this.RuntimeTypeBinderToKey(item);
                 object.value.add(k);
                 return { type: 'null', value: null };
               },
@@ -639,8 +639,8 @@ export class Interpreter {
           if (propertyName === 'has') {
             return {
               type: 'native-function',
-              fn: (item: RuntimeValue) => {
-                const k = this.runtimeValueToKey(item);
+              fn: (item: RuntimeTypeBinder) => {
+                const k = this.RuntimeTypeBinderToKey(item);
                 return { type: 'boolean', value: object.value.has(k) };
               },
             };
@@ -648,8 +648,8 @@ export class Interpreter {
           if (propertyName === 'delete') {
             return {
               type: 'native-function',
-              fn: (item: RuntimeValue) => {
-                const k = this.runtimeValueToKey(item);
+              fn: (item: RuntimeTypeBinder) => {
+                const k = this.RuntimeTypeBinderToKey(item);
                 object.value.delete(k);
                 return { type: 'null', value: null };
               },
@@ -659,9 +659,9 @@ export class Interpreter {
             return {
               type: 'native-function',
               fn: () => {
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 object.value.forEach((item) => {
-                  arr.push(this.runtimeValueToKey(item));
+                  arr.push(this.RuntimeTypeBinderToKey(item));
                 });
                 return { type: 'array', value: arr };
               },
@@ -681,8 +681,8 @@ export class Interpreter {
           if (propertyName === 'push') {
             return {
               type: 'native-function',
-              fn: (item: RuntimeValue) => {
-                const k = this.runtimeValueToKey(item);
+              fn: (item: RuntimeTypeBinder) => {
+                const k = this.RuntimeTypeBinderToKey(item);
                 object.value.push(k);
                 return { type: 'null', value: null };
               },
@@ -728,9 +728,9 @@ export class Interpreter {
           if (propertyName === 'push') {
             return {
               type: 'native-function',
-              fn: (key: RuntimeValue, value: RuntimeValue) => {
-                const k = this.runtimeValueToKey(key);
-                const v = this.runtimeValueToKey(value);
+              fn: (key: RuntimeTypeBinder, value: RuntimeTypeBinder) => {
+                const k = this.RuntimeTypeBinderToKey(key);
+                const v = this.RuntimeTypeBinderToKey(value);
                 object.value.push(k, v);
                 return { type: 'null', value: null };
               },
@@ -752,7 +752,7 @@ export class Interpreter {
                 if (typeof val === 'boolean') {
                    return { type: 'boolean', value: val };
                 }
-                return val as RuntimeValue;
+                return val as RuntimeTypeBinder;
               },
             };
           }
@@ -772,7 +772,7 @@ export class Interpreter {
                 if (typeof val === 'boolean') {
                    return { type: 'boolean', value: val };
                 }
-                return val as RuntimeValue;
+                return val as RuntimeTypeBinder;
               },
             };
           }
@@ -782,8 +782,8 @@ export class Interpreter {
           if (propertyName === 'insert') {
             return {
               type: 'native-function',
-              fn: (value: RuntimeValue) => {
-                const v = this.runtimeValueToKey(value);
+              fn: (value: RuntimeTypeBinder) => {
+                const v = this.RuntimeTypeBinderToKey(value);
                 object.value.insert(v);
                 return { type: 'null', value: null };
               },
@@ -792,8 +792,8 @@ export class Interpreter {
           if (propertyName === 'search') {
             return {
               type: 'native-function',
-              fn: (value: RuntimeValue) => {
-                const v = this.runtimeValueToKey(value);
+              fn: (value: RuntimeTypeBinder) => {
+                const v = this.RuntimeTypeBinderToKey(value);
                 return { type: 'boolean', value: object.value.search(v) };
               },
             };
@@ -803,9 +803,9 @@ export class Interpreter {
               type: 'native-function',
               fn: () => {
                 const elements = object.value.inOrderTraversal().map((val) => {
-                  return this.runtimeValueToKey(val);
+                  return this.RuntimeTypeBinderToKey(val);
                 });
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 elements.forEach((el) => arr.push(el));
                 return { type: 'array', value: arr };
               },
@@ -816,9 +816,9 @@ export class Interpreter {
               type: 'native-function',
               fn: () => {
                 const elements = object.value.preOrderTraversal().map((val) => {
-                  return this.runtimeValueToKey(val);
+                  return this.RuntimeTypeBinderToKey(val);
                 });
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 elements.forEach((el) => arr.push(el));
                 return { type: 'array', value: arr };
               },
@@ -829,9 +829,9 @@ export class Interpreter {
               type: 'native-function',
               fn: () => {
                 const elements = object.value.postOrderTraversal().map((val) => {
-                  return this.runtimeValueToKey(val);
+                  return this.RuntimeTypeBinderToKey(val);
                 });
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 elements.forEach((el) => arr.push(el));
                 return { type: 'array', value: arr };
               },
@@ -851,8 +851,8 @@ export class Interpreter {
           if (propertyName === 'addVertex') {
             return {
               type: 'native-function',
-              fn: (vertex: RuntimeValue) => {
-                const v = this.runtimeValueToKey(vertex);
+              fn: (vertex: RuntimeTypeBinder) => {
+                const v = this.RuntimeTypeBinderToKey(vertex);
                 object.value.addVertex(v);
                 return { type: 'null', value: null };
               },
@@ -862,12 +862,12 @@ export class Interpreter {
             return {
               type: 'native-function',
               fn: (
-                from: RuntimeValue,
-                to: RuntimeValue,
-                weight?: RuntimeValue
+                from: RuntimeTypeBinder,
+                to: RuntimeTypeBinder,
+                weight?: RuntimeTypeBinder
               ) => {
-                const f = this.runtimeValueToKey(from);
-                const t = this.runtimeValueToKey(to);
+                const f = this.RuntimeTypeBinderToKey(from);
+                const t = this.RuntimeTypeBinderToKey(to);
                 const w =
                   weight && (weight.type === 'int' || weight.type === 'float') ? weight.value : 1;
                 object.value.addEdge(f, t, w);
@@ -878,16 +878,16 @@ export class Interpreter {
           if (propertyName === 'getNeighbors') {
             return {
               type: 'native-function',
-              fn: (vertex: RuntimeValue) => {
-                const v = this.runtimeValueToKey(vertex);
+              fn: (vertex: RuntimeTypeBinder) => {
+                const v = this.RuntimeTypeBinderToKey(vertex);
                 const neighbors = object.value.getNeighbors(v);
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 neighbors.forEach((edge) => {
                   // Create a record { to: nodeType, weight: int }
-                  const record: RuntimeValue = {
+                  const record: RuntimeTypeBinder = {
                     type: 'record',
                     fields: new Map([
-                      ['to', this.keyToRuntimeValue(edge.to)],
+                      ['to', this.keyToRuntimeTypeBinder(edge.to)],
                       ['weight', { type: 'int', value: edge.weight }],
                     ]),
                   };
@@ -900,8 +900,8 @@ export class Interpreter {
           if (propertyName === 'hasVertex') {
             return {
               type: 'native-function',
-              fn: (vertex: RuntimeValue) => {
-                const v = this.runtimeValueToKey(vertex);
+              fn: (vertex: RuntimeTypeBinder) => {
+                const v = this.RuntimeTypeBinderToKey(vertex);
                 return { type: 'boolean', value: object.value.hasVertex(v) };
               },
             };
@@ -911,9 +911,9 @@ export class Interpreter {
               type: 'native-function',
               fn: () => {
                 const vertices = object.value.getVertices();
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 vertices.forEach((v) => {
-                  arr.push(this.runtimeValueToKey(v));
+                  arr.push(this.RuntimeTypeBinderToKey(v));
                 });
                 return { type: 'array', value: arr };
               },
@@ -938,9 +938,9 @@ export class Interpreter {
           if (propertyName === 'haveEdge') {
             return {
               type: 'native-function',
-              fn: (from: RuntimeValue, to: RuntimeValue) => {
-                const f = this.runtimeValueToKey(from);
-                const t = this.runtimeValueToKey(to);
+              fn: (from: RuntimeTypeBinder, to: RuntimeTypeBinder) => {
+                const f = this.RuntimeTypeBinderToKey(from);
+                const t = this.RuntimeTypeBinderToKey(to);
                 return { type: 'boolean', value: object.value.hasEdge(f, t) };
               },
             };
@@ -950,14 +950,14 @@ export class Interpreter {
               type: 'native-function',
               fn: () => {
                 const edges = object.value.getEdges();
-                const arr = new SchemaArray<RuntimeValue>();
+                const arr = new SchemaArray<RuntimeTypeBinder>();
                 edges.forEach((edge) => {
                   // Create a record { from: nodeType, to: nodeType, weight: int }
-                  const record: RuntimeValue = {
+                  const record: RuntimeTypeBinder = {
                     type: 'record',
                     fields: new Map([
-                      ['from', this.keyToRuntimeValue(edge.from)],
-                      ['to', this.keyToRuntimeValue(edge.to)],
+                      ['from', this.keyToRuntimeTypeBinder(edge.from)],
+                      ['to', this.keyToRuntimeTypeBinder(edge.to)],
                       ['weight', { type: 'int', value: edge.weight }],
                     ]),
                   };
@@ -982,7 +982,7 @@ export class Interpreter {
         }
 
         if (object.type === 'map') {
-          const key = this.runtimeValueToKey(index);
+          const key = this.RuntimeTypeBinderToKey(index);
           return object.value.get(key) || { type: 'null', value: null };
         }
 
@@ -1068,7 +1068,7 @@ export class Interpreter {
     }
   }
 
-  private evaluateStringRange(start: string, endExpr: Expression | undefined, inclusive: boolean): RuntimeValue {
+  private evaluateStringRange(start: string, endExpr: Expression | undefined, inclusive: boolean): RuntimeTypeBinder {
     if (!endExpr) {
       throw new Error('String ranges must have both start and end');
     }
@@ -1081,7 +1081,7 @@ export class Interpreter {
     const end = endVal.value;
 
     // Generate string range
-    const result: RuntimeValue[] = [];
+    const result: RuntimeTypeBinder[] = [];
 
     // Simple implementation for same-length strings
     if (start.length !== end.length) {
@@ -1140,7 +1140,7 @@ export class Interpreter {
     return { type: 'array', value: new SchemaArray(result) };
   }
 
-  private evaluateBinaryExpression(expr: any): RuntimeValue {
+  private evaluateBinaryExpression(expr: any): RuntimeTypeBinder {
     const left = this.evaluateExpression(expr.left);
     const right = this.evaluateExpression(expr.right);
 
@@ -1290,7 +1290,7 @@ export class Interpreter {
     throw new Error(`Unknown binary operator: ${expr.operator}`);
   }
 
-  private evaluateCallExpression(expr: any): RuntimeValue {
+  private evaluateCallExpression(expr: any): RuntimeTypeBinder {
     const callee = this.evaluateExpression(expr.callee);
 
     if (callee.type === 'native-function') {
@@ -1333,7 +1333,7 @@ export class Interpreter {
     throw new Error('Not a function');
   }
 
-  private valuesEqual(left: RuntimeValue, right: RuntimeValue): boolean {
+  private valuesEqual(left: RuntimeTypeBinder, right: RuntimeTypeBinder): boolean {
     if (left.type !== right.type) return false;
 
     if (left.type === 'int' && right.type === 'int') {
@@ -1359,14 +1359,14 @@ export class Interpreter {
     return false;
   }
 
-  private runtimeValueToKey(value: RuntimeValue): any {
+  private RuntimeTypeBinderToKey(value: RuntimeTypeBinder): any {
     if (value.type === 'int' || value.type === 'float') return value.value;
     if (value.type === 'string') return value.value;
     if (value.type === 'boolean') return value.value;
     return value;
   }
 
-  private keyToRuntimeValue(key: any): RuntimeValue {
+  private keyToRuntimeTypeBinder(key: any): RuntimeTypeBinder {
     if (typeof key === 'number') {
       return Number.isInteger(key)
         ? { type: 'int', value: key }
@@ -1378,7 +1378,7 @@ export class Interpreter {
     if (typeof key === 'boolean') {
       return { type: 'boolean', value: key };
     }
-    // If it's already a RuntimeValue, return it as-is
+    // If it's already a RuntimeTypeBinder, return it as-is
     return key;
   }
 }

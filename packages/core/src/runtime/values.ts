@@ -12,14 +12,14 @@ import {
   AVLTree,
 } from './data-structures';
 
-export type RuntimeValue =
+export type RuntimeTypeBinder =
   | { type: 'int'; value: number }
   | { type: 'float'; value: number }
   | { type: 'string'; value: string }
   | { type: 'boolean'; value: boolean }
   | { type: 'null'; value: null }
-  | { type: 'array'; value: SchemaArray<RuntimeValue> }
-  | { type: 'map'; value: SchemaMap<any, RuntimeValue> }
+  | { type: 'array'; value: SchemaArray<RuntimeTypeBinder> }
+  | { type: 'map'; value: SchemaMap<any, RuntimeTypeBinder> }
   | { type: 'set'; value: SchemaSet<any> }
   | { type: 'minheap'; value: MinHeap<any> }
   | { type: 'maxheap'; value: MaxHeap<any> }
@@ -28,20 +28,20 @@ export type RuntimeValue =
   | { type: 'avltree'; value: AVLTree<any> }
   | { type: 'graph'; value: Graph<any> }
   | { type: 'range'; value: LazyRange }
-  | { type: 'tuple'; elements: RuntimeValue[] }
-  | { type: 'record'; fields: Map<string, RuntimeValue> }
+  | { type: 'tuple'; elements: RuntimeTypeBinder[] }
+  | { type: 'record'; fields: Map<string, RuntimeTypeBinder> }
   | {
       type: 'function';
       parameters: Parameter[];
       body: BlockStatement;
-      closure: Map<string, RuntimeValue>;
+      closure: Map<string, RuntimeTypeBinder>;
     }
   | {
       type: 'native-function';
-      fn: (...args: RuntimeValue[]) => RuntimeValue;
+      fn: (...args: RuntimeTypeBinder[]) => RuntimeTypeBinder;
     };
 
-export function runtimeValueToString(value: RuntimeValue): string {
+export function RuntimeTypeBinderToString(value: RuntimeTypeBinder): string {
   switch (value.type) {
     case 'int':
       return value.value.toString();
@@ -74,10 +74,10 @@ export function runtimeValueToString(value: RuntimeValue): string {
     case 'range':
       return value.value.toString();
     case 'tuple':
-      return `(${value.elements.map(runtimeValueToString).join(', ')})`;
+      return `(${value.elements.map(RuntimeTypeBinderToString).join(', ')})`;
     case 'record': {
       const fields = Array.from(value.fields.entries())
-        .map(([k, v]) => `${k}: ${runtimeValueToString(v)}`)
+        .map(([k, v]) => `${k}: ${RuntimeTypeBinderToString(v)}`)
         .join(', ');
       return `{ ${fields} }`;
     }
@@ -88,7 +88,7 @@ export function runtimeValueToString(value: RuntimeValue): string {
   }
 }
 
-export function isTruthy(value: RuntimeValue): boolean {
+export function isTruthy(value: RuntimeTypeBinder): boolean {
   if (value.type === 'boolean') return value.value;
   if (value.type === 'null') return false;
   if (value.type === 'int' || value.type === 'float') return value.value !== 0;
