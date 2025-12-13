@@ -61,7 +61,8 @@ export type ASTNodeType =
   | 'IndexExpression'
   | 'RangeExpression'
   | 'Identifier'
-  | 'NumberLiteral'
+  | 'IntegerLiteral'
+  | 'FloatLiteral'
   | 'StringLiteral'
   | 'BooleanLiteral'
   | 'ArrayLiteral'
@@ -161,8 +162,13 @@ export interface Identifier extends ASTNode {
   name: string;
 }
 
-export interface NumberLiteral extends ASTNode {
-  type: 'NumberLiteral';
+export interface IntegerLiteral extends ASTNode {
+  type: 'IntegerLiteral';
+  value: number;
+}
+
+export interface FloatLiteral extends ASTNode {
+  type: 'FloatLiteral';
   value: number;
 }
 
@@ -251,7 +257,8 @@ export type Expression =
   | IndexExpression
   | RangeExpression
   | Identifier
-  | NumberLiteral
+  | IntegerLiteral
+  | FloatLiteral
   | StringLiteral
   | BooleanLiteral
   | ArrayLiteral

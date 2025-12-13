@@ -106,7 +106,7 @@ export class Interpreter {
     this.globalEnv.define('print', {
       type: 'native-function',
       fn: (...args: RuntimeValue[]) => {
-        const output = args.map(runtimeValueToString).join('');
+        const output = args.map(runtimeValueToString).join(' ');
         this.output.push(output);
         return { type: 'null', value: null };
       },
@@ -439,13 +439,11 @@ export class Interpreter {
 
   private evaluateExpression(expr: Expression): RuntimeValue {
     switch (expr.type) {
-      case 'NumberLiteral':
-        // Check if the number is an integer or float
-        if (Number.isInteger(expr.value)) {
-          return { type: 'int', value: expr.value };
-        } else {
-          return { type: 'float', value: expr.value };
-        }
+      case 'IntegerLiteral':
+        return { type: 'int', value: expr.value };
+
+      case 'FloatLiteral':
+        return { type: 'float', value: expr.value };
 
       case 'StringLiteral':
         return { type: 'string', value: expr.value };
@@ -565,6 +563,58 @@ export class Interpreter {
               },
             };
           }
+          if (propertyName === 'deleteWithKey') {
+            return {
+              type: 'native-function',
+              fn: (key: RuntimeValue) => {
+                const k = this.runtimeValueToKey(key);
+                object.value.delete(k);
+                return { type: 'null', value: null };
+              },
+            };
+          }
+          if (propertyName === 'keys') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const arr = new SchemaArray<RuntimeValue>();
+                object.value.forEach((_, key) => {
+                  arr.push(this.runtimeValueToKey(key));
+                });
+                return { type: 'array', value: arr };
+              },
+            };
+          }
+          if (propertyName === 'values') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const arr = new SchemaArray<RuntimeValue>();
+                object.value.forEach((value) => {
+                  arr.push(value);
+                });
+                return { type: 'array', value: arr };
+              },
+            };
+          }
+          if (propertyName === 'entries') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const arr = new SchemaArray<RuntimeValue>();
+                object.value.forEach((value, key) => {
+                  // Create a tuple (key, value)
+                  const tuple: RuntimeValue = {
+                    type: 'tuple',
+                    elements: [this.keyToRuntimeValue(key), value],
+                  };
+                  arr.push(tuple);
+                });
+                return { type: 'array', value: arr };
+              },
+            };
+          }
+
         }
 
         if (object.type === 'set') {
@@ -592,6 +642,28 @@ export class Interpreter {
               fn: (item: RuntimeValue) => {
                 const k = this.runtimeValueToKey(item);
                 return { type: 'boolean', value: object.value.has(k) };
+              },
+            };
+          }
+          if (propertyName === 'delete') {
+            return {
+              type: 'native-function',
+              fn: (item: RuntimeValue) => {
+                const k = this.runtimeValueToKey(item);
+                object.value.delete(k);
+                return { type: 'null', value: null };
+              },
+            };
+          }
+          if (propertyName === 'values') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const arr = new SchemaArray<RuntimeValue>();
+                object.value.forEach((item) => {
+                  arr.push(this.runtimeValueToKey(item));
+                });
+                return { type: 'array', value: arr };
               },
             };
           }
@@ -811,10 +883,15 @@ export class Interpreter {
                 const neighbors = object.value.getNeighbors(v);
                 const arr = new SchemaArray<RuntimeValue>();
                 neighbors.forEach((edge) => {
-                  const obj = new SchemaMap<any, RuntimeValue>();
-                  obj.set('to', { type: 'int', value: edge.to as number });
-                  obj.set('weight', { type: 'int', value: edge.weight });
-                  arr.push({ type: 'map', value: obj });
+                  // Create a record { to: nodeType, weight: int }
+                  const record: RuntimeValue = {
+                    type: 'record',
+                    fields: new Map([
+                      ['to', this.keyToRuntimeValue(edge.to)],
+                      ['weight', { type: 'int', value: edge.weight }],
+                    ]),
+                  };
+                  arr.push(record);
                 });
                 return { type: 'array', value: arr };
               },
@@ -875,11 +952,16 @@ export class Interpreter {
                 const edges = object.value.getEdges();
                 const arr = new SchemaArray<RuntimeValue>();
                 edges.forEach((edge) => {
-                  const obj = new SchemaMap<any, RuntimeValue>();
-                  obj.set('from', { type: 'int', value: edge.from as number });
-                  obj.set('to', { type: 'int', value: edge.to as number });
-                  obj.set('weight', { type: 'int', value: edge.weight });
-                  arr.push({ type: 'map', value: obj });
+                  // Create a record { from: nodeType, to: nodeType, weight: int }
+                  const record: RuntimeValue = {
+                    type: 'record',
+                    fields: new Map([
+                      ['from', this.keyToRuntimeValue(edge.from)],
+                      ['to', this.keyToRuntimeValue(edge.to)],
+                      ['weight', { type: 'int', value: edge.weight }],
+                    ]),
+                  };
+                  arr.push(record);
                 });
                 return { type: 'array', value: arr };
               },
@@ -902,6 +984,28 @@ export class Interpreter {
         if (object.type === 'map') {
           const key = this.runtimeValueToKey(index);
           return object.value.get(key) || { type: 'null', value: null };
+        }
+
+        if (object.type === 'tuple') {
+          if (index.type === 'int') {
+            const idx = index.value;
+            if (idx >= 0 && idx < object.elements.length) {
+              return object.elements[idx];
+            }
+            throw new Error(`Tuple index ${idx} out of bounds (length: ${object.elements.length})`);
+          }
+          throw new Error('Tuple indices must be integers');
+        }
+
+        if (object.type === 'record') {
+          if (index.type === 'string') {
+            const field = object.fields.get(index.value);
+            if (field) {
+              return field;
+            }
+            throw new Error(`Record does not have field '${index.value}'`);
+          }
+          throw new Error('Record indices must be strings');
         }
 
         throw new Error('Invalid index expression');
@@ -1260,5 +1364,21 @@ export class Interpreter {
     if (value.type === 'string') return value.value;
     if (value.type === 'boolean') return value.value;
     return value;
+  }
+
+  private keyToRuntimeValue(key: any): RuntimeValue {
+    if (typeof key === 'number') {
+      return Number.isInteger(key)
+        ? { type: 'int', value: key }
+        : { type: 'float', value: key };
+    }
+    if (typeof key === 'string') {
+      return { type: 'string', value: key };
+    }
+    if (typeof key === 'boolean') {
+      return { type: 'boolean', value: key };
+    }
+    // If it's already a RuntimeValue, return it as-is
+    return key;
   }
 }

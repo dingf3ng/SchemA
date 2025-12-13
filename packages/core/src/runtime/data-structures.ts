@@ -48,8 +48,33 @@ export class SchemaArray<T> {
   toString(): string {
     const items = this.data.map(item => {
       if (typeof item === 'object' && item !== null && 'type' in item) {
-        // Handle RuntimeValue objects
+        // Handle RuntimeValue objects - import runtimeValueToString if needed
         const rv = item as any;
+        if (rv.type === 'tuple' || rv.type === 'record') {
+          // For complex types, use their own toString or a simplified representation
+          if (rv.type === 'tuple') {
+            const elements = rv.elements.map((el: any) => {
+              if (el.type === 'int' || el.type === 'float') return el.value;
+              if (el.type === 'string') return el.value;
+              if (el.type === 'boolean') return el.value;
+              return el;
+            });
+            return `(${elements.join(', ')})`;
+          }
+          if (rv.type === 'record') {
+            const entries = Array.from(rv.fields.entries()) as Array<[string, any]>;
+            const fields = entries
+              .map(([k, v]) => {
+                let val = v;
+                if (v.type === 'int' || v.type === 'float') val = v.value;
+                else if (v.type === 'string') val = v.value;
+                else if (v.type === 'boolean') val = v.value;
+                return `${k}: ${val}`;
+              })
+              .join(', ');
+            return `{ ${fields} }`;
+          }
+        }
         if (rv.type === 'int' || rv.type === 'float' || rv.type === 'string' || rv.type === 'boolean') {
           return rv.value;
         }

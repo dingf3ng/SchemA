@@ -59,7 +59,8 @@ import {
   MemberExpression,
   IndexExpression,
   Identifier,
-  NumberLiteral,
+  IntegerLiteral,
+  FloatLiteral,
   StringLiteral,
   BooleanLiteral,
   ArrayLiteral,
@@ -541,13 +542,23 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     return expr;
   }
 
-  visitNumberLiteral(ctx: NumberLiteralContext): NumberLiteral {
-    return {
-      type: 'NumberLiteral',
-      value: parseFloat(ctx.NUMBER().text),
-      line: ctx.start.line,
-      column: ctx.start.charPositionInLine + 1,
-    };
+  visitNumberLiteral(ctx: NumberLiteralContext): IntegerLiteral | FloatLiteral {
+    const value = parseFloat(ctx.NUMBER().text);
+    if (Number.isInteger(value)) {
+      return {
+        type: 'IntegerLiteral',
+        value,
+        line: ctx.start.line,
+        column: ctx.start.charPositionInLine + 1,
+      };
+    } else {
+      return {
+        type: 'FloatLiteral',
+        value,
+        line: ctx.start.line,
+        column: ctx.start.charPositionInLine + 1,
+      };
+    }
   }
 
   visitStringLiteral(ctx: StringLiteralContext): StringLiteral {

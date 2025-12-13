@@ -1,0 +1,48 @@
+// Demonstration of advanced type system features: records, tuples, and unions
+
+print("=== Graph with Record Types ===")
+let g = Graph(false)
+g.addVertex(1)
+g.addVertex(2)
+g.addVertex(3)
+g.addEdge(1, 2, 100)
+g.addEdge(2, 3, 200)
+
+// getNeighbors returns Array<{ to: int, weight: int }>
+let neighbors = g.getNeighbors(1)
+print("Neighbors of 1:")
+for edge in neighbors {
+  // edge is a record with fields "to" and "weight"
+  print("  Edge to", edge["to"], "with weight", edge["weight"])
+}
+
+// getEdges returns Array<{ from: int, to: int, weight: int }>
+let edges = g.getEdges()
+print("\nAll edges:")
+for edge in edges {
+  // edge is a record with fields "from", "to", and "weight"
+  print("  ", edge["from"], "->", edge["to"], "(weight:", edge["weight"], ")")
+}
+
+// getVertices returns Array<int>
+let vertices = g.getVertices()
+print("\nVertices:", vertices)
+
+print("\n=== Map with Tuple Types ===")
+let m = Map()
+m.set("apple", 5)
+m.set("banana", 3)
+m.set("cherry", 8)
+
+// keys() returns Array<string>
+print("Keys:", m.keys())
+
+// values() returns Array<int>
+print("Values:", m.values())
+
+// entries() returns Array<(string, int)> - array of tuples
+let entries = m.entries()
+print("\nEntries (as tuples):")
+for entry in entries {
+  print("  ", entry)
+}

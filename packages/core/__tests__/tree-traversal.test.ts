@@ -1,11 +1,11 @@
-import { SchemaBinaryTree, SchemaAVLTree } from '../src/runtime/data-structures';
+import { BinaryTree, AVLTree } from '../src/runtime/data-structures';
 
 describe('Tree Traversal Tests', () => {
-  describe('SchemaBinaryTree Traversals', () => {
-    let tree: SchemaBinaryTree<number>;
+  describe('BinaryTree Traversals', () => {
+    let tree: BinaryTree<number>;
 
     beforeEach(() => {
-      tree = new SchemaBinaryTree<number>();
+      tree = new BinaryTree<number>();
     });
 
     it('should correctly perform preOrder traversal on empty tree', () => {
@@ -109,11 +109,11 @@ describe('Tree Traversal Tests', () => {
     });
   });
 
-  describe('SchemaAVLTree Traversals', () => {
-    let tree: SchemaAVLTree<number>;
+  describe('AVLTree Traversals', () => {
+    let tree: AVLTree<number>;
 
     beforeEach(() => {
-      tree = new SchemaAVLTree<number>();
+      tree = new AVLTree<number>();
     });
 
     it('should correctly perform preOrder traversal', () => {
@@ -172,7 +172,7 @@ describe('Tree Traversal Tests', () => {
   describe('Custom compareFn', () => {
     it('should work with custom comparison function', () => {
       // Reverse order comparison
-      const tree = new SchemaBinaryTree<number>((a, b) => {
+      const tree = new BinaryTree<number>((a, b) => {
         if (a > b) return -1;
         if (a < b) return 1;
         return 0;

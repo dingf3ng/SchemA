@@ -1,0 +1,33 @@
+// Demonstration of improved graph type system with record types
+
+let g = Graph(false)
+
+// Add vertices
+g.addVertex(1)
+g.addVertex(2)
+g.addVertex(3)
+
+// Add edges
+g.addEdge(1, 2, 10)
+g.addEdge(2, 3, 20)
+g.addEdge(1, 3, 5)
+
+// getVertices now returns Array<int> instead of Array<any>
+let vertices = g.getVertices()
+print("Vertices:", vertices)
+
+// getNeighbors now returns Array<{ to: int, weight: int }> instead of Array<any>
+let neighbors = g.getNeighbors(1)
+print("\nNeighbors of vertex 1:")
+for edge in neighbors {
+  // Type system knows edge["to"] is int and edge["weight"] is int
+  print("  to:", edge["to"], "weight:", edge["weight"])
+}
+
+// getEdges now returns Array<{ from: int, to: int, weight: int }> instead of Array<any>
+let edges = g.getEdges()
+print("\nAll edges:")
+for edge in edges {
+  // Type system knows all three fields exist and their types
+  print("  from:", edge["from"], "to:", edge["to"], "weight:", edge["weight"])
+}

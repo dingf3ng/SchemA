@@ -28,6 +28,8 @@ export type RuntimeValue =
   | { type: 'avltree'; value: AVLTree<any> }
   | { type: 'graph'; value: Graph<any> }
   | { type: 'range'; value: LazyRange }
+  | { type: 'tuple'; elements: RuntimeValue[] }
+  | { type: 'record'; fields: Map<string, RuntimeValue> }
   | {
       type: 'function';
       parameters: Parameter[];
@@ -71,6 +73,14 @@ export function runtimeValueToString(value: RuntimeValue): string {
       return value.value.toString();
     case 'range':
       return value.value.toString();
+    case 'tuple':
+      return `(${value.elements.map(runtimeValueToString).join(', ')})`;
+    case 'record': {
+      const fields = Array.from(value.fields.entries())
+        .map(([k, v]) => `${k}: ${runtimeValueToString(v)}`)
+        .join(', ');
+      return `{ ${fields} }`;
+    }
     case 'function':
       return '<function>';
     case 'native-function':
