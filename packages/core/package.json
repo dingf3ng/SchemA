@@ -9,7 +9,7 @@
   },
   "scripts": {
     "antlr": "antlr4ts -visitor src/SchemA.g4 -o src/generated",
-    "prebuild": "npm run antlr",
+    "prebuild": "pnpm run antlr",
     "build": "tsc",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -26,10 +26,10 @@
   "type": "commonjs",
   "devDependencies": {
     "@types/node": "^24.10.2",
+    "antlr4ts-cli": "^0.5.0-alpha.4",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "antlr4ts": "^0.5.0-alpha.4",
-    "antlr4ts-cli": "^0.5.0-alpha.4"
+    "antlr4ts": "^0.5.0-alpha.4"
   }
 }
