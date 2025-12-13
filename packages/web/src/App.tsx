@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import './App.css'
-import { Parser, Interpreter } from '@schema/core'
+import { AntlrParser, Interpreter } from '@schema/core'
 
 function App() {
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
 
   const handleRun = () => {
-    const parser = new Parser()
+    const parser = new AntlrParser()
     const interpreter = new Interpreter()
     const parsed = parser.parse(input)
-    const evaluated = interpreter.evaluate(input)
+    const evaluated = interpreter.evaluate(parsed).join('\n')
     setOutput(`${parsed}\n${evaluated}`)
   }
 

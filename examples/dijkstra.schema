@@ -4,7 +4,7 @@ al dijkstra(graph, start) {
   let dist = Map(),
       visited = Set(),
       pq = MinHeapMap(),
-      n = graph.getVertices().length()
+      n = graph.size()
   
   for i in ..n {
     dist.set(i, Inf)
@@ -23,14 +23,10 @@ al dijkstra(graph, start) {
     for adj in adjs {
       let neighbor = adj["to"],
           weight = adj["weight"]
-
-      if !visited.has(neighbor) {
-        let newDist = dist.get(current) + weight
-
-        if newDist < dist.get(neighbor) {
-          dist.set(neighbor, newDist)
-          pq.push(neighbor, newDist)
-        }
+      let newDist = dist.get(current) + weight
+      if newDist < dist.get(neighbor) {
+        dist.set(neighbor, newDist)
+        pq.push(neighbor, newDist)
       }
     }
   }
@@ -68,5 +64,5 @@ print("Running Dijkstra from node 0:")
 let distances = dijkstra(g, 0)
 
 for i in ..g.getVertices().length() {
-  print("Distance to node ", i, ": ", distances.get(i))
+  print("Distance to node", i, ":", distances.get(i))
 }
