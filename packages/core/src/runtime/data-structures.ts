@@ -457,6 +457,27 @@ export class Graph<T> {
     return edge?.weight;
   }
 
+  isDirected(): boolean {
+    return this.directed;
+  }
+
+  hasEdge(from: T, to: T): boolean {
+    const neighbors = this.adjacencyList.get(from);
+    if (!neighbors) return false;
+
+    return neighbors.some((e) => e.to === to);
+  }
+
+  getEdges(): Array<{ from: T; to: T; weight: number }> {
+    const edges: Array<{ from: T; to: T; weight: number }> = [];
+    for (const [from, neighbors] of this.adjacencyList.entries()) {
+      for (const edge of neighbors) {
+        edges.push({ from, to: edge.to, weight: edge.weight });
+      }
+    }
+    return edges;
+  }
+
   toString(): string {
     let result = 'Graph:\n';
     for (const [vertex, edges] of this.adjacencyList.entries()) {

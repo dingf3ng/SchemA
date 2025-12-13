@@ -820,8 +820,72 @@ export class Interpreter {
               },
             };
           }
+          if (propertyName === 'hasVertex') {
+            return {
+              type: 'native-function',
+              fn: (vertex: RuntimeValue) => {
+                const v = this.runtimeValueToKey(vertex);
+                return { type: 'boolean', value: object.value.hasVertex(v) };
+              },
+            };
+          }
+          if (propertyName === 'getVertices') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const vertices = object.value.getVertices();
+                const arr = new SchemaArray<RuntimeValue>();
+                vertices.forEach((v) => {
+                  arr.push(this.runtimeValueToKey(v));
+                });
+                return { type: 'array', value: arr };
+              },
+            };
+          }
+          if (propertyName === 'isDirected') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                return { type: 'boolean', value: object.value.isDirected() };
+              },
+            };
+          }
+          if (propertyName === 'size') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                return { type: 'int', value: object.value.getVertices().length };
+              },
+            };
+          }
+          if (propertyName === 'haveEdge') {
+            return {
+              type: 'native-function',
+              fn: (from: RuntimeValue, to: RuntimeValue) => {
+                const f = this.runtimeValueToKey(from);
+                const t = this.runtimeValueToKey(to);
+                return { type: 'boolean', value: object.value.hasEdge(f, t) };
+              },
+            };
+          }
+          if (propertyName === 'getEdges') {
+            return {
+              type: 'native-function',
+              fn: () => {
+                const edges = object.value.getEdges();
+                const arr = new SchemaArray<RuntimeValue>();
+                edges.forEach((edge) => {
+                  const obj = new SchemaMap<any, RuntimeValue>();
+                  obj.set('from', { type: 'int', value: edge.from as number });
+                  obj.set('to', { type: 'int', value: edge.to as number });
+                  obj.set('weight', { type: 'int', value: edge.weight });
+                  arr.push({ type: 'map', value: obj });
+                });
+                return { type: 'array', value: arr };
+              },
+            };
+          }
         }
-
         throw new Error(`Property ${propertyName} does not exist`);
       }
 

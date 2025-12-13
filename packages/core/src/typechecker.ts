@@ -658,7 +658,63 @@ export class TypeChecker {
             return {
               kind: 'function',
               parameters: [objectType.nodeType],
-              returnType: { kind: 'array', elementType: { kind: 'any' } },
+              returnType: {
+                kind: 'array',
+                elementType: {
+                  kind: 'map',
+                  keyType: { kind: 'string' },
+                  valueType: { kind: 'any' }, // 'to' field has type nodeType, 'weight' field has type int
+                },
+              },
+            };
+          }
+          if (expr.property.name === 'hasVertex') {
+            return {
+              kind: 'function',
+              parameters: [objectType.nodeType],
+              returnType: { kind: 'boolean' },
+            };
+          }
+          if (expr.property.name === 'hasEdge') {
+            return {
+              kind: 'function',
+              parameters: [objectType.nodeType, objectType.nodeType],
+              returnType: { kind: 'boolean' },
+            };
+          }
+          if (expr.property.name === 'size') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: { kind: 'int' },
+            };
+          }
+          if (expr.property.name === 'isDirected') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: { kind: 'boolean' },
+            };
+          }
+          if (expr.property.name === 'getEdges') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: {
+                kind: 'array',
+                elementType: {
+                  kind: 'map',
+                  keyType: { kind: 'string' },
+                  valueType: { kind: 'any' }, // 'from' and 'to' fields have type nodeType, 'weight' field has type int
+                },
+              },
+            };
+          }
+          if (expr.property.name === 'getVertices') {
+            return {
+              kind: 'function',
+              parameters: [],
+              returnType: { kind: 'array', elementType: objectType.nodeType },
             };
           }
         }
