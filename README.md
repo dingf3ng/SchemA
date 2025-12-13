@@ -56,7 +56,7 @@ g.addVertex(1)
 g.addEdge(0, 1, 5)  // edge with weight 5
 
 // Functions
-fn dijkstra(graph, start, n) {
+al dijkstra(graph, start, n) {
   let dist = Map()
   let visited = Set()
   // ... algorithm implementation
@@ -188,7 +188,7 @@ let arr = [1, 2, 3]     // inferred as Array<number>
 You can also add explicit type annotations:
 
 ```schema
-fn add(x: number, y: number) -> number {
+al add(x: number, y: number) -> number {
   return x + y
 }
 ```

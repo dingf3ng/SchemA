@@ -1,6 +1,6 @@
 print("Hello SchemA")
 
-fn add(a, b) {
+al add(a, b) {
   return a + b
 }
 

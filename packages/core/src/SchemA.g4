@@ -18,7 +18,7 @@ statement
     ;
 
 functionDeclaration
-    : 'fn' IDENTIFIER '(' parameterList? ')' ('->' typeAnnotation)? block
+    : 'al' IDENTIFIER '(' parameterList? ')' ('->' typeAnnotation)? block
     ;
 
 parameterList

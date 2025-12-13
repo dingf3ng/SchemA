@@ -1,6 +1,6 @@
 // Bellman-Ford algorithm for shortest paths (handles negative weights)
 
-fn bellmanFord(edges, n, start) {
+al bellmanFord(edges, n, start) {
   let dist = Map()
 
   // Initialize distances

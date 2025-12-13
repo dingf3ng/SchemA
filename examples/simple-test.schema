@@ -3,11 +3,11 @@
 print("=== SchemA Language Test ===")
 
 // Functions
-fn add(a, b) {
+al add(a, b) {
   return a + b
 }
 
-fn factorial(n) {
+al factorial(n) {
   if n <= 1 {
     return 1
   }

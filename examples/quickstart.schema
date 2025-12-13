@@ -10,7 +10,7 @@ let message = "Hello from SchemA!"
 print(message)
 
 // Functions
-fn fibonacci(n) {
+al fibonacci(n) {
   if n <= 1 {
     return n
   }
@@ -25,7 +25,7 @@ while i < 10 {
 }
 
 // Binary Search
-fn binarySearch(arr, target) {
+al binarySearch(arr, target) {
   let left = -1, right = arr.length()
 
   while left + 1 < right {

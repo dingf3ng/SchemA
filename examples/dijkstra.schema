@@ -1,6 +1,6 @@
 // Dijkstra's shortest path algorithm
 
-fn dijkstra(graph, start) {
+al dijkstra(graph, start) {
   let dist = Map(),
       visited = Set(),
       pq = MinHeapMap(),
