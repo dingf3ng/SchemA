@@ -136,6 +136,7 @@ multiplication
 
 unary
     : ('-' | '!') unary     # UnaryOp
+    | 'typeof' unary        # TypeOfExpr
     | ('..' | '...') shift  # PrefixRange
     | postfix               # PostfixExpr
     ;
@@ -159,6 +160,7 @@ primary
     | STRING                     # StringLiteral
     | 'true'                     # TrueLiteral
     | 'false'                    # FalseLiteral
+    | 'assert' '(' expression ',' expression ')'  # AssertExpr
     | POLY_TYPE_ID ('<' typeAnnotation (',' typeAnnotation)* '>')?  # PolyTypeConstructor
     | IDENTIFIER                 # Identifier
     | arrayLiteral               # ArrayLiteralExpr

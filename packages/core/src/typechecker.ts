@@ -272,6 +272,21 @@ export class TypeChecker {
 
   private inferType(expr: Expression): Type {
     switch (expr.type) {
+      case 'TypeOfExpression': {
+        // typeof returns a string representing the type
+        this.inferType(expr.operand);
+        return { kind: 'string' };
+      }
+
+      case 'AssertExpression': {
+        // Check that condition is boolean
+        this.checkExpression(expr.condition, { kind: 'boolean' });
+        // Check that message is a string
+        this.checkExpression(expr.message, { kind: 'string' });
+        // assert returns void
+        return { kind: 'void' };
+      }
+
       case 'IntegerLiteral':
         return { kind: 'int' };
 
@@ -288,8 +303,18 @@ export class TypeChecker {
         if (expr.elements.length === 0) {
           return { kind: 'array', elementType: { kind: 'any' } };
         }
-        const elementType = this.inferType(expr.elements[0]);
-        return { kind: 'array', elementType };
+        const elementTypes = expr.elements.map((e) => this.inferType(e));
+        const firstType = elementTypes[0];
+        const allSame = elementTypes.every((t) => this.typesEqual(t, firstType) && this.typesEqual(firstType, t));
+
+        if (allSame) {
+          return { kind: 'array', elementType: firstType };
+        }
+
+        return {
+          kind: 'array',
+          elementType: { kind: 'union', types: elementTypes },
+        };
 
       case 'Identifier': {
         // Underscore cannot be used as a value

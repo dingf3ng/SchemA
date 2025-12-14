@@ -19,7 +19,7 @@ do fibonacci(n) {
 
 print("\nFibonacci sequence:")
 let i = 0
-while i < 10 {
+until i == 10 {
   print(fibonacci(i))
   i = i + 1
 }
@@ -28,7 +28,7 @@ while i < 10 {
 do binarySearch(arr, target) {
   let left = -1, right = arr.length()
 
-  while left + 1 < right {
+  until left + 1 == right {
     let mid = (left + right) / 2
     let midVal = arr[mid]
     if midVal == target {

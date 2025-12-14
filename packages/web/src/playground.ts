@@ -12,17 +12,98 @@ declare global {
 }
 
 const examples = {
-  'Hello World': `print("Hello SchemA")
+  'Hello World': `
+// SchemA Quickstart Example
+// A simple program demonstrating the language basics
 
-do add(a, b) {
-  return a + b
+print("=== Welcome to SchemA ===")
+print("A DSL for Data Structures and Algorithms")
+
+// Variables
+let x = 42
+let message = "Hello from SchemA!"
+print(message)
+
+// Functions
+do fibonacci(n) {
+  if n <= 1 {
+    return n
+  }
+  return fibonacci(n - 1) + fibonacci(n - 2)
 }
 
-let result = add(3, 5)
-print(result)
+print("\nFibonacci sequence:")
+let i = 0
+until i == 10 {
+  print(fibonacci(i))
+  i = i + 1
+}
 
-let arr = [1, 2, 3]
-print(arr)`,
+// Binary Search
+do binarySearch(arr, target) {
+  let left = -1, right = arr.length()
+
+  until left + 1 == right {
+    let mid = (left + right) / 2
+    let midVal = arr[mid]
+    if midVal == target {
+      return mid
+    } else if midVal < target {
+      left = mid
+    } else {
+      right = mid
+    }
+  }
+  return -1
+}
+
+print("\n=== Binary Search ===")
+let sortedArr = [1, 3, 5, 7, 9, 11, 13, 15]
+print("Array:")
+print(sortedArr)
+print("Searching for 7...")
+let index = binarySearch(sortedArr, 7)
+print("Found at index:")
+print(index)
+
+// Priority Queue (MinHeap) example
+print("\n=== Priority Queue (MinHeap) ===")
+let pq = MinHeap()
+pq.push(10)
+pq.push(5)
+pq.push(20)
+pq.push(1)
+pq.push(15)
+
+print("Processing tasks by priority:")
+while pq.size() > 0 {
+  print(pq.pop())
+}
+
+print("\n=== Set Operations ===")
+let uniqueNumbers = Set()
+let numbers = [1, 2, 3, 2, 1, 4, 3, 5]
+for num in numbers {
+  uniqueNumbers.add(num)
+}
+print("Original array:")
+print(numbers)
+print("Unique count:")
+print(uniqueNumbers.size())
+
+print("\n=== Map (Dictionary) ===")
+let grades = Map()
+grades.set("Alice", 95)
+grades.set("Bob", 87)
+grades.set("Charlie", 92)
+
+print("Alice's grade:")
+print(grades.get("Alice"))
+print("Total students:")
+print(grades.size())
+
+print("\nSchemA language demo complete!")
+`,
 
   'MinHeap & MaxHeap': `// Simple heap example
 
@@ -58,7 +139,7 @@ while maxHeap.size() > 0 {
 }`,
 
   'Data Structures': `// Data structures demo
-let myMap = {}
+let myMap = Map()
 myMap["name"] = "Alice"
 myMap["age"] = 30
 myMap["city"] = "New York"
@@ -79,33 +160,155 @@ print(numbers[4])
 print("\\nArray modification:")
 numbers[2] = 99
 print(numbers)`,
+'Dijkstra\'s Algorithm':`
+// Dijkstra's shortest path algorithm
 
-  'Fibonacci': `do fibonacci(n) {
-  if n <= 1 {
-    return n
+do dijkstra(graph, start) -> Map<int, int> {
+  let dist = Map(),
+      visited = Set(),
+      pq = MinHeapMap(),
+      n = graph.size()
+  
+  for i in ..n {
+    dist.set(i, inf)
   }
-  return fibonacci(n - 1) + fibonacci(n - 2)
+  dist.set(start, 0)
+  pq.push(start, 0)
+
+  until pq.size() == 0 {
+    let current = pq.pop()
+    if visited.has(current) {
+      return dist
+    }
+    visited.add(current)
+    let adjs = graph.getNeighbors(current)
+
+    for adj in adjs {
+      let neighbor = adj["to"],
+          weight = adj["weight"]
+      let newDist = dist.get(current) + weight
+      if newDist < dist.get(neighbor) {
+        dist.set(neighbor, newDist)
+        pq.push(neighbor, newDist)
+      }
+    }
+  }
+
+  return dist
 }
 
-print("Fibonacci sequence:")
-let i = 0
-while i < 10 {
-  print(fibonacci(i))
-  i = i + 1
-}`,
+// Create a weighted graph
+let g = Graph(true)
 
-  'Factorial': `do factorial(n) {
-  if n <= 1 {
-    return 1
+// Add vertices
+g.addVertex(0)
+g.addVertex(1)
+g.addVertex(2)
+g.addVertex(3)
+g.addVertex(4)
+g.addVertex(5)
+g.addVertex(6)
+
+// Add edges with weights
+g.addEdge(0, 1, 2)
+g.addEdge(0, 3, 5)
+g.addEdge(0, 5, 3)
+g.addEdge(1, 2, 7)
+g.addEdge(1, 4, 1)
+g.addEdge(1, 5, 4)
+g.addEdge(2, 4, 3)
+g.addEdge(2, 6, 4)
+g.addEdge(3, 4, 1)
+g.addEdge(3, 6, 1)
+g.addEdge(4, 6, 3)
+
+
+print("Running Dijkstra from node 0:")
+let distances = dijkstra(g, 0)
+
+for i in ..g.size() {
+  print("Distance to node", i, ":", distances.get(i))
+}
+`,
+'Bellman-Ford Algorithm':`
+// Bellman-Ford algorithm for shortest paths (handles negative weights)
+
+do bellmanFord(graph, start) {
+  let dist = Map(),
+      edges = graph.getEdges(),
+      n = graph.size()
+  for i in ..n {
+    dist.set(i, inf)
   }
-  return n * factorial(n - 1)
+
+  dist.set(start, 0)
+
+  // Relax edges n-1 times
+  for _  in ..n {
+    for edge in edges {
+      let u = edge["from"],
+          v = edge["to"],
+          w = edge["weight"]
+
+      if dist.get(u) != inf {
+        let newDist = dist.get(u) + w
+        if newDist < dist.get(v) {
+          dist.set(v, newDist)
+        }
+      }
+    }
+  }
+
+  // Check for negative cycles
+  for edge in edges {
+    let u = edge["from"],
+        v = edge["to"],
+        w = edge["weight"]
+    if dist.get(u) != inf {
+      let newDist = dist.get(u) + w
+      if newDist < dist.get(v) {
+        print("Negative cycle detected!")
+        return dist
+      }
+    }
+  }
+
+  return dist
 }
 
-print("Factorial of 5:")
-print(factorial(5))
+// Create a weighted graph
+let g = Graph(true)
 
-print("\\nFactorial of 10:")
-print(factorial(10))`,
+// Add vertices
+g.addVertex(0)
+g.addVertex(1)
+g.addVertex(2)
+g.addVertex(3)
+g.addVertex(4)
+g.addVertex(5)
+g.addVertex(6)
+
+// Add edges with weights
+g.addEdge(0, 1, 2)
+g.addEdge(0, 3, 5)
+g.addEdge(0, 5, 3)
+g.addEdge(1, 2, 7)
+g.addEdge(1, 4, 1)
+g.addEdge(1, 5, 4)
+g.addEdge(2, 4, 3)
+g.addEdge(2, 6, 4)
+g.addEdge(3, 4, 1)
+g.addEdge(3, 6, 1)
+g.addEdge(4, 6, 3)
+
+print("Running Bellman-Ford from node 0:")
+let distances = bellmanFord(g, 0)
+
+for i in ..g.size() {
+  print("Distance to node", i, ":", distances.get(i))
+}
+
+`
 };
 
 const defaultSource = examples['Hello World'];
@@ -202,8 +405,8 @@ function registerSchemaLanguage(monaco: typeof Monaco) {
 
   monaco.languages.setMonarchTokensProvider('schema', {
     keywords: [
-      'let', 'do', 'if', 'else', 'while', 'for', 'return',
-      'print', 'true', 'false', 'null'
+      'let', 'do', 'if', 'else', 'while', 'until', 'for','in', 'return',
+      'print', 'true', 'false', 'null', 'typeof', 'assert'
     ],
     
     typeKeywords: [

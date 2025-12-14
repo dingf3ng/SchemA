@@ -44,6 +44,8 @@ import {
   MemberOpContext,
   IndexOpContext,
   BlockContext,
+  TypeOfExprContext,
+  AssertExprContext,
 } from './generated/src/SchemAParser';
 import {
   Program,
@@ -71,6 +73,8 @@ import {
   StringLiteral,
   BooleanLiteral,
   ArrayLiteral,
+  TypeOfExpression,
+  AssertExpression,
   TypeAnnotation as ASTTypeAnnotation,
   Parameter as ASTParameter,
 } from './types';
@@ -538,6 +542,18 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     };
   }
 
+  visitTypeOfExpr(ctx: TypeOfExprContext): Expression {
+    // typeof followed by a unary expression
+    const operand = this.visit(ctx.unary());
+
+    return {
+      type: 'TypeOfExpression',
+      operand,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
   visitPrefixRange(ctx: any): Expression {
     // Handle prefix range like ..3 or ...5
     const operator = ctx.getChild(0).text;
@@ -656,6 +672,21 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     return {
       type: 'BooleanLiteral',
       value: false,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitAssertExpr(ctx: AssertExprContext): Expression {
+    // assert(condition, message)
+    const expressions = ctx.expression();
+    const condition = this.visit(expressions[0]);
+    const message = this.visit(expressions[1]);
+
+    return {
+      type: 'AssertExpression',
+      condition,
+      message,
       line: ctx.start.line,
       column: ctx.start.charPositionInLine + 1,
     };

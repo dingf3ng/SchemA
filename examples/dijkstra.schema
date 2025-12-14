@@ -63,6 +63,6 @@ g.addEdge(4, 6, 3)
 print("Running Dijkstra from node 0:")
 let distances = dijkstra(g, 0)
 
-for i in ..g.getVertices().length() {
+for i in ..g.size() {
   print("Distance to node", i, ":", distances.get(i))
 }

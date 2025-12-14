@@ -1,7 +1,7 @@
 // Bellman-Ford algorithm for shortest paths (handles negative weights)
 
-do bellmanFord(graph, start) -> Map<int, int> {
-  let dist = Map<int, int>(),
+do bellmanFord(graph, start) {
+  let dist = Map(),
       edges = graph.getEdges(),
       n = graph.size()
   for i in ..n {

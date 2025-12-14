@@ -70,6 +70,8 @@ export type ASTNodeType =
   | 'ArrayLiteral'
   | 'MapLiteral'
   | 'SetLiteral'
+  | 'TypeOfExpression'
+  | 'AssertExpression'
   | 'IfStatement'
   | 'WhileStatement'
   | 'ForStatement'
@@ -206,6 +208,17 @@ export interface SetLiteral extends ASTNode {
   elements: Expression[];
 }
 
+export interface TypeOfExpression extends ASTNode {
+  type: 'TypeOfExpression';
+  operand: Expression;
+}
+
+export interface AssertExpression extends ASTNode {
+  type: 'AssertExpression';
+  condition: Expression;
+  message: Expression;
+}
+
 export interface IfStatement extends ASTNode {
   type: 'IfStatement';
   condition: Expression;
@@ -296,4 +309,6 @@ export type Expression =
   | BooleanLiteral
   | ArrayLiteral
   | MapLiteral
-  | SetLiteral;
+  | SetLiteral
+  | TypeOfExpression
+  | AssertExpression;
