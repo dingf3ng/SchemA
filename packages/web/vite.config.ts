@@ -3,6 +3,7 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: process.env.BASE_URL || '/',
   resolve: {
     alias: {
       '@schema/core': path.resolve(__dirname, '../core/src/index.ts'),

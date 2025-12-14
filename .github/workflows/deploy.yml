@@ -40,7 +40,7 @@ jobs:
 
       - name: Build Web
         # Pass the base path for GitHub Pages (repo name)
-        run: pnpm --filter web build -- --base=/SchemA/
+        run: BASE_URL=/SchemA/ pnpm --filter web build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

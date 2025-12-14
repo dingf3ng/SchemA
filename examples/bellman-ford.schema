@@ -3,7 +3,6 @@
 al bellmanFord(edges, n, start) {
   let dist = Map()
 
-  // Initialize distances
   let i = 0
   while i < n {
     dist.set(i, Inf)
