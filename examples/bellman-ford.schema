@@ -1,108 +1,76 @@
 // Bellman-Ford algorithm for shortest paths (handles negative weights)
 
-al bellmanFord(edges, n, start) {
-  let dist = Map()
-
-  let i = 0
-  while i < n {
-    dist.set(i, Inf)
-    i = i + 1
+do bellmanFord(graph, start) -> Map<int, int> {
+  let dist = Map<int, int>(),
+      edges = graph.getEdges(),
+      n = graph.size()
+  for i in ..n {
+    dist.set(i, inf)
   }
 
   dist.set(start, 0)
 
   // Relax edges n-1 times
-  let iteration = 0
-  while iteration < n - 1 {
-    let j = 0
-    while j < edges.length() {
-      let edge = edges[j]
-      let u = edge["from"]
-      let v = edge["to"]
-      let w = edge["weight"]
+  for _  in ..n {
+    for edge in edges {
+      let u = edge["from"],
+          v = edge["to"],
+          w = edge["weight"]
 
-      if dist.get(u) != Inf {
+      if dist.get(u) != inf {
         let newDist = dist.get(u) + w
         if newDist < dist.get(v) {
           dist.set(v, newDist)
         }
       }
-
-      j = j + 1
     }
-    iteration = iteration + 1
   }
 
   // Check for negative cycles
-  let k = 0
-  while k < edges.length() {
-    let edge = edges[k]
-    let u = edge["from"]
-    let v = edge["to"]
-    let w = edge["weight"]
-
-    if dist.get(u) != Inf {
+  for edge in edges {
+    let u = edge["from"],
+        v = edge["to"],
+        w = edge["weight"]
+    if dist.get(u) != inf {
       let newDist = dist.get(u) + w
       if newDist < dist.get(v) {
         print("Negative cycle detected!")
         return dist
       }
     }
-
-    k = k + 1
   }
 
   return dist
 }
 
-// Create edges as array of maps
-let edges = []
+// Create a weighted graph
+let g = Graph(true)
 
-// Helper to create edge
-let edge1 = Map()
-edge1.set("from", 0)
-edge1.set("to", 1)
-edge1.set("weight", 4)
-edges.push(edge1)
+// Add vertices
+g.addVertex(0)
+g.addVertex(1)
+g.addVertex(2)
+g.addVertex(3)
+g.addVertex(4)
+g.addVertex(5)
+g.addVertex(6)
 
-let edge2 = Map()
-edge2.set("from", 0)
-edge2.set("to", 2)
-edge2.set("weight", 1)
-edges.push(edge2)
-
-let edge3 = Map()
-edge3.set("from", 2)
-edge3.set("to", 1)
-edge3.set("weight", 2)
-edges.push(edge3)
-
-let edge4 = Map()
-edge4.set("from", 1)
-edge4.set("to", 3)
-edge4.set("weight", 1)
-edges.push(edge4)
-
-let edge5 = Map()
-edge5.set("from", 2)
-edge5.set("to", 3)
-edge5.set("weight", 5)
-edges.push(edge5)
-
-let edge6 = Map()
-edge6.set("from", 3)
-edge6.set("to", 4)
-edge6.set("weight", 3)
-edges.push(edge6)
+// Add edges with weights
+g.addEdge(0, 1, 2)
+g.addEdge(0, 3, 5)
+g.addEdge(0, 5, 3)
+g.addEdge(1, 2, 7)
+g.addEdge(1, 4, 1)
+g.addEdge(1, 5, 4)
+g.addEdge(2, 4, 3)
+g.addEdge(2, 6, 4)
+g.addEdge(3, 4, 1)
+g.addEdge(3, 6, 1)
+g.addEdge(4, 6, 3)
 
 print("Running Bellman-Ford from node 0:")
-let distances = bellmanFord(edges, 5, 0)
+let distances = bellmanFord(g, 0)
 
-let idx = 0
-while idx < 5 {
-  print("Distance to node")
-  print(idx)
-  print(":")
-  print(distances.get(idx))
-  idx = idx + 1
+for i in ..g.size() {
+  print("Distance to node", i, ":", distances.get(i))
 }

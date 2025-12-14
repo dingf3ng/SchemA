@@ -1,0 +1,5 @@
+let m = Map<int, float>()
+m.set(1, 0.1)
+m.set(2, inf)
+print(m.get(1))
+print(m.get(2))

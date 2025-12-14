@@ -62,7 +62,7 @@ const examples = {
 
 The Monaco editor provides:
 
-- Syntax highlighting for SchemA keywords (`let`, `al`, `if`, `while`, etc.)
+- Syntax highlighting for SchemA keywords (`let`, `do`, `if`, `while`, etc.)
 - Auto-closing brackets and quotes
 - Comment support (`//` and `/* */`)
 - Type detection for built-in data structures (`MinHeap`, `MaxHeap`)

@@ -1,0 +1,22 @@
+// Test case: explicitly typed Map return
+do createIntMap() -> Map<int, int> {
+  let m = Map()
+  m.set(1, 10)
+  m.set(2, 20)
+  return m
+}
+
+do createStringMap() -> Map<int, string> {
+  let m = Map()
+  m.set(1, "hello")
+  m.set(2, "world")
+  return m
+}
+
+// This should work - returns Map matching declared type
+let intMap = createIntMap()
+print("Int map:", intMap.get(1))
+
+// This should also work
+let strMap = createStringMap()
+print("String map:", strMap.get(1))

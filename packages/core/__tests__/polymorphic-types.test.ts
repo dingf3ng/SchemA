@@ -121,7 +121,6 @@ describe('Polymorphic Types', () => {
         }
       `;
       const output = run(code);
-      console.log(output);
       expect(output.some(line => line.includes('Alice -> Bob'))).toBe(true);
     });
   });

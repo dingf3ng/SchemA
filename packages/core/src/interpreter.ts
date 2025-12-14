@@ -7,6 +7,7 @@ import {
   AssignmentStatement,
   IfStatement,
   WhileStatement,
+  UntilStatement,
   ForStatement,
   ReturnStatement,
   BlockStatement,
@@ -177,7 +178,7 @@ export class Interpreter {
       },
     });
 
-    this.globalEnv.define('Inf', {
+    this.globalEnv.define('inf', {
       type: 'float',
       value: Infinity,
     });
@@ -214,6 +215,9 @@ export class Interpreter {
           break;
         case 'WhileStatement':
           this.evaluateWhileStatement(stmt);
+          break;
+        case 'UntilStatement':
+          this.evaluateUntilStatement(stmt);
           break;
         case 'ForStatement':
           this.evaluateForStatement(stmt);
@@ -344,6 +348,12 @@ export class Interpreter {
     }
   }
 
+  private evaluateUntilStatement(stmt: UntilStatement): void {
+    while (!isTruthy(this.evaluateExpression(stmt.condition))) {
+      this.evaluateStatement(stmt.body);
+    }
+  }
+
   private evaluateForStatement(stmt: ForStatement): void {
     const iterable = this.evaluateExpression(stmt.iterable);
 
@@ -464,6 +474,16 @@ export class Interpreter {
         const value = this.currentEnv.get(expr.name);
         if (value === undefined) {
           throw new Error(`Undefined variable: ${expr.name}`);
+        }
+        return value;
+      }
+
+      case 'PolyTypeConstructor': {
+        // PolyTypeConstructor is treated the same as Identifier at runtime
+        // The type parameters are only used for type checking, not runtime
+        const value = this.currentEnv.get(expr.name);
+        if (value === undefined) {
+          throw new Error(`Undefined polymorphic type constructor: ${expr.name}`);
         }
         return value;
       }

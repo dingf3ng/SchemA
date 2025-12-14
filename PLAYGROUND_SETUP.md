@@ -73,7 +73,7 @@ The playground registers a custom Monaco language for SchemA with:
 monaco.languages.register({ id: 'schema' });
 ```
 
-**Keywords**: `let`, `al`, `if`, `else`, `while`, `for`, `return`, `print`, etc.
+**Keywords**: `let`, `do`, `if`, `else`, `while`, `for`, `return`, `print`, etc.
 
 **Built-in Types**: `MinHeap`, `MaxHeap`
 
@@ -127,7 +127,7 @@ Edit `playground.ts`:
 const examples = {
   'My Example': `print("Hello World")
 let x = 42
-al square(n) {
+do square(n) {
   return n * n
 }
 print(square(x))`,

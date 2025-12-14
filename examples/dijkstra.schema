@@ -1,18 +1,18 @@
 // Dijkstra's shortest path algorithm
 
-al dijkstra(graph, start) {
+do dijkstra(graph, start) -> Map<int, int> {
   let dist = Map(),
       visited = Set(),
       pq = MinHeapMap(),
       n = graph.size()
   
   for i in ..n {
-    dist.set(i, Inf)
+    dist.set(i, inf)
   }
   dist.set(start, 0)
   pq.push(start, 0)
 
-  while pq.size() > 0 {
+  until pq.size() == 0 {
     let current = pq.pop()
     if visited.has(current) {
       return dist

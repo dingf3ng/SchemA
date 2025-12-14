@@ -11,6 +11,7 @@ statement
     | assignmentStatement
     | ifStatement
     | whileStatement
+    | untilStatement
     | forStatement
     | returnStatement
     | blockStatement
@@ -18,7 +19,7 @@ statement
     ;
 
 functionDeclaration
-    : 'al' IDENTIFIER '(' parameterList? ')' ('->' typeAnnotation)? block
+    : 'do' IDENTIFIER '(' parameterList? ')' ('->' typeAnnotation)? block
     ;
 
 parameterList
@@ -30,7 +31,21 @@ parameter
     ;
 
 typeAnnotation
-    : IDENTIFIER ('<' typeAnnotation (',' typeAnnotation)* '>')?
+    : unionType
+    ;
+
+unionType
+    : intersectionType ('|' intersectionType)*
+    ;
+
+intersectionType
+    : primaryType ('&' primaryType)*
+    ;
+
+primaryType
+    : POLY_TYPE_ID ('<' typeAnnotation (',' typeAnnotation)* '>')?
+    | IDENTIFIER
+    | '(' typeAnnotation ')'
     ;
 
 variableDeclaration
@@ -57,6 +72,10 @@ ifStatement
 
 whileStatement
     : 'while' expression statement
+    ;
+
+untilStatement
+    : 'until' expression statement
     ;
 
 forStatement
@@ -140,6 +159,7 @@ primary
     | STRING                     # StringLiteral
     | 'true'                     # TrueLiteral
     | 'false'                    # FalseLiteral
+    | POLY_TYPE_ID ('<' typeAnnotation (',' typeAnnotation)* '>')?  # PolyTypeConstructor
     | IDENTIFIER                 # Identifier
     | arrayLiteral               # ArrayLiteralExpr
     | '(' expression ')'         # ParenExpr
@@ -167,8 +187,12 @@ STRING
     | '\'' (~['\\\r\n] | '\\' .)* '\''
     ;
 
+POLY_TYPE_ID
+    : [A-Z][a-zA-Z0-9_]*
+    ;
+
 IDENTIFIER
-    : [a-zA-Z_][a-zA-Z0-9_]*
+    : [a-z_][a-zA-Z0-9_]*
     | '_'
     ;
 

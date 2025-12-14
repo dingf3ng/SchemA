@@ -14,7 +14,7 @@ declare global {
 const examples = {
   'Hello World': `print("Hello SchemA")
 
-al add(a, b) {
+do add(a, b) {
   return a + b
 }
 
@@ -80,7 +80,7 @@ print("\\nArray modification:")
 numbers[2] = 99
 print(numbers)`,
 
-  'Fibonacci': `al fibonacci(n) {
+  'Fibonacci': `do fibonacci(n) {
   if n <= 1 {
     return n
   }
@@ -94,7 +94,7 @@ while i < 10 {
   i = i + 1
 }`,
 
-  'Factorial': `al factorial(n) {
+  'Factorial': `do factorial(n) {
   if n <= 1 {
     return 1
   }
@@ -202,7 +202,7 @@ function registerSchemaLanguage(monaco: typeof Monaco) {
 
   monaco.languages.setMonarchTokensProvider('schema', {
     keywords: [
-      'let', 'al', 'if', 'else', 'while', 'for', 'return',
+      'let', 'do', 'if', 'else', 'while', 'for', 'return',
       'print', 'true', 'false', 'null'
     ],
     

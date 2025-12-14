@@ -1,5 +1,5 @@
 // Segment Tree for range queries
-al buildSegmentTree(arr, tree, node, start, end) {
+do buildSegmentTree(arr, tree, node, start, end) {
   if start == end {
     tree[node] = arr[start]
     return
@@ -15,7 +15,7 @@ al buildSegmentTree(arr, tree, node, start, end) {
   tree[node] = tree[leftChild] + tree[rightChild]
 }
 
-al queryRange(tree, node, start, end, l, r) {
+do queryRange(tree, node, start, end, l, r) {
   // No overlap
   if r < start {
     return 0

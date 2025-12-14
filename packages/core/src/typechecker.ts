@@ -19,6 +19,7 @@ export type Type =
   | { kind: 'record'; keyType: Type; fields: Map<string, Type> }
   | { kind: 'tuple'; elements: Type[] }
   | { kind: 'union'; types: Type[] }
+  | { kind: 'intersection'; types: Type[] }
   | {
     kind: 'function';
     parameters: Type[];
@@ -32,6 +33,7 @@ export class TypeChecker {
     string,
     { parameters: Type[]; returnType: Type; variadic?: boolean }
   > = new Map();
+  private currentFunction: string | null = null;
 
   constructor() {
     this.initializeBuiltins();
@@ -95,7 +97,7 @@ export class TypeChecker {
       returnType: { kind: 'avltree', elementType: { kind: 'any' } },
     });
 
-    this.typeEnv.set('Inf', { kind: 'float' });
+    this.typeEnv.set('inf', { kind: 'intersection', types: [{ kind: 'int' }, { kind: 'float' }] });
   }
 
   public check(program: Program): void {
@@ -123,6 +125,8 @@ export class TypeChecker {
         });
 
         const savedEnv = new Map(this.typeEnv);
+        const savedFunction = this.currentFunction;
+        this.currentFunction = stmt.name;
 
         for (let i = 0; i < stmt.parameters.length; i++) {
           this.typeEnv.set(stmt.parameters[i].name, paramTypes[i]);
@@ -131,6 +135,7 @@ export class TypeChecker {
         this.checkStatement(stmt.body);
 
         this.typeEnv = savedEnv;
+        this.currentFunction = savedFunction;
         break;
       }
 
@@ -138,10 +143,19 @@ export class TypeChecker {
         for (const declarator of stmt.declarations) {
           let varType: Type;
 
-          if (declarator.initializer) {
+          if (declarator.typeAnnotation) {
+            const annotatedType = this.resolveTypeAnnotation(declarator.typeAnnotation);
+            if (declarator.initializer) {
+              const initializerType = this.inferType(declarator.initializer);
+              if (!this.typesEqual(initializerType, annotatedType)) {
+                throw new Error(
+                  `Type mismatch: expected ${this.typeToString(annotatedType)}, got ${this.typeToString(initializerType)}, at ${declarator.line}, ${declarator.column}`
+                );
+              }
+            }
+            varType = annotatedType;
+          } else if (declarator.initializer) {
             varType = this.inferType(declarator.initializer);
-          } else if (declarator.typeAnnotation) {
-            varType = this.resolveTypeAnnotation(declarator.typeAnnotation);
           } else {
             throw new Error(
               `Variable ${declarator.name} must have either type annotation or initializer, at ${declarator.line}, ${declarator.column}`
@@ -162,6 +176,11 @@ export class TypeChecker {
         break;
 
       case 'WhileStatement':
+        this.checkExpression(stmt.condition, { kind: 'boolean' });
+        this.checkStatement(stmt.body);
+        break;
+
+      case 'UntilStatement':
         this.checkExpression(stmt.condition, { kind: 'boolean' });
         this.checkStatement(stmt.body);
         break;
@@ -200,8 +219,33 @@ export class TypeChecker {
         break;
 
       case 'ReturnStatement':
+        if (!this.currentFunction) {
+          throw new Error(
+            `Return statement outside of function, at ${stmt.line}, ${stmt.column}`
+          );
+        }
+
+        const funcInfo = this.functionEnv.get(this.currentFunction);
+        if (!funcInfo) {
+          throw new Error(
+            `Internal error: function ${this.currentFunction} not found in function environment`
+          );
+        }
+
         if (stmt.value) {
-          this.inferType(stmt.value);
+          const returnType = this.inferType(stmt.value);
+          if (!this.typesEqual(returnType, funcInfo.returnType)) {
+            throw new Error(
+              `Return type mismatch: expected ${this.typeToString(funcInfo.returnType)}, got ${this.typeToString(returnType)}, at ${stmt.line}, ${stmt.column}`
+            );
+          }
+        } else {
+          // Return without a value - should be void
+          if (!this.typesEqual({ kind: 'void' }, funcInfo.returnType)) {
+            throw new Error(
+              `Return type mismatch: expected ${this.typeToString(funcInfo.returnType)}, got void, at ${stmt.line}, ${stmt.column}`
+            );
+          }
         }
         break;
 
@@ -257,6 +301,82 @@ export class TypeChecker {
           throw new Error(`Undefined variable: ${expr.name}, at ${expr.line}, ${expr.column}`);
         }
         return type;
+      }
+
+      case 'PolyTypeConstructor': {
+        // This represents a polymorphic type constructor like Map<int, string>
+        // When used as a value (not called), treat it as the constructor function
+        // The actual type will be determined when it's called
+        const funcInfo = this.functionEnv.get(expr.name);
+        if (!funcInfo) {
+          throw new Error(`Undefined polymorphic type constructor: ${expr.name}, at ${expr.line}, ${expr.column}`);
+        }
+
+        // If type parameters are provided, validate and use them
+        if (expr.typeParameters) {
+          const resolvedParams = expr.typeParameters.map(tp => this.resolveTypeAnnotation(tp));
+
+          // Return a specialized version of the constructor's return type
+          // For now, we'll update the return type based on the type parameters
+          let returnType = funcInfo.returnType;
+
+          if (returnType.kind === 'map' && resolvedParams.length === 2) {
+            returnType = {
+              kind: 'map',
+              keyType: resolvedParams[0],
+              valueType: resolvedParams[1],
+            };
+          } else if (returnType.kind === 'array' && resolvedParams.length === 1) {
+            returnType = {
+              kind: 'array',
+              elementType: resolvedParams[0],
+            };
+          } else if (returnType.kind === 'set' && resolvedParams.length === 1) {
+            returnType = {
+              kind: 'set',
+              elementType: resolvedParams[0],
+            };
+          } else if (returnType.kind === 'heap' && resolvedParams.length === 1) {
+            returnType = {
+              kind: 'heap',
+              elementType: resolvedParams[0],
+            };
+          } else if (returnType.kind === 'heapMap' && resolvedParams.length === 2) {
+            returnType = {
+              kind: 'heapMap',
+              keyType: resolvedParams[0],
+              valueType: resolvedParams[1],
+            };
+          } else if (returnType.kind === 'binarytree' && resolvedParams.length === 1) {
+            returnType = {
+              kind: 'binarytree',
+              elementType: resolvedParams[0],
+            };
+          } else if (returnType.kind === 'avltree' && resolvedParams.length === 1) {
+            returnType = {
+              kind: 'avltree',
+              elementType: resolvedParams[0],
+            };
+          } else if (returnType.kind === 'graph' && resolvedParams.length === 1) {
+            returnType = {
+              kind: 'graph',
+              nodeType: resolvedParams[0],
+            };
+          }
+
+          return {
+            kind: 'function',
+            parameters: funcInfo.parameters,
+            returnType,
+          };
+        }
+
+        // No type parameters provided, return the generic version
+        return {
+          kind: 'function',
+          parameters: funcInfo.parameters,
+          returnType: funcInfo.returnType,
+        };
       }
 
       case 'RangeExpression': {
@@ -374,12 +494,13 @@ export class TypeChecker {
           return { kind: 'boolean' };
         }
 
-        // Equality operators
-        if (
-          ['==', '!='].includes(expr.operator) &&
-          this.typesEqual(leftType, rightType)
-        ) {
-          return { kind: 'boolean' };
+        // Equality operators (allow comparison if types are compatible)
+        if (['==', '!='].includes(expr.operator)) {
+          // Types can be compared if they're equal or one is assignable to the other
+          if (this.typesEqual(leftType, rightType) ||
+              this.typesEqual(rightType, leftType)) {
+            return { kind: 'boolean' };
+          }
         }
 
         // Logical operators
@@ -863,6 +984,19 @@ export class TypeChecker {
   }
 
   private resolveTypeAnnotation(annotation: TypeAnnotation): Type {
+    if (annotation.kind === 'union') {
+      return {
+        kind: 'union',
+        types: annotation.types.map(t => this.resolveTypeAnnotation(t))
+      };
+    }
+    if (annotation.kind === 'intersection') {
+      return {
+        kind: 'intersection',
+        types: annotation.types.map(t => this.resolveTypeAnnotation(t))
+      };
+    }
+
     switch (annotation.name) {
       case 'any':
         return { kind: 'any' };
@@ -986,6 +1120,42 @@ export class TypeChecker {
 
   private typesEqual(t1: Type, t2: Type): boolean {
     if (t1.kind === 'any' || t2.kind === 'any') return true;
+
+    // Handle union types (A | B is assignable to C if A or B is assignable to C)
+    if (t1.kind === 'union' && t2.kind === 'union') {
+      // Both are unions: check if they have the same types (order independent)
+      if (t1.types.length !== t2.types.length) return false;
+      return t1.types.every((type1) =>
+        t2.types.some((type2) => this.typesEqual(type1, type2))
+      );
+    }
+    if (t1.kind === 'union') {
+      // t1 is union, t2 is not: t1 is assignable to t2 if ALL members are assignable to t2
+      return t1.types.every(unionMember => this.typesEqual(unionMember, t2));
+    }
+    if (t2.kind === 'union') {
+      // t2 is union, t1 is not: t1 is assignable to t2 if t1 is assignable to ANY member
+      return t2.types.some(unionMember => this.typesEqual(t1, unionMember));
+    }
+
+    // Handle intersection types (A & B is assignable to C if it's assignable to ALL of A, B)
+    if (t1.kind === 'intersection' && t2.kind === 'intersection') {
+      // Both are intersections: check if they have the same types (order independent)
+      if (t1.types.length !== t2.types.length) return false;
+      return t1.types.every((type1) =>
+        t2.types.some((type2) => this.typesEqual(type1, type2))
+      );
+    }
+    if (t1.kind === 'intersection') {
+      // t1 is intersection, t2 is not: t1 is assignable to t2 if it's assignable to ANY member of t1
+      // This is because intersection is a subtype of all its members
+      return t1.types.some(intersectionMember => this.typesEqual(intersectionMember, t2));
+    }
+    if (t2.kind === 'intersection') {
+      // t2 is intersection, t1 is not: t1 is assignable to t2 if t1 is assignable to ALL members
+      return t2.types.every(intersectionMember => this.typesEqual(t1, intersectionMember));
+    }
+
     if (t1.kind !== t2.kind) return false;
 
     if (t1.kind === 'array' && t2.kind === 'array') {
@@ -1041,14 +1211,6 @@ export class TypeChecker {
       return t1.elements.every((type1, i) => this.typesEqual(type1, t2.elements[i]));
     }
 
-    if (t1.kind === 'union' && t2.kind === 'union') {
-      if (t1.types.length !== t2.types.length) return false;
-      // For simplicity, check if all types in t1 are in t2 (order independent)
-      return t1.types.every((type1) =>
-        t2.types.some((type2) => this.typesEqual(type1, type2))
-      );
-    }
-
     return true;
   }
 
@@ -1094,6 +1256,8 @@ export class TypeChecker {
         return `(${type.elements.map((t) => this.typeToString(t)).join(', ')})`;
       case 'union':
         return type.types.map((t) => this.typeToString(t)).join(' | ');
+      case 'intersection':
+        return type.types.map((t) => this.typeToString(t)).join(' & ');
       case 'function':
         return `(${type.parameters.map((p) => this.typeToString(p)).join(', ')}) -> ${this.typeToString(type.returnType)}`;
     }

@@ -198,6 +198,7 @@ describe('SchemA Examples', () => {
           expect(output).toBeDefined();
           expect(Array.isArray(output)).toBe(true);
         } catch (error) {
+          console.log(`Error running example file ${file}:`, error);
           if (error instanceof RangeError && error.message.includes('Maximum call stack')) {
             // Skip files with recursion issues
             return;

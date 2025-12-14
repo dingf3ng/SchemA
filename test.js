@@ -1,7 +1,7 @@
 const { Lexer, Parser } = require('./packages/core/dist/index.js');
 
 const code = `
-al add(a, b) {
+do add(a, b) {
   return a + b
 }
 `;

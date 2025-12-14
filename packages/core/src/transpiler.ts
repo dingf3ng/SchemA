@@ -8,6 +8,7 @@ import {
   AssignmentStatementContext,
   IfStatementContext,
   WhileStatementContext,
+  UntilStatementContext,
   ForStatementContext,
   ReturnStatementContext,
   BlockStatementContext,
@@ -29,11 +30,15 @@ import {
   TrueLiteralContext,
   FalseLiteralContext,
   IdentifierContext,
+  PolyTypeConstructorContext,
   ArrayLiteralExprContext,
   ParenExprContext,
   ArrayLiteralContext,
   ParameterContext,
   TypeAnnotationContext,
+  UnionTypeContext,
+  IntersectionTypeContext,
+  PrimaryTypeContext,
   PostfixOpContext,
   CallOpContext,
   MemberOpContext,
@@ -49,6 +54,7 @@ import {
   AssignmentStatement,
   IfStatement,
   WhileStatement,
+  UntilStatement,
   ForStatement,
   ReturnStatement,
   BlockStatement,
@@ -59,6 +65,7 @@ import {
   MemberExpression,
   IndexExpression,
   Identifier,
+  PolyTypeConstructor,
   IntegerLiteral,
   FloatLiteral,
   StringLiteral,
@@ -98,6 +105,9 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     }
     if (ctx.whileStatement()) {
       return this.visit(ctx.whileStatement()!);
+    }
+    if (ctx.untilStatement()) {
+      return this.visit(ctx.untilStatement()!);
     }
     if (ctx.forStatement()) {
       return this.visit(ctx.forStatement()!);
@@ -140,13 +150,50 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
   }
 
   visitTypeAnnotation(ctx: TypeAnnotationContext): ASTTypeAnnotation {
-    const name = ctx.IDENTIFIER().text;
+    return this.visit(ctx.unionType());
+  }
+
+  visitUnionType(ctx: UnionTypeContext): ASTTypeAnnotation {
+    const types = ctx.intersectionType().map(t => this.visit(t));
+    if (types.length === 1) {
+      return types[0];
+    }
+    return {
+      type: 'TypeAnnotation',
+      kind: 'union',
+      types,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitIntersectionType(ctx: IntersectionTypeContext): ASTTypeAnnotation {
+    const types = ctx.primaryType().map(t => this.visit(t));
+    if (types.length === 1) {
+      return types[0];
+    }
+    return {
+      type: 'TypeAnnotation',
+      kind: 'intersection',
+      types,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitPrimaryType(ctx: PrimaryTypeContext): ASTTypeAnnotation {
+    if (ctx.childCount === 3 && ctx.getChild(0).text === '(') {
+       return this.visit(ctx.typeAnnotation(0));
+    }
+
+    const name = ctx.POLY_TYPE_ID() ? ctx.POLY_TYPE_ID()!.text : ctx.IDENTIFIER()!.text;
     const typeParameters = ctx.typeAnnotation().length > 0
       ? ctx.typeAnnotation().map(t => this.visit(t))
       : undefined;
 
     return {
       type: 'TypeAnnotation',
+      kind: 'simple',
       name,
       typeParameters,
       line: ctx.start.line,
@@ -214,6 +261,19 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
 
     return {
       type: 'WhileStatement',
+      condition,
+      body,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitUntilStatement(ctx: UntilStatementContext): UntilStatement {
+    const condition = this.visit(ctx.expression());
+    const body = this.visit(ctx.statement());
+
+    return {
+      type: 'UntilStatement',
       condition,
       body,
       line: ctx.start.line,
@@ -605,6 +665,17 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     return {
       type: 'Identifier',
       name: ctx.IDENTIFIER().text,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitPolyTypeConstructor(ctx: PolyTypeConstructorContext): PolyTypeConstructor {
+    const typeParams = ctx.typeAnnotation();
+    return {
+      type: 'PolyTypeConstructor',
+      name: ctx.POLY_TYPE_ID().text,
+      typeParameters: typeParams ? typeParams.map(t => this.visit(t)) : undefined,
       line: ctx.start.line,
       column: ctx.start.charPositionInLine + 1,
     };

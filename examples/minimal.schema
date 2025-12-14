@@ -1,6 +1,6 @@
 print("Hello SchemA")
 
-al add(a, b) {
+do add(a, b) {
   return a + b
 }
 

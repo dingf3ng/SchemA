@@ -7,6 +7,7 @@ export type TokenType =
   | 'IF'
   | 'ELSE'
   | 'WHILE'
+  | 'UNTIL'
   | 'FOR'
   | 'IN'
   | 'RETURN'
@@ -61,6 +62,7 @@ export type ASTNodeType =
   | 'IndexExpression'
   | 'RangeExpression'
   | 'Identifier'
+  | 'PolyTypeConstructor'
   | 'IntegerLiteral'
   | 'FloatLiteral'
   | 'StringLiteral'
@@ -71,6 +73,7 @@ export type ASTNodeType =
   | 'IfStatement'
   | 'WhileStatement'
   | 'ForStatement'
+  | 'UntilStatement'
   | 'ReturnStatement'
   | 'BlockStatement'
   | 'ExpressionStatement'
@@ -162,6 +165,12 @@ export interface Identifier extends ASTNode {
   name: string;
 }
 
+export interface PolyTypeConstructor extends ASTNode {
+  type: 'PolyTypeConstructor';
+  name: string;
+  typeParameters?: TypeAnnotation[];
+}
+
 export interface IntegerLiteral extends ASTNode {
   type: 'IntegerLiteral';
   value: number;
@@ -210,6 +219,12 @@ export interface WhileStatement extends ASTNode {
   body: Statement;
 }
 
+export interface UntilStatement extends ASTNode {
+  type: 'UntilStatement';
+  condition: Expression;
+  body: Statement;
+}
+
 export interface ForStatement extends ASTNode {
   type: 'ForStatement';
   variable: string;
@@ -232,10 +247,26 @@ export interface ExpressionStatement extends ASTNode {
   expression: Expression;
 }
 
-export interface TypeAnnotation extends ASTNode {
+export type TypeAnnotation = SimpleTypeAnnotation | UnionTypeAnnotation | IntersectionTypeAnnotation;
+
+export interface BaseTypeAnnotation extends ASTNode {
   type: 'TypeAnnotation';
+}
+
+export interface SimpleTypeAnnotation extends BaseTypeAnnotation {
+  kind: 'simple';
   name: string;
   typeParameters?: TypeAnnotation[];
+}
+
+export interface UnionTypeAnnotation extends BaseTypeAnnotation {
+  kind: 'union';
+  types: TypeAnnotation[];
+}
+
+export interface IntersectionTypeAnnotation extends BaseTypeAnnotation {
+  kind: 'intersection';
+  types: TypeAnnotation[];
 }
 
 export type Statement =
@@ -244,6 +275,7 @@ export type Statement =
   | AssignmentStatement
   | IfStatement
   | WhileStatement
+  | UntilStatement
   | ForStatement
   | ReturnStatement
   | BlockStatement
@@ -257,6 +289,7 @@ export type Expression =
   | IndexExpression
   | RangeExpression
   | Identifier
+  | PolyTypeConstructor
   | IntegerLiteral
   | FloatLiteral
   | StringLiteral
