@@ -32,7 +32,7 @@ do fibonacci(n) {
   return fibonacci(n - 1) + fibonacci(n - 2)
 }
 
-print("\nFibonacci sequence:")
+print("\\nFibonacci sequence:")
 let i = 0
 until i == 10 {
   print(fibonacci(i))
@@ -57,7 +57,7 @@ do binarySearch(arr, target) {
   return -1
 }
 
-print("\n=== Binary Search ===")
+print("\\n=== Binary Search ===")
 let sortedArr = [1, 3, 5, 7, 9, 11, 13, 15]
 print("Array:")
 print(sortedArr)
@@ -67,7 +67,7 @@ print("Found at index:")
 print(index)
 
 // Priority Queue (MinHeap) example
-print("\n=== Priority Queue (MinHeap) ===")
+print("\\n=== Priority Queue (MinHeap) ===")
 let pq = MinHeap()
 pq.push(10)
 pq.push(5)
@@ -80,7 +80,7 @@ while pq.size() > 0 {
   print(pq.pop())
 }
 
-print("\n=== Set Operations ===")
+print("\\n=== Set Operations ===")
 let uniqueNumbers = Set()
 let numbers = [1, 2, 3, 2, 1, 4, 3, 5]
 for num in numbers {
@@ -91,7 +91,7 @@ print(numbers)
 print("Unique count:")
 print(uniqueNumbers.size())
 
-print("\n=== Map (Dictionary) ===")
+print("\\n=== Map (Dictionary) ===")
 let grades = Map()
 grades.set("Alice", 95)
 grades.set("Bob", 87)
@@ -102,7 +102,7 @@ print(grades.get("Alice"))
 print("Total students:")
 print(grades.size())
 
-print("\nSchemA language demo complete!")
+print("\\nSchemA language demo complete!")
 `,
 
   'MinHeap & MaxHeap': `// Simple heap example
