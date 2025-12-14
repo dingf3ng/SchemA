@@ -1083,6 +1083,20 @@ export class Interpreter {
         }
       }
 
+      case 'TypeOfExpression': {
+        const operand = this.evaluateExpression(expr.operand);
+        return { type: 'string', value: operand.type };
+      }
+
+      case 'AssertExpression': {
+        const condition = this.evaluateExpression(expr.condition);
+        if (!isTruthy(condition)) {
+          const message = this.evaluateExpression(expr.message);
+          throw new Error(`Assertion failed: ${RuntimeTypeBinderToString(message)}`);
+        }
+        return { type: 'boolean', value: true };
+      }
+
       default:
         throw new Error(`Unknown expression type: ${(expr as any).type}`);
     }

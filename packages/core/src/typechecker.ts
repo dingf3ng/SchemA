@@ -1077,11 +1077,11 @@ export class TypeChecker {
 
       case 'MinHeap':
       case 'MaxHeap':
-        if (
-          !annotation.typeParameters ||
-          annotation.typeParameters.length !== 1
-        ) {
+        if (!annotation.typeParameters || annotation.typeParameters.length === 0) {
           return { kind: 'heap', elementType: { kind: 'int' } };
+        }
+        if (annotation.typeParameters.length !== 1) {
+          throw new Error(`${annotation.name} type requires exactly one type parameter, at ${annotation.line}, ${annotation.column}`);
         }
         return {
           kind: 'heap',
@@ -1090,11 +1090,11 @@ export class TypeChecker {
 
       case 'MinHeapMap':
       case 'MaxHeapMap':
-        if (
-          !annotation.typeParameters ||
-          annotation.typeParameters.length !== 2
-        ) {
+        if (!annotation.typeParameters || annotation.typeParameters.length === 0) {
           return { kind: 'heapMap', keyType: { kind: 'any' }, valueType: { kind: 'any' } };
+        }
+        if (annotation.typeParameters.length !== 2) {
+          throw new Error(`${annotation.name} type requires exactly two type parameters, at ${annotation.line}, ${annotation.column}`);
         }
         return {
           kind: 'heapMap',
@@ -1103,11 +1103,11 @@ export class TypeChecker {
         };
 
       case 'Graph':
-        if (
-          !annotation.typeParameters ||
-          annotation.typeParameters.length !== 1
-        ) {
+        if (!annotation.typeParameters || annotation.typeParameters.length === 0) {
           return { kind: 'graph', nodeType: { kind: 'int' } };
+        }
+        if (annotation.typeParameters.length !== 1) {
+          throw new Error(`${annotation.name} type requires exactly one type parameter, at ${annotation.line}, ${annotation.column}`);
         }
         return {
           kind: 'graph',
@@ -1115,11 +1115,11 @@ export class TypeChecker {
         };
 
       case 'BinaryTree':
-        if (
-          !annotation.typeParameters ||
-          annotation.typeParameters.length !== 1
-        ) {
+        if (!annotation.typeParameters || annotation.typeParameters.length === 0) {
           return { kind: 'binarytree', elementType: { kind: 'any' } };
+        }
+        if (annotation.typeParameters.length !== 1) {
+          throw new Error(`${annotation.name} type requires exactly one type parameter, at ${annotation.line}, ${annotation.column}`);
         }
         return {
           kind: 'binarytree',
@@ -1127,11 +1127,11 @@ export class TypeChecker {
         };
 
       case 'AVLTree':
-        if (
-          !annotation.typeParameters ||
-          annotation.typeParameters.length !== 1
-        ) {
+        if (!annotation.typeParameters || annotation.typeParameters.length === 0) {
           return { kind: 'avltree', elementType: { kind: 'any' } };
+        }
+        if (annotation.typeParameters.length !== 1) {
+          throw new Error(`${annotation.name} type requires exactly one type parameter, at ${annotation.line}, ${annotation.column}`);
         }
         return {
           kind: 'avltree',
