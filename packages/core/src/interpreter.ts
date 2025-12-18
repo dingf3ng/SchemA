@@ -16,6 +16,7 @@ import {
   Parameter,
 } from './types';
 import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime/values';
+import { Environment } from './runtime/environment';
 import { Type } from './typechecker';
 import {
   SchemaArray,
@@ -33,67 +34,6 @@ import {
 
 class ReturnException {
   constructor(public value: RuntimeTypedBinder) { }
-}
-
-class Environment {
-  private bindings: Map<string, RuntimeTypedBinder> = new Map();
-  private parent: Environment | null = null;
-
-  constructor(parent: Environment | null = null) {
-    this.parent = parent;
-  }
-
-  define(name: string, value: RuntimeTypedBinder): void {
-    this.bindings.set(name, value);
-  }
-
-  get(name: string): RuntimeTypedBinder {
-    if (this.bindings.has(name)) {
-      return this.bindings.get(name)!;
-    }
-    if (this.parent) {
-      return this.parent.get(name);
-    }
-    throw new Error(`Undefined variable: ${name}`);
-  }
-
-  set(name: string, value: RuntimeTypedBinder): void {
-    if (this.bindings.has(name)) {
-      this.bindings.set(name, value);
-      return;
-    }
-    if (this.parent) {
-      this.parent.set(name, value);
-      return;
-    }
-    throw new Error(`Cannot assign to undeclared variable: ${name}`);
-  }
-
-  has(name: string): boolean {
-    if (this.bindings.has(name)) {
-      return true;
-    }
-    if (this.parent) {
-      return this.parent.has(name);
-    }
-    return false;
-  }
-
-  // For compatibility with existing code that uses Map methods
-  entries(): IterableIterator<[string, RuntimeTypedBinder]> {
-    const allEntries = new Map<string, RuntimeTypedBinder>();
-    this.collectAllBindings(allEntries);
-    return allEntries.entries();
-  }
-
-  private collectAllBindings(result: Map<string, RuntimeTypedBinder>): void {
-    if (this.parent) {
-      this.parent.collectAllBindings(result);
-    }
-    for (const [key, value] of this.bindings.entries()) {
-      result.set(key, value);
-    }
-  }
 }
 
 export class Interpreter {
@@ -294,9 +234,6 @@ export class Interpreter {
     };
 
     this.currentEnv.define(stmt.name, funcValue);
-
-    // Add function to its own closure for recursion
-    funcValue.value.closure.set(stmt.name, funcValue);
   }
 
   private evaluateVariableDeclaration(stmt: VariableDeclaration): void {
@@ -321,12 +258,8 @@ export class Interpreter {
     }
   }
 
-  private captureEnvironment(): Map<string, RuntimeTypedBinder> {
-    const captured = new Map<string, RuntimeTypedBinder>();
-    for (const [key, value] of this.currentEnv.entries()) {
-      captured.set(key, value);
-    }
-    return captured;
+  private captureEnvironment(): Environment {
+    return this.currentEnv;
   }
 
   /**
@@ -1534,8 +1467,23 @@ export class Interpreter {
   }
 
   private evaluateBinaryExpression(expr: any): RuntimeTypedBinder {
-    const left = this.evaluateExpression(expr.left);
-    const right = this.evaluateExpression(expr.right);
+    let left: RuntimeTypedBinder;
+    if (expr.left.type === 'IntegerLiteral') {
+      left = { value: expr.left.value, type: { static: { kind: 'int' }, refinements: [] } };
+    } else if (expr.left.type === 'Identifier') {
+      left = this.currentEnv.get(expr.left.name);
+    } else {
+      left = this.evaluateExpression(expr.left);
+    }
+
+    let right: RuntimeTypedBinder;
+    if (expr.right.type === 'IntegerLiteral') {
+      right = { value: expr.right.value, type: { static: { kind: 'int' }, refinements: [] } };
+    } else if (expr.right.type === 'Identifier') {
+      right = this.currentEnv.get(expr.right.name);
+    } else {
+      right = this.evaluateExpression(expr.right);
+    }
 
     // Arithmetic: +, -, *, % (work on int and float)
     if (expr.operator === '+') {
@@ -1684,7 +1632,7 @@ export class Interpreter {
 
     // Check if it's a function with the new runtime type system
     if (callee.type.static.kind === 'function') {
-      const calleeValue = callee.value as { fn: (...args: RuntimeTypedBinder[]) => RuntimeTypedBinder } | { parameters: Parameter[]; body: BlockStatement; closure: Map<string, RuntimeTypedBinder> };
+      const calleeValue = callee.value as { fn: (...args: RuntimeTypedBinder[]) => RuntimeTypedBinder } | { parameters: Parameter[]; body: BlockStatement; closure: any };
 
       // Native function (has 'fn' property directly)
       if ('fn' in calleeValue) {
@@ -1701,11 +1649,8 @@ export class Interpreter {
         );
 
         const savedEnv = this.currentEnv;
-        // Create a new environment from the closure
-        const closureEnv = new Environment();
-        for (const [key, value] of calleeValue.closure.entries()) {
-          closureEnv.define(key, value);
-        }
+        // Create a new environment from the closure (which is an Environment object)
+        const closureEnv = new Environment(calleeValue.closure as Environment);
         this.currentEnv = closureEnv;
 
         for (let i = 0; i < calleeValue.parameters.length; i++) {
@@ -1713,7 +1658,10 @@ export class Interpreter {
         }
 
         try {
-          this.evaluateStatement(calleeValue.body);
+          // Inline evaluateBlockStatement to save stack frames
+          for (const stmt of calleeValue.body.statements) {
+            this.evaluateStatement(stmt);
+          }
           this.currentEnv = savedEnv;
           return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
         } catch (e) {

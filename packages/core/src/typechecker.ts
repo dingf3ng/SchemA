@@ -52,6 +52,12 @@ export class TypeChecker {
   // Maps function names to their declarations (for updating annotations during refinement)
   private functionDeclEnv: Map<string, any> = new Map();
 
+  // Optimization: Type equality cache to avoid redundant comparisons
+  private typeEqualityCache: Map<string, boolean> = new Map();
+
+  // Optimization: Track if any changes were made during refinement
+  private refinementChanged: boolean = false;
+
   constructor() {
     this.initializeBuiltins();
   }
@@ -133,11 +139,20 @@ export class TypeChecker {
     }
 
     // Second pass: refine weak polymorphic types based on usage
-    // We do multiple passes to allow refinements to propagate
-    // More passes needed for complex recursive functions
-    for (let pass = 0; pass < 10; pass++) {
+    // Use fixed-point iteration with convergence detection
+    // Stop early if no changes are made in a pass
+    const MAX_PASSES = 10;
+    for (let pass = 0; pass < MAX_PASSES; pass++) {
+      this.refinementChanged = false;
+      this.typeEqualityCache.clear(); // Clear cache for each refinement pass
+
       for (const statement of program.body) {
         this.refineStatement(statement);
+      }
+
+      // Early exit if no changes were made
+      if (!this.refinementChanged) {
+        break;
       }
     }
   }
@@ -1137,6 +1152,7 @@ export class TypeChecker {
             if (constrainedType && constrainedType.kind !== 'weak' && constrainedType.kind !== 'poly') {
               param.typeAnnotation = this.typeToAnnotation(constrainedType, param.typeAnnotation.line, param.typeAnnotation.column);
               paramChanged = true;
+              this.refinementChanged = true;
               // Update env
               this.typeEnv.set(param.name, constrainedType);
             }
@@ -1156,6 +1172,7 @@ export class TypeChecker {
           const newConstraints = this.collectConstraints(stmt.body, paramTypeMap);
           if (newConstraints.returnType && newConstraints.returnType.kind !== 'weak') {
             stmt.returnType = this.typeToAnnotation(newConstraints.returnType, stmt.line, stmt.column);
+            this.refinementChanged = true;
 
             // Update function environment
             this.functionEnv.set(stmt.name, {
@@ -1179,12 +1196,14 @@ export class TypeChecker {
               if (returnType.kind !== 'weak' && returnType.kind !== 'poly') {
                 Object.assign(funcInfo.returnType, returnType);
                 stmt.returnType = this.typeToAnnotation(returnType, stmt.line, stmt.column);
+                this.refinementChanged = true;
               }
             }
             // Or refine nested weak types
             else if (this.hasWeakTypes(funcInfo.returnType) && !this.hasWeakTypes(returnType)) {
               this.refineNestedTypes(funcInfo.returnType, returnType);
               stmt.returnType = this.typeToAnnotation(funcInfo.returnType, stmt.line, stmt.column);
+              this.refinementChanged = true;
             }
           }
         }
@@ -1217,11 +1236,13 @@ export class TypeChecker {
               if (varType.kind === 'weak' || varType.kind === 'poly') {
                   Object.assign(varType, initializerType);
                   this.updateVariableAnnotation(declarator.name, varType);
+                  this.refinementChanged = true;
               }
               // Or refine nested weak types in complex types
               else if (this.hasWeakTypes(varType) && !this.hasWeakTypes(initializerType)) {
                   this.refineNestedTypes(varType, initializerType);
                   this.updateVariableAnnotation(declarator.name, varType);
+                  this.refinementChanged = true;
               }
            }
         }
@@ -1479,6 +1500,7 @@ export class TypeChecker {
       if (this.hasWeakTypes(targetType.elementType) && !this.hasWeakTypes(sourceType.elementType)) {
         if (targetType.elementType.kind === 'weak' || targetType.elementType.kind === 'poly') {
           Object.assign(targetType.elementType, sourceType.elementType);
+          this.refinementChanged = true;
         } else {
           this.refineNestedTypes(targetType.elementType, sourceType.elementType);
         }
@@ -1487,6 +1509,7 @@ export class TypeChecker {
       if (this.hasWeakTypes(targetType.keyType) && !this.hasWeakTypes(sourceType.keyType)) {
         if (targetType.keyType.kind === 'weak' || targetType.keyType.kind === 'poly') {
           Object.assign(targetType.keyType, sourceType.keyType);
+          this.refinementChanged = true;
         } else {
           this.refineNestedTypes(targetType.keyType, sourceType.keyType);
         }
@@ -1494,6 +1517,7 @@ export class TypeChecker {
       if (this.hasWeakTypes(targetType.valueType) && !this.hasWeakTypes(sourceType.valueType)) {
         if (targetType.valueType.kind === 'weak' || targetType.valueType.kind === 'poly') {
           Object.assign(targetType.valueType, sourceType.valueType);
+          this.refinementChanged = true;
         } else {
           this.refineNestedTypes(targetType.valueType, sourceType.valueType);
         }
@@ -1503,6 +1527,7 @@ export class TypeChecker {
       if (this.hasWeakTypes(targetType.elementType) && !this.hasWeakTypes(sourceType.elementType)) {
         if (targetType.elementType.kind === 'weak' || targetType.elementType.kind === 'poly') {
           Object.assign(targetType.elementType, sourceType.elementType);
+          this.refinementChanged = true;
         } else {
           this.refineNestedTypes(targetType.elementType, sourceType.elementType);
         }
@@ -1511,6 +1536,7 @@ export class TypeChecker {
       if (this.hasWeakTypes(targetType.keyType) && !this.hasWeakTypes(sourceType.keyType)) {
         if (targetType.keyType.kind === 'weak' || targetType.keyType.kind === 'poly') {
           Object.assign(targetType.keyType, sourceType.keyType);
+          this.refinementChanged = true;
         } else {
           this.refineNestedTypes(targetType.keyType, sourceType.keyType);
         }
@@ -1518,6 +1544,7 @@ export class TypeChecker {
       if (this.hasWeakTypes(targetType.valueType) && !this.hasWeakTypes(sourceType.valueType)) {
         if (targetType.valueType.kind === 'weak' || targetType.valueType.kind === 'poly') {
           Object.assign(targetType.valueType, sourceType.valueType);
+          this.refinementChanged = true;
         } else {
           this.refineNestedTypes(targetType.valueType, sourceType.valueType);
         }
@@ -1531,18 +1558,20 @@ export class TypeChecker {
      if (targetType.kind === 'weak' || targetType.kind === 'poly') {
         if (exprType.kind !== 'weak' && exprType.kind !== 'poly') {
            Object.assign(targetType, exprType);
+           this.refinementChanged = true;
         }
      } else if (allowBroadening) {
         if (!this.typesEqual(exprType, targetType) && exprType.kind !== 'weak' && exprType.kind !== 'poly') {
            // Broaden to union
            const oldType = JSON.parse(JSON.stringify(targetType));
-           
+
            // If already union, add to it
            if (targetType.kind === 'union') {
               // Check if type already exists in union
               const exists = targetType.types.some(t => this.typesEqual(t, exprType));
               if (!exists) {
                  targetType.types.push(exprType);
+                 this.refinementChanged = true;
               }
            } else {
               // Convert to union
@@ -1550,13 +1579,14 @@ export class TypeChecker {
                  kind: 'union',
                  types: [oldType, exprType]
               };
-              
+
               // Clear targetType
               for (const key in targetType) {
                  delete (targetType as any)[key];
               }
-              
+
               Object.assign(targetType, newUnion);
+              this.refinementChanged = true;
            }
         }
      }
@@ -1570,6 +1600,7 @@ export class TypeChecker {
           if (type.kind !== 'weak' && type.kind !== 'poly') {
              Object.assign(varType, type);
              this.updateVariableAnnotation(varName, varType);
+             this.refinementChanged = true;
           }
        }
     }
@@ -3015,10 +3046,26 @@ export class TypeChecker {
 
 
   private typesEqual(t1: Type, t2: Type): boolean {
+    // Fast path: check if types are the same object reference
+    if (t1 === t2) return true;
+
+    // Fast path: simple types
     if (t1.kind === 'poly' || t2.kind === 'poly') return true;
-    // Weak types act as wildcards that can unify with any concrete type
     if (t1.kind === 'weak' || t2.kind === 'weak') return true;
 
+    // Check cache for complex type comparisons
+    const cacheKey = `${this.typeToStringForCache(t1)}|${this.typeToStringForCache(t2)}`;
+    const cached = this.typeEqualityCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const result = this.typesEqualUncached(t1, t2);
+    this.typeEqualityCache.set(cacheKey, result);
+    return result;
+  }
+
+  private typesEqualUncached(t1: Type, t2: Type): boolean {
     // Handle union types (A | B is assignable to C if A or B is assignable to C)
     if (t1.kind === 'union' && t2.kind === 'union') {
       // Both are unions: check if they have the same types (order independent)
@@ -3115,6 +3162,12 @@ export class TypeChecker {
     }
 
     return true;
+  }
+
+  private typeToStringForCache(type: Type): string {
+    // Lightweight version of typeToString for cache keys
+    // Uses JSON.stringify for simplicity but could be optimized further
+    return JSON.stringify(type);
   }
 
   private typeToString(type: Type): string {

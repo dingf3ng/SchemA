@@ -13,6 +13,7 @@ import {
   MinHeapMap,
   MaxHeapMap,
 } from './data-structures';
+import { Environment } from './environment';
 
 export type Predicate = 
   | { kind: 'int_range' ; min: number; max: number }
@@ -43,7 +44,7 @@ export type RuntimeTypedBinder =
       value: {
         parameters: Parameter[];
         body: BlockStatement;
-        closure: Map<string, RuntimeTypedBinder>;
+        closure: Environment;
       };
       type: RuntimeType;
     }
