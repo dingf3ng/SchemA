@@ -43,7 +43,7 @@ intersectionType
     ;
 
 primaryType
-    : POLY_TYPE_ID ('<' typeAnnotation (',' typeAnnotation)* '>')?
+    : POLY_TYPE_ID LT (typeAnnotation (',' typeAnnotation)*)? GT
     | IDENTIFIER
     | '(' typeAnnotation ')'
     ;
@@ -53,7 +53,7 @@ variableDeclaration
     ;
 
 variableDeclarator
-    : IDENTIFIER (':' typeAnnotation)? ('=' expression)?
+    : IDENTIFIER (':' typeAnnotation)? '=' expression
     ;
 
 assignmentStatement
@@ -115,7 +115,7 @@ equality
     ;
 
 comparison
-    : range (('<' | '<=' | '>' | '>=') range)*
+    : range ((LT | LTE | GT | GTE) range)*
     ;
 
 range
@@ -123,7 +123,7 @@ range
     ;
 
 shift
-    : addition (('<<' | '>>') addition)*
+    : addition ((LSHIFT | GT GT) addition)*
     ;
 
 addition
@@ -161,7 +161,7 @@ primary
     | 'true'                     # TrueLiteral
     | 'false'                    # FalseLiteral
     | 'assert' '(' expression ',' expression ')'  # AssertExpr
-    | POLY_TYPE_ID ('<' typeAnnotation (',' typeAnnotation)* '>')?  # PolyTypeConstructor
+    | POLY_TYPE_ID               # PolyTypeIdentifier
     | IDENTIFIER                 # Identifier
     | arrayLiteral               # ArrayLiteralExpr
     | '(' expression ')'         # ParenExpr
@@ -188,6 +188,12 @@ STRING
     : '"' (~["\\\r\n] | '\\' .)* '"'
     | '\'' (~['\\\r\n] | '\\' .)* '\''
     ;
+
+LT : '<' ;
+GT : '>' ;
+LTE : '<=' ;
+GTE : '>=' ;
+LSHIFT : '<<' ;
 
 POLY_TYPE_ID
     : [A-Z][a-zA-Z0-9_]*

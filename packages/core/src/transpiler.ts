@@ -30,7 +30,6 @@ import {
   TrueLiteralContext,
   FalseLiteralContext,
   IdentifierContext,
-  PolyTypeConstructorContext,
   ArrayLiteralExprContext,
   ParenExprContext,
   ArrayLiteralContext,
@@ -46,6 +45,7 @@ import {
   BlockContext,
   TypeOfExprContext,
   AssertExprContext,
+  PolyTypeIdentifierContext,
 } from './generated/src/SchemAParser';
 import {
   Program,
@@ -67,7 +67,6 @@ import {
   MemberExpression,
   IndexExpression,
   Identifier,
-  PolyTypeConstructor,
   IntegerLiteral,
   FloatLiteral,
   StringLiteral,
@@ -195,14 +194,24 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
       ? ctx.typeAnnotation().map(t => this.visit(t))
       : undefined;
 
-    return {
-      type: 'TypeAnnotation',
-      kind: 'simple',
-      name,
-      typeParameters,
-      line: ctx.start.line,
-      column: ctx.start.charPositionInLine + 1,
-    };
+    if (!typeParameters) {
+      return {
+        type: 'TypeAnnotation',
+        kind: 'simple',
+        name,
+        line: ctx.start.line,
+        column: ctx.start.charPositionInLine + 1,
+      };
+    } else {
+      return {
+        type: 'TypeAnnotation',
+        kind: 'generic',
+        name,
+        typeParameters,
+        line: ctx.start.line,
+        column: ctx.start.charPositionInLine + 1,
+      };
+    }
   }
 
   visitVariableDeclaration(ctx: VariableDeclarationContext): VariableDeclaration {
@@ -701,12 +710,10 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     };
   }
 
-  visitPolyTypeConstructor(ctx: PolyTypeConstructorContext): PolyTypeConstructor {
-    const typeParams = ctx.typeAnnotation();
+  visitPolyTypeIdentifier(ctx: PolyTypeIdentifierContext): Identifier {
     return {
-      type: 'PolyTypeConstructor',
+      type: 'Identifier',
       name: ctx.POLY_TYPE_ID().text,
-      typeParameters: typeParams ? typeParams.map(t => this.visit(t)) : undefined,
       line: ctx.start.line,
       column: ctx.start.charPositionInLine + 1,
     };

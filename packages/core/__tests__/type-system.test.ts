@@ -5,6 +5,7 @@ function check(code: string) {
   const parser = new AntlrParser();
   const ast = parser.parse(code);
   const typeChecker = new TypeChecker();
+  typeChecker.infer(ast);
   typeChecker.check(ast);
 }
 

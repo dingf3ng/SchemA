@@ -5,6 +5,7 @@ function check(code: string) {
   const parser = new AntlrParser();
   const ast = parser.parse(code);
   const typeChecker = new TypeChecker();
+  typeChecker.infer(ast);
   typeChecker.check(ast);
 }
 
@@ -17,14 +18,14 @@ describe('Built-in Data Structures Strictness & Advanced Types', () => {
           let m: MinHeapMap<int> = MinHeapMap() // Too few
         }
       `;
-      expect(() => check(code1)).toThrow('MinHeapMap type requires exactly two type parameters');
+      expect(() => check(code1)).toThrow('HeapMap type requires exactly two type parameters');
 
       const code2 = `
         do main() {
           let m: MinHeapMap<int, int, int> = MinHeapMap() // Too many
         }
       `;
-      expect(() => check(code2)).toThrow('MinHeapMap type requires exactly two type parameters');
+      expect(() => check(code2)).toThrow('HeapMap type requires exactly two type parameters');
     });
 
     it('should fail when MinHeap/MaxHeap has incorrect number of type arguments', () => {
@@ -33,7 +34,7 @@ describe('Built-in Data Structures Strictness & Advanced Types', () => {
           let h: MinHeap<int, string> = MinHeap() // Too many
         }
       `;
-      expect(() => check(code)).toThrow('MinHeap type requires exactly one type parameter');
+      expect(() => check(code)).toThrow('Heap type requires exactly one type parameter');
     });
 
     it('should fail when Graph has incorrect number of type arguments', () => {
@@ -43,17 +44,6 @@ describe('Built-in Data Structures Strictness & Advanced Types', () => {
         }
       `;
       expect(() => check(code)).toThrow('Graph type requires exactly one type parameter');
-    });
-
-    it('should allow raw types (no type arguments)', () => {
-      const code = `
-        do main() {
-          let m: MinHeapMap = MinHeapMap()
-          let h: MinHeap = MinHeap()
-          let g: Graph = Graph(true)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
     });
   });
 
@@ -100,7 +90,7 @@ describe('Built-in Data Structures Strictness & Advanced Types', () => {
     it('should infer generic types from constructor when explicit type is omitted', () => {
       const code = `
         do main() {
-          let m = MinHeapMap() // Infers MinHeapMap<any, any>
+          let m = MinHeapMap() // Infers MinHeapMap< int | string , int | string>
           m.push(1, "value")
           m.push("key", 2)
         }

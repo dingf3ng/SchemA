@@ -48,6 +48,11 @@ const specificTests: Record<string, (output: string[]) => void> = {
   'dijkstra.schema': (output) => {
     expect(output.length).toBeGreaterThan(0);
   },
+  'test-array-slice.schema': (output) => {
+    expect(output).toContain('[1, 2, 3]');
+    expect(output).toContain('[2, 3, 4]');
+    expect(output).toContain('[3, 4, 5]');
+  },
   'data-structures.schema': (output) => {
     expect(output.length).toBeGreaterThan(0);
   }

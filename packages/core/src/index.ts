@@ -15,6 +15,7 @@ export function run(code: string): string[] {
   const ast = parser.parse(code);
 
   const typeChecker = new TypeChecker();
+  typeChecker.infer(ast);
   typeChecker.check(ast);
 
   const interpreter = new Interpreter();

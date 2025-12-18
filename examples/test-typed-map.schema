@@ -2,7 +2,7 @@
 
 // This should create a Map<int, int> and work correctly
 do createIntMap() -> Map<int, int> {
-  let m = Map<int, int>()
+  let m = Map()
   m.set(1, 10)
   m.set(2, 20)
   return m
@@ -10,7 +10,7 @@ do createIntMap() -> Map<int, int> {
 
 // This should create a Map<int, string> and work correctly
 do createStringMap() -> Map<int, string> {
-  let m = Map<int, string>()
+  let m = Map()
   m.set(1, "hello")
   m.set(2, "world")
   return m

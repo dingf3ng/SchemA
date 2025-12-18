@@ -1,3 +1,4 @@
+import { Type } from '../typechecker';
 import { BlockStatement, Parameter } from '../types';
 import {
   SchemaArray,
@@ -7,91 +8,98 @@ import {
   MaxHeap,
   Graph,
   LazyRange,
-  HeapMap,
   BinaryTree,
   AVLTree,
+  MinHeapMap,
+  MaxHeapMap,
 } from './data-structures';
 
-export type RuntimeTypeBinder =
-  | { type: 'int'; value: number }
-  | { type: 'float'; value: number }
-  | { type: 'string'; value: string }
-  | { type: 'boolean'; value: boolean }
-  | { type: 'null'; value: null }
-  | { type: 'array'; value: SchemaArray<RuntimeTypeBinder> }
-  | { type: 'map'; value: SchemaMap<any, RuntimeTypeBinder> }
-  | { type: 'set'; value: SchemaSet<any> }
-  | { type: 'minheap'; value: MinHeap<any> }
-  | { type: 'maxheap'; value: MaxHeap<any> }
-  | { type: 'heapMap'; value: HeapMap<any, any> }
-  | { type: 'binarytree'; value: BinaryTree<any> }
-  | { type: 'avltree'; value: AVLTree<any> }
-  | { type: 'graph'; value: Graph<any> }
-  | { type: 'range'; value: LazyRange }
-  | { type: 'tuple'; elements: RuntimeTypeBinder[] }
-  | { type: 'record'; fields: Map<string, RuntimeTypeBinder> }
+export type Predicate = 
+  | { kind: 'int_range' ; min: number; max: number }
+  // TODO: add more predicates
+
+export type RuntimeType =
+  { static: Type, refinements: Predicate[] }
+
+export type RuntimeTypedBinder =
+  | { value: undefined; type: RuntimeType } // void type
+  | { value: number; type: RuntimeType }
+  | { value: string; type: RuntimeType }
+  | { value: boolean; type: RuntimeType }
+  | { value: SchemaArray<RuntimeTypedBinder>; type: RuntimeType }
+  | { value: SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>; type: RuntimeType }
+  | { value: SchemaSet<RuntimeTypedBinder>; type: RuntimeType }
+  | { value: MinHeap<RuntimeTypedBinder>; type: RuntimeType }
+  | { value: MaxHeap<RuntimeTypedBinder>; type: RuntimeType }
+  | { value: MinHeapMap<RuntimeTypedBinder, RuntimeTypedBinder>; type: RuntimeType }
+  | { value: MaxHeapMap<RuntimeTypedBinder, RuntimeTypedBinder>; type: RuntimeType }
+  | { value: BinaryTree<RuntimeTypedBinder>; type: RuntimeType }
+  | { value: AVLTree<RuntimeTypedBinder>; type: RuntimeType }
+  | { value: Graph<RuntimeTypedBinder>; type: RuntimeType }
+  | { value: LazyRange; type: RuntimeType }
+  | { value: RuntimeTypedBinder[]; type: RuntimeType } // tuples
+  | { value: Map<RuntimeTypedBinder, RuntimeTypedBinder>; type: RuntimeType } // records
   | {
-      type: 'function';
-      parameters: Parameter[];
-      body: BlockStatement;
-      closure: Map<string, RuntimeTypeBinder>;
+      value: {
+        parameters: Parameter[];
+        body: BlockStatement;
+        closure: Map<string, RuntimeTypedBinder>;
+      };
+      type: RuntimeType;
     }
   | {
-      type: 'native-function';
-      fn: (...args: RuntimeTypeBinder[]) => RuntimeTypeBinder;
+      value: {
+        fn: (...args: RuntimeTypedBinder[]) => RuntimeTypedBinder;
+      };
+      type: RuntimeType;
     };
 
-export function RuntimeTypeBinderToString(value: RuntimeTypeBinder): string {
-  switch (value.type) {
+export function RuntimeTypedBinderToString(binder: RuntimeTypedBinder): string {
+  const { value, type } = binder;
+  switch (type.static.kind) {
+    case 'void':
+      return 'undefined';
     case 'int':
-      return value.value.toString();
     case 'float':
-      return value.value.toString();
     case 'string':
-      return value.value;
+    case 'poly':
     case 'boolean':
-      return value.value.toString();
-    case 'null':
-      return 'null';
     case 'array':
-      return value.value.toString();
     case 'map':
-      return value.value.toString();
     case 'set':
-      return value.value.toString();
-    case 'minheap':
-      return value.value.toString();
-    case 'maxheap':
-      return value.value.toString();
-    case 'heapMap':
-      return value.value.toString();
+    case 'heap':
+    case 'heapmap':
     case 'binarytree':
-      return value.value.toString();
     case 'avltree':
-      return value.value.toString();
     case 'graph':
-      return value.value.toString();
     case 'range':
-      return value.value.toString();
-    case 'tuple':
-      return `(${value.elements.map(RuntimeTypeBinderToString).join(', ')})`;
+      return value!.toString()
+    case 'tuple': {
+      const values = value as RuntimeTypedBinder[]; 
+      const types = type.static.elementTypes;
+      return `(${values.map((v) => RuntimeTypedBinderToString(v)).join(', ')})`;
+    }
     case 'record': {
-      const fields = Array.from(value.fields.entries())
-        .map(([k, v]) => `${k}: ${RuntimeTypeBinderToString(v)}`)
+      const values = value as Map<RuntimeTypedBinder, RuntimeTypedBinder>;
+      const fields = Array.from(values.entries())
+        .map(([k, v]) => {
+          return `${RuntimeTypedBinderToString(k)}: ${RuntimeTypedBinderToString(v)}`;
+        })
         .join(', ');
       return `{ ${fields} }`;
     }
     case 'function':
       return '<function>';
-    case 'native-function':
-      return '<native function>';
+    case 'union':
+      const unionTypes = type.static.types;
+      return `union<${unionTypes.map(t => t.kind).join(' | ')}>`;
+    case 'intersection':
+      const intersectionTypes = type.static.types;
+      return `intersection<${intersectionTypes.map(t => t.kind).join(' & ')}>`;
+    case 'weak':
+      throw new Error('Internal Error: Weak polymorphic type should not appear at runtime');
+    default:
+      const _exhaustiveCheck: never = type.static;
+      throw new Error('Internal Error: Unknown type in RuntimeTypedBinderToString');
   }
-}
-
-export function isTruthy(value: RuntimeTypeBinder): boolean {
-  if (value.type === 'boolean') return value.value;
-  if (value.type === 'null') return false;
-  if (value.type === 'int' || value.type === 'float') return value.value !== 0;
-  if (value.type === 'string') return value.value.length > 0;
-  return true;
 }

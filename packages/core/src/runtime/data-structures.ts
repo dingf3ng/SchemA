@@ -47,36 +47,39 @@ export class SchemaArray<T> {
 
   toString(): string {
     const items = this.data.map(item => {
-      if (typeof item === 'object' && item !== null && 'type' in item) {
-        // TODO: Handle RuntimeTypeBinder objects - import RuntimeTypeBinderToString if needed
-        const rv = item as any;
-        if (rv.type === 'tuple' || rv.type === 'record') {
-          // For complex types, use their own toString or a simplified representation
-          if (rv.type === 'tuple') {
-            const elements = rv.elements.map((el: any) => {
-              if (el.type === 'int' || el.type === 'float') return el.value;
-              if (el.type === 'string') return el.value;
-              if (el.type === 'boolean') return el.value;
-              return el;
-            });
-            return `(${elements.join(', ')})`;
-          }
-          if (rv.type === 'record') {
-            const entries = Array.from(rv.fields.entries()) as Array<[string, any]>;
-            const fields = entries
-              .map(([k, v]) => {
-                let val = v;
-                if (v.type === 'int' || v.type === 'float') val = v.value;
-                else if (v.type === 'string') val = v.value;
-                else if (v.type === 'boolean') val = v.value;
-                return `${k}: ${val}`;
-              })
-              .join(', ');
-            return `{ ${fields} }`;
-          }
-        }
-        if (rv.type === 'int' || rv.type === 'float' || rv.type === 'string' || rv.type === 'boolean') {
+      const rv = item as any;
+      if (rv && typeof rv === 'object' && rv.type && rv.type.static && rv.type.static.kind) {
+        const kind = rv.type.static.kind;
+        
+        if (kind === 'int' || kind === 'float' || kind === 'string' || kind === 'boolean') {
           return rv.value;
+        }
+        
+        if (kind === 'tuple') {
+          const values = rv.value as any[];
+          const elements = values.map((v: any) => {
+            if (v && v.type && v.type.static && (v.type.static.kind === 'int' || v.type.static.kind === 'float' || v.type.static.kind === 'string' || v.type.static.kind === 'boolean')) {
+              return v.value;
+            }
+            return v;
+          });
+          return `(${elements.join(', ')})`;
+        }
+        
+        if (kind === 'record') {
+          const map = rv.value as Map<any, any>;
+          const entries = Array.from(map.entries());
+          const fields = entries.map(([k, v]) => {
+            let keyStr = k;
+            if (k && k.type && k.type.static && k.type.static.kind === 'string') keyStr = k.value;
+            
+            let valStr = v;
+            if (v && v.type && v.type.static && (v.type.static.kind === 'int' || v.type.static.kind === 'float' || v.type.static.kind === 'string' || v.type.static.kind === 'boolean')) {
+              valStr = v.value;
+            }
+            return `${keyStr}: ${valStr}`;
+          });
+          return `{ ${fields.join(', ')} }`;
         }
       }
       return item;
@@ -270,6 +273,10 @@ export class MinHeap<T> {
     return this.data[0];
   }
 
+  forEach(fn: (item: T) => void): void {
+    this.data.forEach(fn);
+  }
+
   toString(): string {
     return `MinHeap[${this.data.join(', ')}]`;
   }
@@ -373,6 +380,10 @@ export class MaxHeap<T> {
     return this.data[0];
   }
 
+  forEach(fn: (item: T) => void): void {
+    this.data.forEach(fn);
+  }
+
   toString(): string {
     return `MaxHeap[${this.data.join(', ')}]`;
   }
@@ -392,6 +403,18 @@ export class LazyRange {
     this.start = start;
     this.end = end;
     this.inclusive = inclusive;
+  }
+
+  get getStart(): number {
+    return this.start;
+  }
+
+  get getEnd(): number | undefined {
+    return this.end;
+  }
+
+  get isInclusive(): boolean {
+    return this.inclusive;
   }
 
   get isInfinite(): boolean {
@@ -437,17 +460,29 @@ export class LazyRange {
   }
 }
 
+/**
+ * Problem: Graph was using RuntimeTypedBinder objects directly as keys in its 
+ * internal Map. Since RuntimeTypedBinders are objects, Map uses reference equality. 
+ * This meant that g.addVertex(1) and g.getNeighbors(1) were treating the two 1s 
+ * as different vertices because they were different object instances wrapping 
+ * the same value.
+ * Fix: Modified Graph in data-structures.ts to accept a keyFn in its constructor. 
+ * This function is used to extract a canonical key for node storage and lookup.
+ */
 export class Graph<T> {
-  private adjacencyList: Map<T, Edge<T>[]> = new Map();
+  private adjacencyList: Map<any, { node: T, edges: Edge<T>[] }> = new Map();
   private directed: boolean;
+  private keyFn: (node: T) => any;
 
-  constructor(directed: boolean = false) {
+  constructor(directed: boolean = false, keyFn?: (node: T) => any) {
     this.directed = directed;
+    this.keyFn = keyFn || ((node) => node);
   }
 
   addVertex(vertex: T): void {
-    if (!this.adjacencyList.has(vertex)) {
-      this.adjacencyList.set(vertex, []);
+    const key = this.keyFn(vertex);
+    if (!this.adjacencyList.has(key)) {
+      this.adjacencyList.set(key, { node: vertex, edges: [] });
     }
   }
 
@@ -455,30 +490,38 @@ export class Graph<T> {
     this.addVertex(from);
     this.addVertex(to);
 
-    this.adjacencyList.get(from)!.push({ to, weight });
+    const fromKey = this.keyFn(from);
+    const toKey = this.keyFn(to);
+
+    this.adjacencyList.get(fromKey)!.edges.push({ to, weight });
 
     if (!this.directed) {
-      this.adjacencyList.get(to)!.push({ to: from, weight });
+      this.adjacencyList.get(toKey)!.edges.push({ to: from, weight });
     }
   }
 
   getNeighbors(vertex: T): Edge<T>[] {
-    return this.adjacencyList.get(vertex) || [];
+    const key = this.keyFn(vertex);
+    const entry = this.adjacencyList.get(key);
+    return entry ? entry.edges : [];
   }
 
   hasVertex(vertex: T): boolean {
-    return this.adjacencyList.has(vertex);
+    const key = this.keyFn(vertex);
+    return this.adjacencyList.has(key);
   }
 
   getVertices(): T[] {
-    return Array.from(this.adjacencyList.keys());
+    return Array.from(this.adjacencyList.values()).map(entry => entry.node);
   }
 
   getEdgeWeight(from: T, to: T): number | undefined {
-    const neighbors = this.adjacencyList.get(from);
-    if (!neighbors) return undefined;
+    const key = this.keyFn(from);
+    const entry = this.adjacencyList.get(key);
+    if (!entry) return undefined;
 
-    const edge = neighbors.find((e) => e.to === to);
+    const toKey = this.keyFn(to);
+    const edge = entry.edges.find((e) => this.keyFn(e.to) === toKey);
     return edge?.weight;
   }
 
@@ -487,16 +530,19 @@ export class Graph<T> {
   }
 
   hasEdge(from: T, to: T): boolean {
-    const neighbors = this.adjacencyList.get(from);
-    if (!neighbors) return false;
+    const key = this.keyFn(from);
+    const entry = this.adjacencyList.get(key);
+    if (!entry) return false;
 
-    return neighbors.some((e) => e.to === to);
+    const toKey = this.keyFn(to);
+    return entry.edges.some((e) => this.keyFn(e.to) === toKey);
   }
 
   getEdges(): Array<{ from: T; to: T; weight: number }> {
     const edges: Array<{ from: T; to: T; weight: number }> = [];
-    for (const [from, neighbors] of this.adjacencyList.entries()) {
-      for (const edge of neighbors) {
+    for (const entry of this.adjacencyList.values()) {
+      const from = entry.node;
+      for (const edge of entry.edges) {
         edges.push({ from, to: edge.to, weight: edge.weight });
       }
     }
@@ -505,11 +551,17 @@ export class Graph<T> {
 
   toString(): string {
     let result = 'Graph:\n';
-    for (const [vertex, edges] of this.adjacencyList.entries()) {
+    for (const entry of this.adjacencyList.values()) {
+      const vertex = entry.node;
+      const edges = entry.edges;
       const edgeStr = edges
-        .map((e) => `${e.to}(${e.weight})`)
+        .map((e) => {
+            const toVal = (e.to as any).value !== undefined ? (e.to as any).value : e.to;
+            return `${toVal}(${e.weight})`;
+        })
         .join(', ');
-      result += `  ${vertex} -> [${edgeStr}]\n`;
+      const vertexVal = (vertex as any).value !== undefined ? (vertex as any).value : vertex;
+      result += `  ${vertexVal} -> [${edgeStr}]\n`;
     }
     return result;
   }

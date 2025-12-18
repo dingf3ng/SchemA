@@ -12,8 +12,11 @@ import {
   ReturnStatement,
   BlockStatement,
   ExpressionStatement,
+  TypeAnnotation,
+  Parameter,
 } from './types';
-import { RuntimeTypeBinder, RuntimeTypeBinderToString, isTruthy } from './runtime/values';
+import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime/values';
+import { Type } from './typechecker';
 import {
   SchemaArray,
   SchemaMap,
@@ -29,22 +32,22 @@ import {
 } from './runtime/data-structures';
 
 class ReturnException {
-  constructor(public value: RuntimeTypeBinder) {}
+  constructor(public value: RuntimeTypedBinder) { }
 }
 
 class Environment {
-  private bindings: Map<string, RuntimeTypeBinder> = new Map();
+  private bindings: Map<string, RuntimeTypedBinder> = new Map();
   private parent: Environment | null = null;
 
   constructor(parent: Environment | null = null) {
     this.parent = parent;
   }
 
-  define(name: string, value: RuntimeTypeBinder): void {
+  define(name: string, value: RuntimeTypedBinder): void {
     this.bindings.set(name, value);
   }
 
-  get(name: string): RuntimeTypeBinder {
+  get(name: string): RuntimeTypedBinder {
     if (this.bindings.has(name)) {
       return this.bindings.get(name)!;
     }
@@ -54,7 +57,7 @@ class Environment {
     throw new Error(`Undefined variable: ${name}`);
   }
 
-  set(name: string, value: RuntimeTypeBinder): void {
+  set(name: string, value: RuntimeTypedBinder): void {
     if (this.bindings.has(name)) {
       this.bindings.set(name, value);
       return;
@@ -77,13 +80,13 @@ class Environment {
   }
 
   // For compatibility with existing code that uses Map methods
-  entries(): IterableIterator<[string, RuntimeTypeBinder]> {
-    const allEntries = new Map<string, RuntimeTypeBinder>();
+  entries(): IterableIterator<[string, RuntimeTypedBinder]> {
+    const allEntries = new Map<string, RuntimeTypedBinder>();
     this.collectAllBindings(allEntries);
     return allEntries.entries();
   }
 
-  private collectAllBindings(result: Map<string, RuntimeTypeBinder>): void {
+  private collectAllBindings(result: Map<string, RuntimeTypedBinder>): void {
     if (this.parent) {
       this.parent.collectAllBindings(result);
     }
@@ -103,84 +106,114 @@ export class Interpreter {
     this.initializeBuiltins();
   }
 
+
+
   private initializeBuiltins(): void {
     this.globalEnv.define('print', {
-      type: 'native-function',
-      fn: (...args: RuntimeTypeBinder[]) => {
-        const output = args.map(RuntimeTypeBinderToString).join(' ');
-        this.output.push(output);
-        return { type: 'null', value: null };
+      value: {
+        fn: (...args: RuntimeTypedBinder[]) => {
+          const output = args.map(RuntimeTypedBinderToString).join(' ');
+          this.output.push(output);
+          return { value: undefined, type: { static: { kind: 'void' }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [{ kind: 'poly' }], returnType: { kind: 'void' }, variadic: true }, refinements: [] },
     });
 
     this.globalEnv.define('MinHeap', {
-      type: 'native-function',
-      fn: () => {
-        return { type: 'minheap', value: new MinHeap<number>() };
+      value: {
+        fn: () => {
+          return { value: new MinHeap<RuntimeTypedBinder>(), type: { static: { kind: 'heap', elementType: { kind: 'weak' } }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'heap', elementType: { kind: 'weak' } } }, refinements: [] },
     });
 
     this.globalEnv.define('MaxHeap', {
-      type: 'native-function',
-      fn: () => {
-        return { type: 'maxheap', value: new MaxHeap<number>() };
+      value: {
+        fn: () => {
+          return { value: new MaxHeap<RuntimeTypedBinder>(), type: { static: { kind: 'heap', elementType: { kind: 'weak' } }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'heap', elementType: { kind: 'weak' } } }, refinements: [] },
     });
 
     this.globalEnv.define('MinHeapMap', {
-      type: 'native-function',
-      fn: () => {
-        return { type: 'heapMap', value: new MinHeapMap<any, number>() };
+      value: {
+        fn: () => {
+          return { value: new MinHeapMap<RuntimeTypedBinder, RuntimeTypedBinder>(), type: { static: { kind: 'heapmap', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'heapmap', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } } }, refinements: [] },
     });
 
     this.globalEnv.define('MaxHeapMap', {
-      type: 'native-function',
-      fn: () => {
-        return { type: 'heapMap', value: new MaxHeapMap<any, number>() };
+      value: {
+        fn: () => {
+          return { value: new MaxHeapMap<RuntimeTypedBinder, RuntimeTypedBinder>(), type: { static: { kind: 'heapmap', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'heapmap', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } } }, refinements: [] },
     });
 
     this.globalEnv.define('Graph', {
-      type: 'native-function',
-      fn: (directed?: RuntimeTypeBinder) => {
-        const isDirected =
-          directed && directed.type === 'boolean' ? directed.value : false;
-        return { type: 'graph', value: new Graph<any>(isDirected) };
+      value: {
+        fn: (directed?: RuntimeTypedBinder) => {
+          const isDirected =
+            directed && directed.type.static.kind === 'boolean' ? directed.value as boolean : false;
+          
+          const keyFn = (node: RuntimeTypedBinder) => {
+             if (node.type.static.kind === 'int' || node.type.static.kind === 'float' || node.type.static.kind === 'string' || node.type.static.kind === 'boolean') {
+               return node.value;
+             }
+             return node;
+          };
+
+          return { value: new Graph<RuntimeTypedBinder>(isDirected, keyFn), type: { static: { kind: 'graph', nodeType: { kind: 'weak' } }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [{ kind: 'boolean' }], returnType: { kind: 'graph', nodeType: { kind: 'weak' } } }, refinements: [] },
     });
 
     this.globalEnv.define('Map', {
-      type: 'native-function',
-      fn: () => {
-        return { type: 'map', value: new SchemaMap<any, RuntimeTypeBinder>() };
+      value: {
+        fn: () => {
+          return { value: new SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>(), type: { static: { kind: 'map', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'map', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } } }, refinements: [] },
     });
 
     this.globalEnv.define('Set', {
-      type: 'native-function',
-      fn: () => {
-        return { type: 'set', value: new SchemaSet<any>() };
+      value: {
+        fn: () => {
+          return { value: new SchemaSet<RuntimeTypedBinder>(), type: { static: { kind: 'set', elementType: { kind: 'weak' } }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'set', elementType: { kind: 'weak' } } }, refinements: [] },
     });
 
     this.globalEnv.define('BinaryTree', {
-      type: 'native-function',
-      fn: () => {
-        return { type: 'binarytree', value: new BinaryTree<any>() };
+      value: {
+        fn: () => {
+          return { value: new BinaryTree<RuntimeTypedBinder>(), type: { static: { kind: 'binarytree', elementType: { kind: 'weak' } }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'binarytree', elementType: { kind: 'weak' } } }, refinements: [] },
     });
 
     this.globalEnv.define('AVLTree', {
-      type: 'native-function',
-      fn: () => {
-        return { type: 'avltree', value: new AVLTree<any>() };
+      value: {
+        fn: () => {
+          return { value: new AVLTree<RuntimeTypedBinder>(), type: { static: { kind: 'avltree', elementType: { kind: 'weak' } }, refinements: [] } };
+        },
       },
+      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'avltree', elementType: { kind: 'weak' } } }, refinements: [] },
     });
 
     this.globalEnv.define('inf', {
-      type: 'float',
       value: Infinity,
+      type: { static: { kind: 'intersection', types: [{ kind: 'int' }, { kind: 'float' }] }, refinements: [] },
     });
   }
 
@@ -241,25 +274,44 @@ export class Interpreter {
   }
 
   private evaluateFunctionDeclaration(stmt: FunctionDeclaration): void {
-    const funcValue: RuntimeTypeBinder = {
-      type: 'function',
-      parameters: stmt.parameters,
-      body: stmt.body,
-      closure: this.captureEnvironment(),
+    const paramTypes = stmt.parameters.map(p => this.resolveTypeAnnotation(p.typeAnnotation));
+    const returnType = this.resolveTypeAnnotation(stmt.returnType);
+
+    const funcValue: RuntimeTypedBinder = {
+      value: {
+        parameters: stmt.parameters,
+        body: stmt.body,
+        closure: this.captureEnvironment(),
+      },
+      type: {
+        static: {
+          kind: 'function',
+          parameters: paramTypes,
+          returnType: returnType
+        },
+        refinements: []
+      },
     };
 
     this.currentEnv.define(stmt.name, funcValue);
 
     // Add function to its own closure for recursion
-    funcValue.closure.set(stmt.name, funcValue);
+    funcValue.value.closure.set(stmt.name, funcValue);
   }
 
   private evaluateVariableDeclaration(stmt: VariableDeclaration): void {
     for (const declarator of stmt.declarations) {
-      let value: RuntimeTypeBinder = { type: 'null', value: null };
+      let value: RuntimeTypedBinder;
 
       if (declarator.initializer) {
         value = this.evaluateExpression(declarator.initializer);
+      } else {
+        // No initializer - create undefined value with type annotation
+        const declaredType = this.resolveTypeAnnotation(declarator.typeAnnotation);
+        value = {
+          value: undefined,
+          type: { static: declaredType, refinements: [] }
+        };
       }
 
       // Skip binding if the variable name is '_' (unnamed variable)
@@ -269,12 +321,75 @@ export class Interpreter {
     }
   }
 
-  private captureEnvironment(): Map<string, RuntimeTypeBinder> {
-    const captured = new Map<string, RuntimeTypeBinder>();
+  private captureEnvironment(): Map<string, RuntimeTypedBinder> {
+    const captured = new Map<string, RuntimeTypedBinder>();
     for (const [key, value] of this.currentEnv.entries()) {
       captured.set(key, value);
     }
     return captured;
+  }
+
+  /**
+   * Helper to resolve TypeAnnotation to Type, note that we should have fully annotated types at this point
+   * @param annotation The TypeAnnotation to resolve
+   * @returns the resolved Type
+   */
+  private resolveTypeAnnotation(annotation: TypeAnnotation | undefined): Type {
+    if (!annotation) {
+      throw new Error('Internal Error: Missing type annotation, it should have been inferred earlier');
+    }
+
+    if (annotation.kind === 'simple') {
+      switch (annotation.name) {
+        case 'int': return { kind: 'int' };
+        case 'float': return { kind: 'float' };
+        case 'string': return { kind: 'string' };
+        case 'boolean': return { kind: 'boolean' };
+        case 'void': return { kind: 'void' };
+        case 'weak': return { kind: 'weak' };
+        case 'poly': return { kind: 'poly' };
+        case 'range': return { kind: 'range' };
+        default: throw new Error(`Unknown simple type annotation: ${annotation.name}`);
+      }
+    } else if (annotation.kind === 'generic') {
+      switch (annotation.name) {
+        case 'Array':
+          return { kind: 'array', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
+        case 'Map':
+          return { kind: 'map', keyType: this.resolveTypeAnnotation(annotation.typeParameters[0]), valueType: this.resolveTypeAnnotation(annotation.typeParameters[1]) };
+        case 'Set':
+          return { kind: 'set', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
+        case 'MinHeap': case 'MaxHeap':
+          return { kind: 'heap', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
+        case 'MinHeapMap': case 'MaxHeapMap':
+          return { kind: 'heapmap', keyType: this.resolveTypeAnnotation(annotation.typeParameters[0]), valueType: this.resolveTypeAnnotation(annotation.typeParameters[1]) };
+        case 'Graph':
+          return { kind: 'graph', nodeType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
+        case 'BinaryTree':
+          return { kind: 'binarytree', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
+        case 'AVLTree':
+          return { kind: 'avltree', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
+        default: throw new Error(`Unknown generic type annotation: ${annotation.name}`);
+      }
+    } else if (annotation.kind === 'function') {
+      return {
+        kind: 'function',
+        parameters: annotation.parameterTypes ? annotation.parameterTypes.map((p: TypeAnnotation) => this.resolveTypeAnnotation(p)) : [],
+        returnType: this.resolveTypeAnnotation(annotation.returnType)
+      };
+    } else if (annotation.kind === 'union') {
+      return { kind: 'union', types: annotation.types.map((t: TypeAnnotation) => this.resolveTypeAnnotation(t)) };
+    } else if (annotation.kind === 'intersection') {
+      return { kind: 'intersection', types: annotation.types.map((t: TypeAnnotation) => this.resolveTypeAnnotation(t)) };
+    } else if (annotation.kind === 'tuple') {
+      return { kind: 'tuple', elementTypes: annotation.elementTypes.map((t: TypeAnnotation) => this.resolveTypeAnnotation(t)) };
+    } else if (annotation.kind === 'record') {
+      const fieldTypes: [Type, Type][] = annotation.fieldTypes.map(([keyType, valueType]) => {
+        return [this.resolveTypeAnnotation(keyType), this.resolveTypeAnnotation(valueType)];
+      });
+      return { kind: 'record', fieldTypes };
+    }
+    throw new Error('Internal Error: Unknown type annotation kind');
   }
 
   private evaluateAssignmentStatement(stmt: AssignmentStatement): void {
@@ -302,8 +417,8 @@ export class Interpreter {
       const object = this.evaluateExpression(stmt.target.object);
       const propertyName = stmt.target.property.name;
 
-      if (object.type === 'map') {
-        object.value.set(propertyName, value);
+      if (object.type.static.kind === 'map') {
+        (object.value as SchemaMap<any, RuntimeTypedBinder>).set(propertyName, value);
         return;
       }
 
@@ -315,14 +430,14 @@ export class Interpreter {
       const object = this.evaluateExpression(stmt.target.object);
       const index = this.evaluateExpression(stmt.target.index);
 
-      if (object.type === 'array' && index.type === 'int') {
-        object.value.set(index.value, value);
+      if (object.type.static.kind === 'array' && index.type.static.kind === 'int') {
+        (object.value as SchemaArray<RuntimeTypedBinder>).set(index.value as number, value);
         return;
       }
 
-      if (object.type === 'map') {
+      if (object.type.static.kind === 'map') {
         const key = this.RuntimeTypeBinderToKey(index);
-        object.value.set(key, value);
+        (object.value as SchemaMap<any, RuntimeTypedBinder>).set(key, value);
         return;
       }
 
@@ -335,7 +450,10 @@ export class Interpreter {
   private evaluateIfStatement(stmt: IfStatement): void {
     const condition = this.evaluateExpression(stmt.condition);
 
-    if (isTruthy(condition)) {
+    if (condition.type.static.kind !== 'boolean') {
+      throw new Error('If condition must be boolean');
+    }
+    if (condition.value as boolean) {
       this.evaluateStatement(stmt.thenBranch);
     } else if (stmt.elseBranch) {
       this.evaluateStatement(stmt.elseBranch);
@@ -343,13 +461,23 @@ export class Interpreter {
   }
 
   private evaluateWhileStatement(stmt: WhileStatement): void {
-    while (isTruthy(this.evaluateExpression(stmt.condition))) {
+    while (true) {
+      const condition = this.evaluateExpression(stmt.condition);
+      if (condition.type.static.kind !== 'boolean') {
+        throw new Error('While condition must be boolean');
+      }
+      if (!(condition.value as boolean)) break;
       this.evaluateStatement(stmt.body);
     }
   }
 
   private evaluateUntilStatement(stmt: UntilStatement): void {
-    while (!isTruthy(this.evaluateExpression(stmt.condition))) {
+    while (true) {
+      const condition = this.evaluateExpression(stmt.condition);
+      if (condition.type.static.kind !== 'boolean') {
+        throw new Error('Until condition must be boolean');
+      }
+      if (condition.value as boolean) break;
       this.evaluateStatement(stmt.body);
     }
   }
@@ -360,67 +488,42 @@ export class Interpreter {
     const savedEnv = this.currentEnv;
     this.currentEnv = new Environment(savedEnv);
 
-    if (iterable.type === 'array') {
-      iterable.value.forEach((item) => {
+    if (iterable.type.static.kind === 'array') {
+      (iterable.value as SchemaArray<RuntimeTypedBinder>).forEach((item) => {
         // Skip binding if the variable name is '_' (unnamed variable)
         if (stmt.variable !== '_') {
           this.currentEnv.define(stmt.variable, item);
         }
         this.evaluateStatement(stmt.body);
       });
-    } else if (iterable.type === 'set') {
-      iterable.value.forEach((item) => {
-        let runtimeItem: RuntimeTypeBinder;
-        if (typeof item === 'number') {
-          runtimeItem = Number.isInteger(item)
-            ? { type: 'int', value: item }
-            : { type: 'float', value: item };
-        } else if (typeof item === 'string') {
-          runtimeItem = { type: 'string', value: item };
-        } else if (typeof item === 'boolean') {
-          runtimeItem = { type: 'boolean', value: item };
-        } else if (typeof item === 'object' && item !== null && 'type' in item) {
-          runtimeItem = item as RuntimeTypeBinder;
-        } else {
-          runtimeItem = { type: 'null', value: null };
-        }
+    } else if (iterable.type.static.kind === 'set') {
+      (iterable.value as SchemaSet<RuntimeTypedBinder>).forEach((item) => {
+        // Items in sets are already RuntimeTypedBinders
+        const runtimeItem = item as RuntimeTypedBinder;
         // Skip binding if the variable name is '_' (unnamed variable)
         if (stmt.variable !== '_') {
           this.currentEnv.define(stmt.variable, runtimeItem);
         }
         this.evaluateStatement(stmt.body);
       });
-    } else if (iterable.type === 'map') {
-      iterable.value.forEach((value, key) => {
-        let runtimeKey: RuntimeTypeBinder;
-        if (typeof key === 'number') {
-          runtimeKey = Number.isInteger(key)
-            ? { type: 'int', value: key }
-            : { type: 'float', value: key };
-        } else if (typeof key === 'string') {
-          runtimeKey = { type: 'string', value: key };
-        } else if (typeof key === 'boolean') {
-          runtimeKey = { type: 'boolean', value: key };
-        } else if (typeof key === 'object' && key !== null && 'type' in key) {
-          runtimeKey = key as RuntimeTypeBinder;
-        } else {
-          runtimeKey = { type: 'null', value: null };
-        }
+    } else if (iterable.type.static.kind === 'map') {
+      (iterable.value as SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>).forEach((value, key) => {
+        // Keys in maps are already RuntimeTypedBinders
+        const runtimeKey = key as RuntimeTypedBinder;
         // Skip binding if the variable name is '_' (unnamed variable)
         if (stmt.variable !== '_') {
           this.currentEnv.define(stmt.variable, runtimeKey);
         }
         this.evaluateStatement(stmt.body);
       });
-    } else if (iterable.type === 'range') {
-      iterable.value.generate();
+    } else if (iterable.type.static.kind === 'range') {
+      (iterable.value as LazyRange).generate();
       // Support for infinite ranges - use the generator
-      const limit = 1000; // Safety limit for infinite ranges
-      for (const value of iterable.value.generate()) {
-        const RuntimeTypeBinder: RuntimeTypeBinder = { type: 'int', value };
+      for (const value of (iterable.value as LazyRange).generate()) {
+        const runtimeValue: RuntimeTypedBinder = { value, type: { static: { kind: 'int' }, refinements: [] } };
         // Skip binding if the variable name is '_' (unnamed variable)
         if (stmt.variable !== '_') {
-          this.currentEnv.define(stmt.variable, RuntimeTypeBinder);
+          this.currentEnv.define(stmt.variable, runtimeValue);
         }
         this.evaluateStatement(stmt.body);
       }
@@ -432,7 +535,7 @@ export class Interpreter {
   private evaluateReturnStatement(stmt: ReturnStatement): void {
     const value = stmt.value
       ? this.evaluateExpression(stmt.value)
-      : { type: 'null' as const, value: null };
+      : { type: { static: { kind: 'void' as const }, refinements: [] }, value: undefined };
     throw new ReturnException(value);
   }
 
@@ -447,23 +550,27 @@ export class Interpreter {
     this.currentEnv = savedEnv;
   }
 
-  private evaluateExpression(expr: Expression): RuntimeTypeBinder {
+  private evaluateExpression(expr: Expression): RuntimeTypedBinder {
     switch (expr.type) {
       case 'IntegerLiteral':
-        return { type: 'int', value: expr.value };
+        return { value: expr.value, type: { static: { kind: 'int' }, refinements: [] } };
 
       case 'FloatLiteral':
-        return { type: 'float', value: expr.value };
+        return { value: expr.value, type: { static: { kind: 'float' }, refinements: [] } };
 
       case 'StringLiteral':
-        return { type: 'string', value: expr.value };
+        return { value: expr.value, type: { static: { kind: 'string' }, refinements: [] } };
 
       case 'BooleanLiteral':
-        return { type: 'boolean', value: expr.value };
+        return { value: expr.value, type: { static: { kind: 'boolean' }, refinements: [] } };
 
       case 'ArrayLiteral': {
         const elements = expr.elements.map((e) => this.evaluateExpression(e));
-        return { type: 'array', value: new SchemaArray(elements) };
+        const elementType = elements.length > 0 ? elements[0].type.static : { kind: 'poly' as const };
+        return {
+          value: new SchemaArray(elements),
+          type: { static: { kind: 'array', elementType }, refinements: [] }
+        };
       }
 
       case 'Identifier': {
@@ -478,16 +585,6 @@ export class Interpreter {
         return value;
       }
 
-      case 'PolyTypeConstructor': {
-        // PolyTypeConstructor is treated the same as Identifier at runtime
-        // The type parameters are only used for type checking, not runtime
-        const value = this.currentEnv.get(expr.name);
-        if (value === undefined) {
-          throw new Error(`Undefined polymorphic type constructor: ${expr.name}`);
-        }
-        return value;
-      }
-
       case 'BinaryExpression':
         return this.evaluateBinaryExpression(expr);
 
@@ -495,17 +592,20 @@ export class Interpreter {
         const operand = this.evaluateExpression(expr.operand);
 
         if (expr.operator === '-') {
-          if (operand.type === 'int') {
-            return { type: 'int', value: -operand.value };
-          } else if (operand.type === 'float') {
-            return { type: 'float', value: -operand.value };
+          if (operand.type.static.kind === 'int') {
+            return { value: -(operand.value as number), type: { static: { kind: 'int' }, refinements: [] } };
+          } else if (operand.type.static.kind === 'float') {
+            return { value: -(operand.value as number), type: { static: { kind: 'float' }, refinements: [] } };
           } else {
             throw new Error('Unary minus requires int or float operand');
           }
         }
 
         if (expr.operator === '!') {
-          return { type: 'boolean', value: !isTruthy(operand) };
+          if (operand.type.static.kind !== 'boolean') {
+            throw new Error('Logical NOT requires boolean operand');
+          }
+          return { value: !(operand.value as boolean), type: { static: { kind: 'boolean' }, refinements: [] } };
         }
 
         throw new Error(`Unknown unary operator: ${expr.operator}`);
@@ -518,473 +618,641 @@ export class Interpreter {
         const object = this.evaluateExpression(expr.object);
         const propertyName = expr.property.name;
 
-        if (object.type === 'array') {
+        if (object.type.static.kind === 'array') {
           if (propertyName === 'length') {
             return {
-              type: 'native-function',
-              fn: () => {
-                return { type: 'int', value: object.value.length }
+              type: { static: { kind: 'function', parameters: [], returnType: object.type.static.elementType }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof SchemaArray)) {
+                    throw new Error('Array value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.length }
+                }
               }
-             };
+            };
           }
           if (propertyName === 'push') {
             return {
-              type: 'native-function',
-              fn: (item: RuntimeTypeBinder) => {
-                object.value.push(item);
-                return { type: 'null', value: null };
-              },
-            };
+              type: { static: { kind: 'function', parameters: [object.type.static.elementType], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (item: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof SchemaArray)) {
+                    throw new Error('Internal: Array value is undefined or invalid');
+                  }
+                  object.value.push(item);
+                  return { value: undefined, type: { static: { kind: 'void' }, refinements: [] } }
+                }
+              }
+            }
           }
           if (propertyName === 'pop') {
             return {
-              type: 'native-function',
-              fn: () => {
-                return object.value.pop() || { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: object.type.static.elementType }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof SchemaArray)) {
+                    throw new Error('Internal: Array value is undefined or invalid');
+                  }
+                  let poped = object.value.pop();
+                  if (!poped) { 
+                    throw new Error(`Error: cannot pop from an empty array at ${expr.object.line}:${expr.object.column}`);
+                  }
+                  return poped;
+                }
+              }
             };
           }
         }
 
-        if (object.type === 'map') {
+        if (object.type.static.kind === 'map') {
+          const mapType = object.type.static as { kind: 'map'; keyType: Type; valueType: Type };
           if (propertyName === 'size') {
             return {
-              type: 'native-function',
-              fn: () => {
-                return { type: 'int', value: object.value.size };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof SchemaMap)) {
+                    throw new Error('Internal: Map value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'int' }, refinements: [] }, value:  object.value.size };
+                }
+              }
             };
           }
           if (propertyName === 'get') {
             return {
-              type: 'native-function',
-              fn: (key: RuntimeTypeBinder) => {
-                const k = this.RuntimeTypeBinderToKey(key);
-                return object.value.get(k) || { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [mapType.keyType], returnType: mapType.valueType }, refinements: [] },
+              value: {
+                fn: (key: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof SchemaMap)) {
+                    throw new Error('Internal: Map value is undefined or invalid');
+                  }
+                  const k = this.RuntimeTypeBinderToKey(key);
+                  return object.value.get(k) || { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'set') {
             return {
-              type: 'native-function',
-              fn: (key: RuntimeTypeBinder, value: RuntimeTypeBinder) => {
-                const k = this.RuntimeTypeBinderToKey(key);
-                object.value.set(k, value);
-                return { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [mapType.keyType, mapType.valueType], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (key: RuntimeTypedBinder, value: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof SchemaMap)) {
+                    throw new Error('Internal: Map value is undefined or invalid');
+                  }
+                  const k = this.RuntimeTypeBinderToKey(key);
+                  object.value.set(k, value);
+                  return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'has') {
             return {
-              type: 'native-function',
-              fn: (key: RuntimeTypeBinder) => {
-                const k = this.RuntimeTypeBinderToKey(key);
-                return { type: 'boolean', value: object.value.has(k) };
-              },
+              type: { static: { kind: 'function', parameters: [mapType.keyType], returnType: { kind: 'boolean' } }, refinements: [] },
+              value: {
+                fn: (key: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof SchemaMap)) {
+                    throw new Error('Internal: Map value is undefined or invalid');
+                  }
+                  const k = this.RuntimeTypeBinderToKey(key);
+                  return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.has(k) };
+                }
+              }
             };
           }
           if (propertyName === 'deleteWithKey') {
             return {
-              type: 'native-function',
-              fn: (key: RuntimeTypeBinder) => {
-                const k = this.RuntimeTypeBinderToKey(key);
-                object.value.delete(k);
-                return { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [mapType.keyType], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (key: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof SchemaMap)) {
+                    throw new Error('Internal: Map value is undefined or invalid');
+                  }
+                  const k = this.RuntimeTypeBinderToKey(key);
+                  object.value.delete(k);
+                  return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'keys') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                object.value.forEach((_, key) => {
-                  arr.push(this.RuntimeTypeBinderToKey(key));
-                });
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: mapType.keyType } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof SchemaMap)) {
+                    throw new Error('Internal: Map value is undefined or invalid');
+                  }
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  object.value.forEach((_, key) => {
+                    arr.push(this.keyToRuntimeTypeBinder(key));
+                  });
+                  return { type: { static: { kind: 'array', elementType: mapType.keyType }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
           if (propertyName === 'values') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                object.value.forEach((value) => {
-                  arr.push(value);
-                });
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: mapType.valueType } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof SchemaMap)) {
+                    throw new Error('Internal: Map value is undefined or invalid');
+                  }
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  object.value.forEach((value) => {
+                    arr.push(value);
+                  });
+                  return { type: { static: { kind: 'array', elementType: mapType.valueType }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
           if (propertyName === 'entries') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                object.value.forEach((value, key) => {
-                  // Create a tuple (key, value)
-                  const tuple: RuntimeTypeBinder = {
-                    type: 'tuple',
-                    elements: [this.keyToRuntimeTypeBinder(key), value],
-                  };
-                  arr.push(tuple);
-                });
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: { kind: 'tuple', elementTypes: [mapType.keyType, mapType.valueType] } } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof SchemaMap)) {
+                    throw new Error('Internal: Map value is undefined or invalid');
+                  }
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  object.value.forEach((value, key) => {
+                    // Create a tuple (key, value)
+                    const tuple: RuntimeTypedBinder = {
+                      type: { static: { kind: 'tuple', elementTypes: [mapType.keyType, mapType.valueType] }, refinements: [] },
+                      value: [this.keyToRuntimeTypeBinder(key), value]
+                    };
+                    arr.push(tuple);
+                  });
+                  return { type: { static: { kind: 'array', elementType: { kind: 'tuple', elementTypes: [mapType.keyType, mapType.valueType] } }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
 
         }
 
-        if (object.type === 'set') {
+        if (object.type.static.kind === 'set') {
+          const setType = object.type.static as { kind: 'set'; elementType: Type };
           if (propertyName === 'size') {
             return {
-              type: 'native-function',
-              fn: () => {
-                return { type: 'int', value: object.value.size };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof SchemaSet)) {
+                    throw new Error('Internal: Set value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.size };
+                }
+              }
             };
           }
           if (propertyName === 'add') {
             return {
-              type: 'native-function',
-              fn: (item: RuntimeTypeBinder) => {
-                const k = this.RuntimeTypeBinderToKey(item);
-                object.value.add(k);
-                return { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [setType.elementType], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (item: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof SchemaSet)) {
+                    throw new Error('Internal: Set value is undefined or invalid');
+                  }
+                  const k = this.RuntimeTypeBinderToKey(item);
+                  object.value.add(k);
+                  return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'has') {
             return {
-              type: 'native-function',
-              fn: (item: RuntimeTypeBinder) => {
-                const k = this.RuntimeTypeBinderToKey(item);
-                return { type: 'boolean', value: object.value.has(k) };
-              },
+              type: { static: { kind: 'function', parameters: [setType.elementType], returnType: { kind: 'boolean' } }, refinements: [] },
+              value: {
+                fn: (item: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof SchemaSet)) {
+                    throw new Error('Internal: Set value is undefined or invalid');
+                  }
+                  const k = this.RuntimeTypeBinderToKey(item);
+                  return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.has(k) };
+                }
+              }
             };
           }
           if (propertyName === 'delete') {
             return {
-              type: 'native-function',
-              fn: (item: RuntimeTypeBinder) => {
-                const k = this.RuntimeTypeBinderToKey(item);
-                object.value.delete(k);
-                return { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [setType.elementType], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (item: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof SchemaSet)) {
+                    throw new Error('Internal: Set value is undefined or invalid');
+                  }
+                  const k = this.RuntimeTypeBinderToKey(item);
+                  object.value.delete(k);
+                  return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'values') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                object.value.forEach((item) => {
-                  arr.push(this.RuntimeTypeBinderToKey(item));
-                });
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: setType.elementType } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof SchemaSet)) {
+                    throw new Error('Internal: Set value is undefined or invalid');
+                  }
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  object.value.forEach((item) => {
+                    arr.push(this.keyToRuntimeTypeBinder(item));
+                  });
+                  return { type: { static: { kind: 'array', elementType: setType.elementType }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
         }
 
-        if (object.type === 'minheap' || object.type === 'maxheap') {
+        if (object.type.static.kind === 'heap') {
+          const heapType = object.type.static as { kind: 'heap'; elementType: Type };
           if (propertyName === 'size') {
             return {
-              type: 'native-function',
-              fn: () => {
-                return { type: 'int', value: object.value.size };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof MinHeap || object.value instanceof MaxHeap)) {
+                    throw new Error('Internal: Heap value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.size };
+                }
+              }
             };
           }
           if (propertyName === 'push') {
             return {
-              type: 'native-function',
-              fn: (item: RuntimeTypeBinder) => {
-                const k = this.RuntimeTypeBinderToKey(item);
-                object.value.push(k);
-                return { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [heapType.elementType], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (item: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof MinHeap || object.value instanceof MaxHeap)) {
+                    throw new Error('Internal: Heap value is undefined or invalid');
+                  }
+                  object.value.push(item);
+                  return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'pop') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const val = object.value.pop();
-                return val !== undefined
-                  ? Number.isInteger(val)
-                    ? { type: 'int', value: val }
-                    : { type: 'float', value: val }
-                  : { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: heapType.elementType }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof MinHeap || object.value instanceof MaxHeap)) {
+                    throw new Error('Internal: Heap value is undefined or invalid');
+                  }
+                  const val = object.value.pop();
+                  if (!val) {
+                    throw new Error(`Error: cannot pop from an empty heap`);
+                  }
+                  return val;
+                }
+              }
             };
           }
           if (propertyName === 'peek') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const val = object.value.peek();
-                return val !== undefined
-                  ? Number.isInteger(val)
-                    ? { type: 'int', value: val }
-                    : { type: 'float', value: val }
-                  : { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: heapType.elementType }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof MinHeap || object.value instanceof MaxHeap)) {
+                    throw new Error('Internal: Heap value is undefined or invalid');
+                  }
+                  const val = object.value.peek();
+                  if (!val) {
+                    throw new Error(`Error: cannot peek from an empty heap`);
+                  }
+                  return val;
+                }
+              }
             };
           }
         }
 
-        if (object.type === 'heapMap') {
+        if (object.type.static.kind === 'heapmap') {
+          const heapmapType = object.type.static as { kind: 'heapmap'; keyType: Type; valueType: Type };
           if (propertyName === 'size') {
             return {
-              type: 'native-function',
-              fn: () => {
-                return { type: 'int', value: object.value.size };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                    throw new Error('Internal: HeapMap value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.size };
+                }
+              }
             };
           }
           if (propertyName === 'push') {
             return {
-              type: 'native-function',
-              fn: (key: RuntimeTypeBinder, value: RuntimeTypeBinder) => {
-                const k = this.RuntimeTypeBinderToKey(key);
-                const v = this.RuntimeTypeBinderToKey(value);
-                object.value.push(k, v);
-                return { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [heapmapType.keyType, heapmapType.valueType], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (key: RuntimeTypedBinder, value: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                    throw new Error('Internal: HeapMap value is undefined or invalid');
+                  }
+                  object.value.push(key, value);
+                  return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'pop') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const val = object.value.pop();
-                if (val === undefined) return { type: 'null', value: null };
-                
-                if (typeof val === 'number') {
-                   return Number.isInteger(val) ? { type: 'int', value: val } : { type: 'float', value: val };
+              type: { static: { kind: 'function', parameters: [], returnType: heapmapType.keyType }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                    throw new Error('Internal: HeapMap value is undefined or invalid');
+                  }
+                  const val = object.value.pop();
+                  if (!val) {
+                    throw new Error(`Error: cannot pop from an empty heapmap`);
+                  }
+                  return val;
                 }
-                if (typeof val === 'string') {
-                   return { type: 'string', value: val };
-                }
-                if (typeof val === 'boolean') {
-                   return { type: 'boolean', value: val };
-                }
-                return val as RuntimeTypeBinder;
-              },
+              }
             };
           }
           if (propertyName === 'peek') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const val = object.value.peek();
-                if (val === undefined) return { type: 'null', value: null };
-                
-                if (typeof val === 'number') {
-                   return Number.isInteger(val) ? { type: 'int', value: val } : { type: 'float', value: val };
+              type: { static: { kind: 'function', parameters: [], returnType: heapmapType.keyType }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                    throw new Error('Internal: HeapMap value is undefined or invalid');
+                  }
+                  const val = object.value.peek();
+                  if (!val) {
+                    throw new Error(`Error: cannot peek from an empty heapmap`);
+                  }
+                  return val;
                 }
-                if (typeof val === 'string') {
-                   return { type: 'string', value: val };
-                }
-                if (typeof val === 'boolean') {
-                   return { type: 'boolean', value: val };
-                }
-                return val as RuntimeTypeBinder;
-              },
+              }
             };
           }
         }
 
-        if (object.type === 'binarytree' || object.type === 'avltree') {
+        if (object.type.static.kind === 'binarytree' || object.type.static.kind === 'avltree') {
+          const treeType = object.type.static as { kind: 'binarytree' | 'avltree'; elementType: Type };
           if (propertyName === 'insert') {
             return {
-              type: 'native-function',
-              fn: (value: RuntimeTypeBinder) => {
-                const v = this.RuntimeTypeBinderToKey(value);
-                object.value.insert(v);
-                return { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [treeType.elementType], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (value: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                    throw new Error('Internal: Tree value is undefined or invalid');
+                  }
+                  object.value.insert(value);
+                  return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'search') {
             return {
-              type: 'native-function',
-              fn: (value: RuntimeTypeBinder) => {
-                const v = this.RuntimeTypeBinderToKey(value);
-                return { type: 'boolean', value: object.value.search(v) };
-              },
+              type: { static: { kind: 'function', parameters: [treeType.elementType], returnType: { kind: 'boolean' } }, refinements: [] },
+              value: {
+                fn: (value: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                    throw new Error('Internal: Tree value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.search(value) };
+                }
+              }
             };
           }
           if (propertyName === 'inOrderTraversal') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const elements = object.value.inOrderTraversal().map((val) => {
-                  return this.RuntimeTypeBinderToKey(val);
-                });
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                elements.forEach((el) => arr.push(el));
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                    throw new Error('Internal: Tree value is undefined or invalid');
+                  }
+                  const elements = object.value.inOrderTraversal();
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+                  return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
           if (propertyName === 'preOrderTraversal') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const elements = object.value.preOrderTraversal().map((val) => {
-                  return this.RuntimeTypeBinderToKey(val);
-                });
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                elements.forEach((el) => arr.push(el));
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                    throw new Error('Internal: Tree value is undefined or invalid');
+                  }
+                  const elements = object.value.preOrderTraversal();
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+                  return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
           if (propertyName === 'postOrderTraversal') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const elements = object.value.postOrderTraversal().map((val) => {
-                  return this.RuntimeTypeBinderToKey(val);
-                });
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                elements.forEach((el) => arr.push(el));
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                    throw new Error('Internal: Tree value is undefined or invalid');
+                  }
+                  const elements = object.value.postOrderTraversal();
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+                  return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
           if (propertyName === 'getHeight') {
             return {
-              type: 'native-function',
-              fn: () => {
-                return { type: 'int', value: object.value.getHeight() };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                    throw new Error('Internal: Tree value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.getHeight() };
+                }
+              }
             };
           }
         }
 
-        if (object.type === 'graph') {
+        if (object.type.static.kind === 'graph') {
+          const graphType = object.type.static as { kind: 'graph'; nodeType: Type };
           if (propertyName === 'addVertex') {
             return {
-              type: 'native-function',
-              fn: (vertex: RuntimeTypeBinder) => {
-                const v = this.RuntimeTypeBinderToKey(vertex);
-                object.value.addVertex(v);
-                return { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [graphType.nodeType], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (vertex: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof Graph)) {
+                    throw new Error('Internal: Graph value is undefined or invalid');
+                  }
+                  object.value.addVertex(vertex);
+                  return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'addEdge') {
             return {
-              type: 'native-function',
-              fn: (
-                from: RuntimeTypeBinder,
-                to: RuntimeTypeBinder,
-                weight?: RuntimeTypeBinder
-              ) => {
-                const f = this.RuntimeTypeBinderToKey(from);
-                const t = this.RuntimeTypeBinderToKey(to);
-                const w =
-                  weight && (weight.type === 'int' || weight.type === 'float') ? weight.value : 1;
-                object.value.addEdge(f, t, w);
-                return { type: 'null', value: null };
-              },
+              type: { static: { kind: 'function', parameters: [graphType.nodeType, graphType.nodeType, { kind: 'int' }], returnType: { kind: 'void' } }, refinements: [] },
+              value: {
+                fn: (
+                  from: RuntimeTypedBinder,
+                  to: RuntimeTypedBinder,
+                  weight?: RuntimeTypedBinder
+                ) => {
+                  if (!object.value || !(object.value instanceof Graph)) {
+                    throw new Error('Internal: Graph value is undefined or invalid');
+                  }
+                  const w = weight && (weight.type.static.kind === 'int' || weight.type.static.kind === 'float') ? weight.value as number : 1;
+                  object.value.addEdge(from, to, w);
+                  return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+                }
+              }
             };
           }
           if (propertyName === 'getNeighbors') {
             return {
-              type: 'native-function',
-              fn: (vertex: RuntimeTypeBinder) => {
-                const v = this.RuntimeTypeBinderToKey(vertex);
-                const neighbors = object.value.getNeighbors(v);
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                neighbors.forEach((edge) => {
-                  // Create a record { to: nodeType, weight: int }
-                  const record: RuntimeTypeBinder = {
-                    type: 'record',
-                    fields: new Map([
-                      ['to', this.keyToRuntimeTypeBinder(edge.to)],
-                      ['weight', { type: 'int', value: edge.weight }],
-                    ]),
-                  };
-                  arr.push(record);
-                });
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [graphType.nodeType], returnType: { kind: 'array', elementType: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] } } }, refinements: [] },
+              value: {
+                fn: (vertex: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof Graph)) {
+                    throw new Error('Internal: Graph value is undefined or invalid');
+                  }
+                  const neighbors = object.value.getNeighbors(vertex);
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  neighbors.forEach((edge) => {
+                    // Create a record { to: nodeType, weight: int }
+                    const record: RuntimeTypedBinder = {
+                      type: { static: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] }, refinements: [] },
+                      value: new Map<RuntimeTypedBinder, RuntimeTypedBinder>([
+                        [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'to' }, edge.to as RuntimeTypedBinder],
+                        [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'weight' }, { type: { static: { kind: 'int' }, refinements: [] }, value: edge.weight }],
+                      ])
+                    };
+                    arr.push(record);
+                  });
+                  return { type: { static: { kind: 'array', elementType: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] } }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
           if (propertyName === 'hasVertex') {
             return {
-              type: 'native-function',
-              fn: (vertex: RuntimeTypeBinder) => {
-                const v = this.RuntimeTypeBinderToKey(vertex);
-                return { type: 'boolean', value: object.value.hasVertex(v) };
-              },
+              type: { static: { kind: 'function', parameters: [graphType.nodeType], returnType: { kind: 'boolean' } }, refinements: [] },
+              value: {
+                fn: (vertex: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof Graph)) {
+                    throw new Error('Internal: Graph value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.hasVertex(vertex) };
+                }
+              }
             };
           }
           if (propertyName === 'getVertices') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const vertices = object.value.getVertices();
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                vertices.forEach((v) => {
-                  arr.push(this.RuntimeTypeBinderToKey(v));
-                });
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: graphType.nodeType } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof Graph)) {
+                    throw new Error('Internal: Graph value is undefined or invalid');
+                  }
+                  const vertices = object.value.getVertices();
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  vertices.forEach((v) => {
+                    arr.push(v as RuntimeTypedBinder);
+                  });
+                  return { type: { static: { kind: 'array', elementType: graphType.nodeType }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
           if (propertyName === 'isDirected') {
             return {
-              type: 'native-function',
-              fn: () => {
-                return { type: 'boolean', value: object.value.isDirected() };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'boolean' } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof Graph)) {
+                    throw new Error('Internal: Graph value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.isDirected() };
+                }
+              }
             };
           }
           if (propertyName === 'size') {
             return {
-              type: 'native-function',
-              fn: () => {
-                return { type: 'int', value: object.value.getVertices().length };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof Graph)) {
+                    throw new Error('Internal: Graph value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.getVertices().length };
+                }
+              }
             };
           }
           if (propertyName === 'haveEdge') {
             return {
-              type: 'native-function',
-              fn: (from: RuntimeTypeBinder, to: RuntimeTypeBinder) => {
-                const f = this.RuntimeTypeBinderToKey(from);
-                const t = this.RuntimeTypeBinderToKey(to);
-                return { type: 'boolean', value: object.value.hasEdge(f, t) };
-              },
+              type: { static: { kind: 'function', parameters: [graphType.nodeType, graphType.nodeType], returnType: { kind: 'boolean' } }, refinements: [] },
+              value: {
+                fn: (from: RuntimeTypedBinder, to: RuntimeTypedBinder) => {
+                  if (!object.value || !(object.value instanceof Graph)) {
+                    throw new Error('Internal: Graph value is undefined or invalid');
+                  }
+                  return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.hasEdge(from, to) };
+                }
+              }
             };
           }
           if (propertyName === 'getEdges') {
             return {
-              type: 'native-function',
-              fn: () => {
-                const edges = object.value.getEdges();
-                const arr = new SchemaArray<RuntimeTypeBinder>();
-                edges.forEach((edge) => {
-                  // Create a record { from: nodeType, to: nodeType, weight: int }
-                  const record: RuntimeTypeBinder = {
-                    type: 'record',
-                    fields: new Map([
-                      ['from', this.keyToRuntimeTypeBinder(edge.from)],
-                      ['to', this.keyToRuntimeTypeBinder(edge.to)],
-                      ['weight', { type: 'int', value: edge.weight }],
-                    ]),
-                  };
-                  arr.push(record);
-                });
-                return { type: 'array', value: arr };
-              },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] } } }, refinements: [] },
+              value: {
+                fn: () => {
+                  if (!object.value || !(object.value instanceof Graph)) {
+                    throw new Error('Internal: Graph value is undefined or invalid');
+                  }
+                  const edges = object.value.getEdges();
+                  const arr = new SchemaArray<RuntimeTypedBinder>();
+                  edges.forEach((edge) => {
+                    // Create a record { from: nodeType, to: nodeType, weight: int }
+                    const record: RuntimeTypedBinder = {
+                      type: { static: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] }, refinements: [] },
+                      value: new Map<RuntimeTypedBinder, RuntimeTypedBinder>([
+                        [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'from' }, edge.from as RuntimeTypedBinder],
+                        [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'to' }, edge.to as RuntimeTypedBinder],
+                        [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'weight' }, { type: { static: { kind: 'int' }, refinements: [] }, value: edge.weight }],
+                      ])
+                    };
+                    arr.push(record);
+                  });
+                  return { type: { static: { kind: 'array', elementType: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] } }, refinements: [] }, value: arr };
+                }
+              }
             };
           }
         }
@@ -995,33 +1263,110 @@ export class Interpreter {
         const object = this.evaluateExpression(expr.object);
         const index = this.evaluateExpression(expr.index);
 
-        if (object.type === 'array' && index.type === 'int') {
-          return (
-            object.value.get(index.value) || { type: 'null', value: null }
-          );
+        if (object.type.static.kind === 'array') {
+          if (index.type.static.kind === 'int') {
+            const val = (object.value as SchemaArray<RuntimeTypedBinder>).get(index.value as number);
+            return val || { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+          }
+          // Handle array slicing
+          if (index.type.static.kind === 'array' && index.type.static.elementType.kind === 'int') {
+             // Range evaluates to an array of integers [start, start+1, ..., end-1]
+             // But for slicing we want the start and end indices.
+             // However, the RangeExpression evaluation in interpreter returns an array of numbers.
+             // This is inefficient for slicing if we just want start/end.
+             // But given the current implementation of RangeExpression, it returns an array.
+             
+             // Wait, RangeExpression in interpreter returns a SchemaArray of integers.
+             // If it's a range like ..3, it returns [0, 1, 2].
+             // If it's 1..4, it returns [1, 2, 3].
+             // If it's 2.., it's an infinite range, which might be handled differently or throw error if not supported.
+             
+             // Let's check how RangeExpression is evaluated.
+             // If it returns an array of indices, we can map over them to get elements.
+             
+             const indices = (index.value as SchemaArray<RuntimeTypedBinder>);
+             const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
+             const result = new SchemaArray<RuntimeTypedBinder>();
+             
+             // Optimization: if indices are contiguous, we could slice, but SchemaArray might not support it directly.
+             // For now, just iterate.
+             for (let i = 0; i < indices.length; i++) {
+                const idxVal = indices.get(i);
+                if (idxVal && idxVal.value !== undefined) {
+                   const idx = idxVal.value as number;
+                   if (idx >= 0 && idx < sourceArray.length) {
+                      const val = sourceArray.get(idx);
+                      if (val) result.push(val);
+                   }
+                }
+             }
+             
+             return {
+                type: object.type,
+                value: result
+             };
+          }
+
+          // Handle array slicing with Range object (infinite ranges)
+          if (index.type.static.kind === 'range') {
+             const range = index.value as LazyRange;
+             const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
+             const result = new SchemaArray<RuntimeTypedBinder>();
+             
+             const start = range.getStart;
+             let end = range.getEnd;
+             const inclusive = range.isInclusive;
+             
+             // If end is undefined (infinite), slice until the end of the array
+             if (end === undefined) {
+                end = sourceArray.length;
+             } else {
+                if (inclusive) {
+                   end = end + 1;
+                }
+             }
+             
+             const actualStart = Math.max(0, Math.min(start, sourceArray.length));
+             const actualEnd = Math.max(0, Math.min(end, sourceArray.length));
+             
+             for (let i = actualStart; i < actualEnd; i++) {
+                const val = sourceArray.get(i);
+                if (val) result.push(val);
+             }
+             
+             return {
+                type: object.type,
+                value: result
+             };
+          }
         }
 
-        if (object.type === 'map') {
+        if (object.type.static.kind === 'map') {
           const key = this.RuntimeTypeBinderToKey(index);
-          return object.value.get(key) || { type: 'null', value: null };
+          const val = (object.value as SchemaMap<any, RuntimeTypedBinder>).get(key);
+          return val || { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
         }
 
-        if (object.type === 'tuple') {
-          if (index.type === 'int') {
-            const idx = index.value;
-            if (idx >= 0 && idx < object.elements.length) {
-              return object.elements[idx];
+        if (object.type.static.kind === 'tuple') {
+          if (index.type.static.kind === 'int') {
+            const idx = index.value as number;
+            const tupleValue = object.value as RuntimeTypedBinder[];
+            if (idx >= 0 && idx < tupleValue.length) {
+              return tupleValue[idx];
             }
-            throw new Error(`Tuple index ${idx} out of bounds (length: ${object.elements.length})`);
+            throw new Error(`Tuple index ${idx} out of bounds (length: ${tupleValue.length})`);
           }
           throw new Error('Tuple indices must be integers');
         }
 
-        if (object.type === 'record') {
-          if (index.type === 'string') {
-            const field = object.fields.get(index.value);
-            if (field) {
-              return field;
+        if (object.type.static.kind === 'record') {
+          if (index.type.static.kind === 'string') {
+            const recordValue = object.value as Map<RuntimeTypedBinder, RuntimeTypedBinder>;
+            // Find the field by matching string value in keys
+            for (const [key, value] of recordValue.entries()) {
+              if (key.type.static.kind === 'string' && key.value === index.value) {
+                return value;
+              }
             }
             throw new Error(`Record does not have field '${index.value}'`);
           }
@@ -1033,23 +1378,23 @@ export class Interpreter {
 
       case 'RangeExpression': {
         const inclusive = expr.inclusive;
-        
+
         // Handle string range expressions like "aa".."bb", "a".."z"
         if (expr.start) {
           const startVal = this.evaluateExpression(expr.start);
-          if (startVal.type === 'string') {
-            return this.evaluateStringRange(startVal.value, expr.end, inclusive);
+          if (startVal.type.static.kind === 'string') {
+            return this.evaluateStringRange(startVal.value as string, expr.end, inclusive);
           }
         }
-        
+
         // Handle integer range expressions like 1..3, 1...3, ..3, 0..
         let start: number // There must be a start (possibly default)
         let end: number | undefined;
 
         if (expr.start) {
           const startVal = this.evaluateExpression(expr.start);
-          if (startVal.type === 'int') {
-            start = startVal.value;
+          if (startVal.type.static.kind === 'int') {
+            start = startVal.value as number;
           } else {
             throw new Error('Range start must be an integer or string');
           }
@@ -1061,8 +1406,8 @@ export class Interpreter {
         // Evaluate end (undefined for infinite ranges)
         if (expr.end) {
           const endVal = this.evaluateExpression(expr.end);
-          if (endVal.type === 'int') {
-            end = endVal.value;
+          if (endVal.type.static.kind === 'int') {
+            end = endVal.value as number;
           } else {
             throw new Error('Range end must be an integer');
           }
@@ -1076,25 +1421,28 @@ export class Interpreter {
         // If it's a finite range, convert to array for immediate use
         // Otherwise, return the range object for lazy evaluation
         if (!range.isInfinite) {
-          const elements = range.toArray().map(val => ({ type: 'int' as const, value: val }));
-          return { type: 'array', value: new SchemaArray(elements) };
+          const elements = range.toArray().map(val => ({ type: { static: { kind: 'int' as const }, refinements: [] }, value: val }));
+          return { type: { static: { kind: 'array', elementType: { kind: 'int' } }, refinements: [] }, value: new SchemaArray(elements) };
         } else {
-          return { type: 'range', value: range };
+          return { type: { static: { kind: 'range' }, refinements: [] }, value: range };
         }
       }
 
       case 'TypeOfExpression': {
         const operand = this.evaluateExpression(expr.operand);
-        return { type: 'string', value: operand.type };
+        return { type: { static: { kind: 'string' }, refinements: [] }, value: operand.type.static.kind };
       }
 
       case 'AssertExpression': {
         const condition = this.evaluateExpression(expr.condition);
-        if (!isTruthy(condition)) {
-          const message = this.evaluateExpression(expr.message);
-          throw new Error(`Assertion failed: ${RuntimeTypeBinderToString(message)}`);
+        if (condition.type.static.kind !== 'boolean') {
+          throw new Error('Assert condition must be a boolean');
         }
-        return { type: 'boolean', value: true };
+        if (condition.value === false) {
+          const message = this.evaluateExpression(expr.message);
+          throw new Error(`Assertion failed: ${RuntimeTypedBinderToString(message)}`);
+        }
+        return { type: { static: { kind: 'boolean' }, refinements: [] }, value: true };
       }
 
       default:
@@ -1102,20 +1450,20 @@ export class Interpreter {
     }
   }
 
-  private evaluateStringRange(start: string, endExpr: Expression | undefined, inclusive: boolean): RuntimeTypeBinder {
+  private evaluateStringRange(start: string, endExpr: Expression | undefined, inclusive: boolean): RuntimeTypedBinder {
     if (!endExpr) {
       throw new Error('String ranges must have both start and end');
     }
 
     const endVal = this.evaluateExpression(endExpr);
-    if (endVal.type !== 'string') {
+    if (endVal.type.static.kind !== 'string') {
       throw new Error('String range end must be a string');
     }
 
-    const end = endVal.value;
+    const end = endVal.value as string;
 
     // Generate string range
-    const result: RuntimeTypeBinder[] = [];
+    const result: RuntimeTypedBinder[] = [];
 
     // Simple implementation for same-length strings
     if (start.length !== end.length) {
@@ -1129,7 +1477,7 @@ export class Interpreter {
       const finalCode = inclusive ? endCode : endCode - 1;
 
       for (let code = startCode; code <= finalCode; code++) {
-        result.push({ type: 'string', value: String.fromCharCode(code) });
+        result.push({ type: { static: { kind: 'string' }, refinements: [] }, value: String.fromCharCode(code) });
       }
     } else {
       // Multi-character range like "aa".."bb"
@@ -1139,7 +1487,7 @@ export class Interpreter {
       let iterations = 0;
 
       while (iterations < maxIterations) {
-        result.push({ type: 'string', value: current.join('') });
+        result.push({ type: { static: { kind: 'string' }, refinements: [] }, value: current.join('') });
 
         if (current.join('') === end) {
           if (!inclusive) {
@@ -1171,248 +1519,271 @@ export class Interpreter {
       }
     }
 
-    return { type: 'array', value: new SchemaArray(result) };
+    return { type: { static: { kind: 'array', elementType: { kind: 'string' } }, refinements: [] }, value: new SchemaArray(result) };
   }
 
-  private evaluateBinaryExpression(expr: any): RuntimeTypeBinder {
+  private isNumeric(type: Type): boolean {
+    if (type.kind === 'int' || type.kind === 'float') return true;
+    if (type.kind === 'intersection') {
+      return type.types.some(t => this.isNumeric(t));
+    }
+    if (type.kind === 'union') {
+      return type.types.every(t => this.isNumeric(t));
+    }
+    return false;
+  }
+
+  private evaluateBinaryExpression(expr: any): RuntimeTypedBinder {
     const left = this.evaluateExpression(expr.left);
     const right = this.evaluateExpression(expr.right);
 
     // Arithmetic: +, -, *, % (work on int and float)
     if (expr.operator === '+') {
-      if (left.type === 'int' && right.type === 'int') {
-        return { type: 'int', value: left.value + right.value };
+      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+        return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) + (right.value as number) };
       }
-      if (left.type === 'float' && right.type === 'float') {
-        return { type: 'float', value: left.value + right.value };
+      if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
+        return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) + (right.value as number) };
       }
-      if ((left.type === 'int' || left.type === 'float') &&
-          (right.type === 'int' || right.type === 'float')) {
-        return { type: 'float', value: left.value + right.value };
+      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
+        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+        return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) + (right.value as number) };
       }
-      if (left.type === 'string' && right.type === 'string') {
-        return { type: 'string', value: left.value + right.value };
+      if (left.type.static.kind === 'string' && right.type.static.kind === 'string') {
+        return { type: { static: { kind: 'string' }, refinements: [] }, value: (left.value as string) + (right.value as string) };
       }
-      throw new Error(`Cannot add ${left.type} and ${right.type}`);
+      throw new Error(`Cannot add ${left.type.static.kind} and ${right.type.static.kind}`);
     }
 
     if (expr.operator === '-') {
-      if (left.type === 'int' && right.type === 'int') {
-        return { type: 'int', value: left.value - right.value };
+      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+        return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) - (right.value as number) };
       }
-      if (left.type === 'float' && right.type === 'float') {
-        return { type: 'float', value: left.value - right.value };
+      if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
+        return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) - (right.value as number) };
       }
-      if ((left.type === 'int' || left.type === 'float') &&
-          (right.type === 'int' || right.type === 'float')) {
-        return { type: 'float', value: left.value - right.value };
+      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
+        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+        return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) - (right.value as number) };
       }
-      throw new Error(`Cannot subtract ${right.type} from ${left.type}`);
+      throw new Error(`Cannot subtract ${right.type.static.kind} from ${left.type.static.kind}`);
     }
 
     if (expr.operator === '*') {
-      if (left.type === 'int' && right.type === 'int') {
-        return { type: 'int', value: left.value * right.value };
+      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+        return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) * (right.value as number) };
       }
-      if (left.type === 'float' && right.type === 'float') {
-        return { type: 'float', value: left.value * right.value };
+      if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
+        return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) * (right.value as number) };
       }
-      if ((left.type === 'int' || left.type === 'float') &&
-          (right.type === 'int' || right.type === 'float')) {
-        return { type: 'float', value: left.value * right.value };
+      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
+        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+        return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) * (right.value as number) };
       }
-      throw new Error(`Cannot multiply ${left.type} and ${right.type}`);
+      throw new Error(`Cannot multiply ${left.type.static.kind} and ${right.type.static.kind}`);
     }
 
     // Integer division: / (requires both operands to be int, returns int)
     if (expr.operator === '/') {
-      if (left.type === 'int' && right.type === 'int') {
-        return { type: 'int', value: Math.floor(left.value / right.value) };
+      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+        return { type: { static: { kind: 'int' }, refinements: [] }, value: Math.floor((left.value as number) / (right.value as number)) };
       }
       throw new Error(`Integer division requires both operands to be int`);
     }
 
     // Float division: /. (works on int or float, returns float)
     if (expr.operator === '/.') {
-      if ((left.type === 'int' || left.type === 'float') &&
-          (right.type === 'int' || right.type === 'float')) {
-        return { type: 'float', value: left.value / right.value };
+      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
+        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+        return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) / (right.value as number) };
       }
       throw new Error(`Float division requires numeric operands`);
     }
 
     if (expr.operator === '%') {
-      if (left.type === 'int' && right.type === 'int') {
-        return { type: 'int', value: left.value % right.value };
+      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+        return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) % (right.value as number) };
       }
-      if (left.type === 'float' && right.type === 'float') {
-        return { type: 'float', value: left.value % right.value };
+      if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
+        return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) % (right.value as number) };
       }
-      if ((left.type === 'int' || left.type === 'float') &&
-          (right.type === 'int' || right.type === 'float')) {
-        return { type: 'float', value: left.value % right.value };
+      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
+        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+        return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) % (right.value as number) };
       }
       throw new Error(`Modulo requires numeric operands`);
     }
 
     // Bitwise shift operators: << and >> (require both operands to be int)
     if (expr.operator === '<<') {
-      if (left.type === 'int' && right.type === 'int') {
-        return { type: 'int', value: left.value << right.value };
+      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+        return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) << (right.value as number) };
       }
       throw new Error(`Left shift requires both operands to be int`);
     }
 
     if (expr.operator === '>>') {
-      if (left.type === 'int' && right.type === 'int') {
-        return { type: 'int', value: left.value >> right.value };
+      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+        return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) >> (right.value as number) };
       }
       throw new Error(`Right shift requires both operands to be int`);
     }
 
     // Comparison operators: work on int or float
     if (expr.operator === '<') {
-      if ((left.type === 'int' || left.type === 'float') &&
-          (right.type === 'int' || right.type === 'float')) {
-        return { type: 'boolean', value: left.value < right.value };
+      if (this.isNumeric(left.type.static) && this.isNumeric(right.type.static)) {
+        return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) < (right.value as number) };
       }
-      throw new Error(`Cannot compare ${left.type} < ${right.type}. At line ${expr.line}, column ${expr.column}`);
+      throw new Error(`Cannot compare ${left.type.static.kind} < ${right.type.static.kind}. At line ${expr.line}, column ${expr.column}`);
     }
 
     if (expr.operator === '<=') {
-      if ((left.type === 'int' || left.type === 'float') &&
-          (right.type === 'int' || right.type === 'float')) {
-        return { type: 'boolean', value: left.value <= right.value };
+      if (this.isNumeric(left.type.static) && this.isNumeric(right.type.static)) {
+        return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) <= (right.value as number) };
       }
-      throw new Error(`Cannot compare ${left.type} <= ${right.type}. At line ${expr.line}, column ${expr.column}`);
+      throw new Error(`Cannot compare ${left.type.static.kind} <= ${right.type.static.kind}. At line ${expr.line}, column ${expr.column}`);
     }
 
     if (expr.operator === '>') {
-      if ((left.type === 'int' || left.type === 'float') &&
-          (right.type === 'int' || right.type === 'float')) {
-        return { type: 'boolean', value: left.value > right.value };
+      if (this.isNumeric(left.type.static) && this.isNumeric(right.type.static)) {
+        return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) > (right.value as number) };
       }
-      throw new Error(`Cannot compare ${left.type} > ${right.type}. At line ${expr.line}, column ${expr.column}`);
+      throw new Error(`Cannot compare ${left.type.static.kind} > ${right.type.static.kind}. At line ${expr.line}, column ${expr.column}`);
     }
 
     if (expr.operator === '>=') {
-      if ((left.type === 'int' || left.type === 'float') &&
-          (right.type === 'int' || right.type === 'float')) {
-        return { type: 'boolean', value: left.value >= right.value };
+      if (this.isNumeric(left.type.static) && this.isNumeric(right.type.static)) {
+        return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) >= (right.value as number) };
       }
-      throw new Error(`Cannot compare ${left.type} >= ${right.type}. At line ${expr.line}, column ${expr.column}`);
+      throw new Error(`Cannot compare ${left.type.static.kind} >= ${right.type.static.kind}. At line ${expr.line}, column ${expr.column}`);
     }
 
     // Equality operators
     if (expr.operator === '==') {
-      return { type: 'boolean', value: this.valuesEqual(left, right) };
+      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: this.valuesEqual(left, right) };
     }
 
     if (expr.operator === '!=') {
-      return { type: 'boolean', value: !this.valuesEqual(left, right) };
+      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: !this.valuesEqual(left, right) };
     }
 
     // Logical operators
     if (expr.operator === '&&') {
-      return { type: 'boolean', value: isTruthy(left) && isTruthy(right) };
+      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: this.isTruthy(left) && this.isTruthy(right) };
     }
 
     if (expr.operator === '||') {
-      return { type: 'boolean', value: isTruthy(left) || isTruthy(right) };
+      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: this.isTruthy(left) || this.isTruthy(right) };
     }
 
     throw new Error(`Unknown binary operator: ${expr.operator}`);
   }
 
-  private evaluateCallExpression(expr: any): RuntimeTypeBinder {
+  private evaluateCallExpression(expr: any): RuntimeTypedBinder {
     const callee = this.evaluateExpression(expr.callee);
 
-    if (callee.type === 'native-function') {
-      const args = expr.arguments.map((arg: Expression) =>
-        this.evaluateExpression(arg)
-      );
-      return callee.fn(...args);
-    }
+    // Check if it's a function with the new runtime type system
+    if (callee.type.static.kind === 'function') {
+      const calleeValue = callee.value as { fn: (...args: RuntimeTypedBinder[]) => RuntimeTypedBinder } | { parameters: Parameter[]; body: BlockStatement; closure: Map<string, RuntimeTypedBinder> };
 
-    if (callee.type === 'function') {
-      const args = expr.arguments.map((arg: Expression) =>
-        this.evaluateExpression(arg)
-      );
-
-      const savedEnv = this.currentEnv;
-      // Create a new environment from the closure
-      const closureEnv = new Environment();
-      for (const [key, value] of callee.closure.entries()) {
-        closureEnv.define(key, value);
-      }
-      this.currentEnv = closureEnv;
-
-      for (let i = 0; i < callee.parameters.length; i++) {
-        this.currentEnv.define(callee.parameters[i].name, args[i]);
+      // Native function (has 'fn' property directly)
+      if ('fn' in calleeValue) {
+        const args = expr.arguments.map((arg: Expression) =>
+          this.evaluateExpression(arg)
+        );
+        return calleeValue.fn(...args);
       }
 
-      try {
-        this.evaluateStatement(callee.body);
-        this.currentEnv = savedEnv;
-        return { type: 'null', value: null };
-      } catch (e) {
-        if (e instanceof ReturnException) {
-          this.currentEnv = savedEnv;
-          return e.value;
+      // User-defined function (has 'parameters', 'body', 'closure')
+      if ('parameters' in calleeValue && 'body' in calleeValue && 'closure' in calleeValue) {
+        const args = expr.arguments.map((arg: Expression) =>
+          this.evaluateExpression(arg)
+        );
+
+        const savedEnv = this.currentEnv;
+        // Create a new environment from the closure
+        const closureEnv = new Environment();
+        for (const [key, value] of calleeValue.closure.entries()) {
+          closureEnv.define(key, value);
         }
-        throw e;
+        this.currentEnv = closureEnv;
+
+        for (let i = 0; i < calleeValue.parameters.length; i++) {
+          this.currentEnv.define(calleeValue.parameters[i].name, args[i]);
+        }
+
+        try {
+          this.evaluateStatement(calleeValue.body);
+          this.currentEnv = savedEnv;
+          return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+        } catch (e) {
+          if (e instanceof ReturnException) {
+            this.currentEnv = savedEnv;
+            return e.value;
+          }
+          throw e;
+        }
       }
     }
 
     throw new Error('Not a function');
   }
 
-  private valuesEqual(left: RuntimeTypeBinder, right: RuntimeTypeBinder): boolean {
-    if (left.type !== right.type) return false;
+  private valuesEqual(left: RuntimeTypedBinder, right: RuntimeTypedBinder): boolean {
+    if (left.type.static.kind !== right.type.static.kind) return false;
 
-    if (left.type === 'int' && right.type === 'int') {
+    if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
       return left.value === right.value;
     }
 
-    if (left.type === 'float' && right.type === 'float') {
+    if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
       return left.value === right.value;
     }
 
-    if (left.type === 'string' && right.type === 'string') {
+    if (left.type.static.kind === 'string' && right.type.static.kind === 'string') {
       return left.value === right.value;
     }
 
-    if (left.type === 'boolean' && right.type === 'boolean') {
+    if (left.type.static.kind === 'boolean' && right.type.static.kind === 'boolean') {
       return left.value === right.value;
     }
 
-    if (left.type === 'null' && right.type === 'null') {
+    if (left.type.static.kind === 'void' && right.type.static.kind === 'void') {
       return true;
     }
 
     return false;
   }
 
-  private RuntimeTypeBinderToKey(value: RuntimeTypeBinder): any {
-    if (value.type === 'int' || value.type === 'float') return value.value;
-    if (value.type === 'string') return value.value;
-    if (value.type === 'boolean') return value.value;
+  private isTruthy(value: RuntimeTypedBinder): boolean {
+    if (value.type.static.kind === 'boolean') {
+      return value.value as boolean;
+    }
+    // In many languages, non-boolean values can be truthy/falsy
+    // For now, only booleans are considered for truthiness
+    return false;
+  }
+
+  private RuntimeTypeBinderToKey(value: RuntimeTypedBinder): any {
+    if (value.type.static.kind === 'int' || value.type.static.kind === 'float') return value.value;
+    if (value.type.static.kind === 'string') return value.value;
+    if (value.type.static.kind === 'boolean') return value.value;
     return value;
   }
 
-  private keyToRuntimeTypeBinder(key: any): RuntimeTypeBinder {
+  private keyToRuntimeTypeBinder(key: any): RuntimeTypedBinder {
     if (typeof key === 'number') {
       return Number.isInteger(key)
-        ? { type: 'int', value: key }
-        : { type: 'float', value: key };
+        ? { type: { static: { kind: 'int' }, refinements: [] }, value: key }
+        : { type: { static: { kind: 'float' }, refinements: [] }, value: key };
     }
     if (typeof key === 'string') {
-      return { type: 'string', value: key };
+      return { type: { static: { kind: 'string' }, refinements: [] }, value: key };
     }
     if (typeof key === 'boolean') {
-      return { type: 'boolean', value: key };
+      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: key };
     }
-    // If it's already a RuntimeTypeBinder, return it as-is
+    // If it's already a RuntimeTypedBinder, return it as-is
     return key;
   }
 }

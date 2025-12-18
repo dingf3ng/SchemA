@@ -62,7 +62,6 @@ export type ASTNodeType =
   | 'IndexExpression'
   | 'RangeExpression'
   | 'Identifier'
-  | 'PolyTypeConstructor'
   | 'IntegerLiteral'
   | 'FloatLiteral'
   | 'StringLiteral'
@@ -108,7 +107,7 @@ export interface Parameter {
 export interface VariableDeclarator {
   name: string;
   typeAnnotation?: TypeAnnotation;
-  initializer?: Expression;
+  initializer: Expression;
   line: number;
   column: number;
 }
@@ -165,12 +164,6 @@ export interface RangeExpression extends ASTNode {
 export interface Identifier extends ASTNode {
   type: 'Identifier';
   name: string;
-}
-
-export interface PolyTypeConstructor extends ASTNode {
-  type: 'PolyTypeConstructor';
-  name: string;
-  typeParameters?: TypeAnnotation[];
 }
 
 export interface IntegerLiteral extends ASTNode {
@@ -260,16 +253,36 @@ export interface ExpressionStatement extends ASTNode {
   expression: Expression;
 }
 
-export type TypeAnnotation = SimpleTypeAnnotation | UnionTypeAnnotation | IntersectionTypeAnnotation;
+export type TypeAnnotation =
+    SimpleTypeAnnotation
+  | GenericTypeAnnotation
+  | FunctionTypeAnnotation
+  | UnionTypeAnnotation
+  | IntersectionTypeAnnotation
+  | TupleTypeAnnotation
+  | RecordTypeAnnotation;
 
 export interface BaseTypeAnnotation extends ASTNode {
   type: 'TypeAnnotation';
+  isInferred?: boolean;
 }
 
 export interface SimpleTypeAnnotation extends BaseTypeAnnotation {
   kind: 'simple';
   name: string;
-  typeParameters?: TypeAnnotation[];
+}
+
+export interface GenericTypeAnnotation extends BaseTypeAnnotation {
+  kind: 'generic';
+  name: string;
+  typeParameters: TypeAnnotation[];
+}
+
+export interface FunctionTypeAnnotation extends BaseTypeAnnotation {
+  kind: 'function';
+  name: string;
+  parameterTypes: TypeAnnotation[];
+  returnType: TypeAnnotation;
 }
 
 export interface UnionTypeAnnotation extends BaseTypeAnnotation {
@@ -280,6 +293,16 @@ export interface UnionTypeAnnotation extends BaseTypeAnnotation {
 export interface IntersectionTypeAnnotation extends BaseTypeAnnotation {
   kind: 'intersection';
   types: TypeAnnotation[];
+}
+
+export interface TupleTypeAnnotation extends BaseTypeAnnotation {
+  kind: 'tuple';
+  elementTypes: TypeAnnotation[];
+}
+
+export interface RecordTypeAnnotation extends BaseTypeAnnotation {
+  kind: 'record';
+  fieldTypes: [TypeAnnotation, TypeAnnotation][];
 }
 
 export type Statement =
@@ -302,7 +325,6 @@ export type Expression =
   | IndexExpression
   | RangeExpression
   | Identifier
-  | PolyTypeConstructor
   | IntegerLiteral
   | FloatLiteral
   | StringLiteral

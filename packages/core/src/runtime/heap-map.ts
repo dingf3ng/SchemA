@@ -90,6 +90,10 @@ export class HeapMap<K, V> {
     return this.data[0]?.key;
   }
 
+  forEach(fn: (item: { key: K; value: V }) => void): void {
+    this.data.forEach(fn);
+  }
+
   toString(): string {
     return `HeapMap[${this.data.map(item => `${item.key}:${item.value}`).join(', ')}]`;
   }
