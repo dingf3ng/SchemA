@@ -101,12 +101,12 @@ export class Interpreter {
         fn: (directed?: RuntimeTypedBinder) => {
           const isDirected =
             directed && directed.type.static.kind === 'boolean' ? directed.value as boolean : false;
-          
+
           const keyFn = (node: RuntimeTypedBinder) => {
-             if (node.type.static.kind === 'int' || node.type.static.kind === 'float' || node.type.static.kind === 'string' || node.type.static.kind === 'boolean') {
-               return node.value;
-             }
-             return node;
+            if (node.type.static.kind === 'int' || node.type.static.kind === 'float' || node.type.static.kind === 'string' || node.type.static.kind === 'boolean') {
+              return node.value;
+            }
+            return node;
           };
 
           return { value: new Graph<RuntimeTypedBinder>(isDirected, keyFn), type: { static: { kind: 'graph', nodeType: { kind: 'weak' } }, refinements: [] } };
@@ -588,7 +588,7 @@ export class Interpreter {
                     throw new Error('Internal: Array value is undefined or invalid');
                   }
                   let poped = object.value.pop();
-                  if (!poped) { 
+                  if (!poped) {
                     throw new Error(`Error: cannot pop from an empty array at ${expr.object.line}:${expr.object.column}`);
                   }
                   return poped;
@@ -608,7 +608,7 @@ export class Interpreter {
                   if (!object.value || !(object.value instanceof SchemaMap)) {
                     throw new Error('Internal: Map value is undefined or invalid');
                   }
-                  return { type: { static: { kind: 'int' }, refinements: [] }, value:  object.value.size };
+                  return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.size };
                 }
               }
             };
@@ -1203,74 +1203,74 @@ export class Interpreter {
           }
           // Handle array slicing
           if (index.type.static.kind === 'array' && index.type.static.elementType.kind === 'int') {
-             // Range evaluates to an array of integers [start, start+1, ..., end-1]
-             // But for slicing we want the start and end indices.
-             // However, the RangeExpression evaluation in interpreter returns an array of numbers.
-             // This is inefficient for slicing if we just want start/end.
-             // But given the current implementation of RangeExpression, it returns an array.
-             
-             // Wait, RangeExpression in interpreter returns a SchemaArray of integers.
-             // If it's a range like ..3, it returns [0, 1, 2].
-             // If it's 1..4, it returns [1, 2, 3].
-             // If it's 2.., it's an infinite range, which might be handled differently or throw error if not supported.
-             
-             // Let's check how RangeExpression is evaluated.
-             // If it returns an array of indices, we can map over them to get elements.
-             
-             const indices = (index.value as SchemaArray<RuntimeTypedBinder>);
-             const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
-             const result = new SchemaArray<RuntimeTypedBinder>();
-             
-             // Optimization: if indices are contiguous, we could slice, but SchemaArray might not support it directly.
-             // For now, just iterate.
-             for (let i = 0; i < indices.length; i++) {
-                const idxVal = indices.get(i);
-                if (idxVal && idxVal.value !== undefined) {
-                   const idx = idxVal.value as number;
-                   if (idx >= 0 && idx < sourceArray.length) {
-                      const val = sourceArray.get(idx);
-                      if (val) result.push(val);
-                   }
+            // Range evaluates to an array of integers [start, start+1, ..., end-1]
+            // But for slicing we want the start and end indices.
+            // However, the RangeExpression evaluation in interpreter returns an array of numbers.
+            // This is inefficient for slicing if we just want start/end.
+            // But given the current implementation of RangeExpression, it returns an array.
+
+            // Wait, RangeExpression in interpreter returns a SchemaArray of integers.
+            // If it's a range like ..3, it returns [0, 1, 2].
+            // If it's 1..4, it returns [1, 2, 3].
+            // If it's 2.., it's an infinite range, which might be handled differently or throw error if not supported.
+
+            // Let's check how RangeExpression is evaluated.
+            // If it returns an array of indices, we can map over them to get elements.
+
+            const indices = (index.value as SchemaArray<RuntimeTypedBinder>);
+            const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
+            const result = new SchemaArray<RuntimeTypedBinder>();
+
+            // Optimization: if indices are contiguous, we could slice, but SchemaArray might not support it directly.
+            // For now, just iterate.
+            for (let i = 0; i < indices.length; i++) {
+              const idxVal = indices.get(i);
+              if (idxVal && idxVal.value !== undefined) {
+                const idx = idxVal.value as number;
+                if (idx >= 0 && idx < sourceArray.length) {
+                  const val = sourceArray.get(idx);
+                  if (val) result.push(val);
                 }
-             }
-             
-             return {
-                type: object.type,
-                value: result
-             };
+              }
+            }
+
+            return {
+              type: object.type,
+              value: result
+            };
           }
 
           // Handle array slicing with Range object (infinite ranges)
           if (index.type.static.kind === 'range') {
-             const range = index.value as LazyRange;
-             const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
-             const result = new SchemaArray<RuntimeTypedBinder>();
-             
-             const start = range.getStart;
-             let end = range.getEnd;
-             const inclusive = range.isInclusive;
-             
-             // If end is undefined (infinite), slice until the end of the array
-             if (end === undefined) {
-                end = sourceArray.length;
-             } else {
-                if (inclusive) {
-                   end = end + 1;
-                }
-             }
-             
-             const actualStart = Math.max(0, Math.min(start, sourceArray.length));
-             const actualEnd = Math.max(0, Math.min(end, sourceArray.length));
-             
-             for (let i = actualStart; i < actualEnd; i++) {
-                const val = sourceArray.get(i);
-                if (val) result.push(val);
-             }
-             
-             return {
-                type: object.type,
-                value: result
-             };
+            const range = index.value as LazyRange;
+            const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
+            const result = new SchemaArray<RuntimeTypedBinder>();
+
+            const start = range.getStart;
+            let end = range.getEnd;
+            const inclusive = range.isInclusive;
+
+            // If end is undefined (infinite), slice until the end of the array
+            if (end === undefined) {
+              end = sourceArray.length;
+            } else {
+              if (inclusive) {
+                end = end + 1;
+              }
+            }
+
+            const actualStart = Math.max(0, Math.min(start, sourceArray.length));
+            const actualEnd = Math.max(0, Math.min(end, sourceArray.length));
+
+            for (let i = actualStart; i < actualEnd; i++) {
+              const val = sourceArray.get(i);
+              if (val) result.push(val);
+            }
+
+            return {
+              type: object.type,
+              value: result
+            };
           }
         }
 
@@ -1467,6 +1467,25 @@ export class Interpreter {
   }
 
   private evaluateBinaryExpression(expr: any): RuntimeTypedBinder {
+    // Short-circuit evaluation for logical operators
+    if (expr.operator === '&&' || expr.operator === '||') {
+      let left: RuntimeTypedBinder;
+      left = this.evaluateExpression(expr.left);
+      if (expr.operator === '&&') {
+        if (!this.isTruthy(left)) {
+          return { type: { static: { kind: 'boolean' }, refinements: [] }, value: false };
+        }
+      } else { // expr.operator === '||'
+        if (this.isTruthy(left)) {
+          return { type: { static: { kind: 'boolean' }, refinements: [] }, value: true };
+        } 
+      }
+      let right: RuntimeTypedBinder;
+      right = this.evaluateExpression(expr.right);
+      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: this.isTruthy(right) };
+    }
+
+    // For all other operators, evaluate both operands
     let left: RuntimeTypedBinder;
     if (expr.left.type === 'IntegerLiteral') {
       left = { value: expr.left.value, type: { static: { kind: 'int' }, refinements: [] } };
@@ -1615,15 +1634,6 @@ export class Interpreter {
       return { type: { static: { kind: 'boolean' }, refinements: [] }, value: !this.valuesEqual(left, right) };
     }
 
-    // Logical operators
-    if (expr.operator === '&&') {
-      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: this.isTruthy(left) && this.isTruthy(right) };
-    }
-
-    if (expr.operator === '||') {
-      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: this.isTruthy(left) || this.isTruthy(right) };
-    }
-
     throw new Error(`Unknown binary operator: ${expr.operator}`);
   }
 
@@ -1709,7 +1719,7 @@ export class Interpreter {
     }
     // In many languages, non-boolean values can be truthy/falsy
     // For now, only booleans are considered for truthiness
-    return false;
+    throw new Error(`Cannot evaluate truthiness of type ${value.type.static.kind}`);
   }
 
   private RuntimeTypeBinderToKey(value: RuntimeTypedBinder): any {
