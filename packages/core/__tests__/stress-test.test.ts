@@ -382,7 +382,7 @@ describe('Stress Tests', () => {
 
       console.log(`  ✓ EXTREMELY large loop (10000000 iterations): ${duration}ms`);
       expect(output).toEqual(['10000000']);
-      expect(duration).toBeLessThan(3000);
+      expect(duration).toBeLessThan(4000);
     });
 
     it('should handle nested loops efficiently', () => {

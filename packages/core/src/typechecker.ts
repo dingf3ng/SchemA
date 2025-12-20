@@ -1,3 +1,4 @@
+import { stringify } from 'querystring';
 import { Program, Statement, Expression, TypeAnnotation, MemberExpression } from './types';
 
 export type Type =
@@ -403,7 +404,7 @@ export class TypeChecker {
 
         // Arithmetic operators
         if (['+', '-', '*', '%'].includes(expr.operator)) {
-          if (leftType.kind === 'weak' || rightType.kind === 'weak') {
+          if (leftType.kind === 'weak' || rightType.kind === 'weak' || leftType.kind === 'union' || rightType.kind === 'union') {
             return { kind: 'weak' };
           }
           if (leftType.kind === 'int' && rightType.kind === 'int') {
@@ -430,7 +431,7 @@ export class TypeChecker {
           return { kind: 'boolean' };
         }
 
-        throw new Error(`Type checking: cannot infer type for binary expression ${expr.toString()}`);
+        throw new Error(`Type checking: cannot infer type for binary expression ${JSON.stringify(expr)}`);
       }
 
       case 'UnaryExpression': {
@@ -976,7 +977,7 @@ export class TypeChecker {
       case 'string':
         return { type: 'TypeAnnotation', kind: 'simple', name: 'string', line, column };
       case 'boolean':
-        return { type: 'TypeAnnotation', kind: 'simple', name: 'bool', line, column };
+        return { type: 'TypeAnnotation', kind: 'simple', name: 'boolean', line, column };
       case 'void':
         return { type: 'TypeAnnotation', kind: 'simple', name: 'void', line, column };
       case 'weak':
@@ -1317,6 +1318,21 @@ export class TypeChecker {
       case 'AssignmentStatement':
         this.refineExpression(stmt.target);
         this.refineExpression(stmt.value);
+
+        // Handle index assignment for type widening
+        if (stmt.target.type === 'IndexExpression' && stmt.target.object.type === 'Identifier') {
+          const varName = stmt.target.object.name;
+          const varType = this.typeEnv.get(varName);
+          const decl = this.variableDeclEnv.get(varName);
+          const isInferred = decl && decl.typeAnnotation && decl.typeAnnotation.isInferred;
+
+          if (varType && varType.kind === 'array' && isInferred) {
+            // Widen array element type if it's an inferred array
+            this.refineTypeFromExpression(varType.elementType, stmt.value, true);
+            this.updateVariableAnnotation(varName, varType);
+          }
+        }
+
         // Refine target from value
         const valueType = this.analyzeExpressionType(stmt.value, this.typeEnv);
         this.refineExpressionFromType(stmt.target, valueType);
@@ -1409,6 +1425,12 @@ export class TypeChecker {
             this.refineExpressionFromType(args[0], varType.keyType);
             this.refineExpressionFromType(args[1], varType.valueType);
          }
+      }
+      else if (varType.kind === 'array') {
+        if (methodName === 'push' && args.length === 1) {
+           this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
+           this.refineExpressionFromType(args[0], varType.elementType);
+        }
       }
 
       // Update AST if variable type changed (it might have been refined in place)
@@ -2083,16 +2105,20 @@ export class TypeChecker {
         });
 
         const savedEnv = new Map(this.typeEnv);
+        const savedDeclEnv = new Map(this.variableDeclEnv);
         const savedFunction = this.currentFunction;
         this.currentFunction = stmt.name;
 
         for (let i = 0; i < stmt.parameters.length; i++) {
           this.typeEnv.set(stmt.parameters[i].name, paramTypes[i]);
+          // Also add parameters to variableDeclEnv for consistency
+          this.variableDeclEnv.set(stmt.parameters[i].name, stmt.parameters[i]);
         }
 
         this.checkStatement(stmt.body);
 
         this.typeEnv = savedEnv;
+        this.variableDeclEnv = savedDeclEnv;
         this.currentFunction = savedFunction;
         break;
       }
@@ -2107,6 +2133,8 @@ export class TypeChecker {
             );
           }
           this.typeEnv.set(declarator.name, annotatedType);
+          // Also add to variableDeclEnv so we can check type annotations in assignments
+          this.variableDeclEnv.set(declarator.name, declarator);
         }
         break;
       }
@@ -2200,6 +2228,31 @@ export class TypeChecker {
           this.checkStatement(s);
         }
         break;
+
+      case 'AssignmentStatement': {
+        const targetType = this.synthExpression(stmt.target);
+        const valueType = this.synthExpression(stmt.value);
+
+        // Check if this is an assignment to a variable or array element with explicit type annotation
+        let shouldEnforceStrictType = false;
+
+        if (stmt.target.type === 'Identifier') {
+          // Simple variable assignment
+          const varDecl = this.variableDeclEnv.get(stmt.target.name);
+          shouldEnforceStrictType = varDecl && varDecl.typeAnnotation && !varDecl.typeAnnotation.isInferred;
+        } else if (stmt.target.type === 'IndexExpression' && stmt.target.object.type === 'Identifier') {
+          // Array/Map element assignment
+          const varDecl = this.variableDeclEnv.get(stmt.target.object.name);
+          shouldEnforceStrictType = varDecl && varDecl.typeAnnotation && !varDecl.typeAnnotation.isInferred;
+        }
+
+        if (shouldEnforceStrictType && !this.typesEqual(valueType, targetType)) {
+          throw new Error(
+            `Type mismatch: cannot assign ${this.typeToString(valueType)} to ${this.typeToString(targetType)}. At ${stmt.line}, ${stmt.column}`
+          );
+        }
+        break;
+      }
 
       case 'ExpressionStatement':
         this.synthExpression(stmt.expression);
@@ -2424,6 +2477,11 @@ export class TypeChecker {
           rightType.kind === 'boolean'
         ) {
           return { kind: 'boolean' };
+        }
+
+        // If operands are unions and we haven't matched a specific rule, allow it as weak (runtime check)
+        if (leftType.kind === 'union' || rightType.kind === 'union') {
+          return { kind: 'weak' };
         }
 
         throw new Error(
@@ -3220,4 +3278,9 @@ export class TypeChecker {
         return `(${type.parameters.map((p) => this.typeToString(p)).join(', ')}) -> ${this.typeToString(type.returnType)}`;
     }
   }
+}
+
+export function typeToString(type: Type): string {
+  const checker = new TypeChecker();
+  return checker['typeToString'](type);
 }

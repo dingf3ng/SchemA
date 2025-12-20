@@ -17,7 +17,7 @@ import {
 } from './types';
 import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime/values';
 import { Environment } from './runtime/environment';
-import { Type } from './typechecker';
+import { Type, typeToString } from './typechecker';
 import {
   SchemaArray,
   SchemaMap,
@@ -242,6 +242,15 @@ export class Interpreter {
 
       if (declarator.initializer) {
         value = this.evaluateExpression(declarator.initializer);
+
+        // If there's a type annotation (either explicit or inferred/refined),
+        // use it to override the runtime type, but only if it doesn't contain weak types
+        if (declarator.typeAnnotation) {
+          const declaredType = this.resolveTypeAnnotation(declarator.typeAnnotation);
+          if (!this.hasWeakTypes(declaredType)) {
+            value.type.static = declaredType;
+          }
+        }
       } else {
         // No initializer - create undefined value with type annotation
         const declaredType = this.resolveTypeAnnotation(declarator.typeAnnotation);
@@ -256,6 +265,44 @@ export class Interpreter {
         this.currentEnv.define(declarator.name, value);
       }
     }
+  }
+
+  private hasWeakTypes(type: Type): boolean {
+    if (type.kind === 'weak' || type.kind === 'poly') return true;
+
+    if (type.kind === 'array' || type.kind === 'set' || type.kind === 'heap') {
+      return this.hasWeakTypes(type.elementType);
+    }
+
+    if (type.kind === 'map' || type.kind === 'heapmap') {
+      return this.hasWeakTypes(type.keyType) || this.hasWeakTypes(type.valueType);
+    }
+
+    if (type.kind === 'union' || type.kind === 'intersection') {
+      return type.types.some(t => this.hasWeakTypes(t));
+    }
+
+    if (type.kind === 'tuple') {
+      return type.elementTypes.some(t => this.hasWeakTypes(t));
+    }
+
+    if (type.kind === 'record') {
+      return type.fieldTypes.some(([k, v]) => this.hasWeakTypes(k) || this.hasWeakTypes(v));
+    }
+
+    if (type.kind === 'graph') {
+      return this.hasWeakTypes(type.nodeType);
+    }
+
+    if (type.kind === 'binarytree' || type.kind === 'avltree') {
+      return this.hasWeakTypes(type.elementType);
+    }
+
+    if (type.kind === 'function') {
+      return type.parameters.some(p => this.hasWeakTypes(p)) || this.hasWeakTypes(type.returnType);
+    }
+
+    return false;
   }
 
   private captureEnvironment(): Environment {
@@ -1363,7 +1410,7 @@ export class Interpreter {
 
       case 'TypeOfExpression': {
         const operand = this.evaluateExpression(expr.operand);
-        return { type: { static: { kind: 'string' }, refinements: [] }, value: operand.type.static.kind };
+        return { type: { static: { kind: 'string' }, refinements: [] }, value: typeToString(operand.type.static) };
       }
 
       case 'AssertExpression': {
@@ -1478,7 +1525,7 @@ export class Interpreter {
       } else { // expr.operator === '||'
         if (this.isTruthy(left)) {
           return { type: { static: { kind: 'boolean' }, refinements: [] }, value: true };
-        } 
+        }
       }
       let right: RuntimeTypedBinder;
       right = this.evaluateExpression(expr.right);
@@ -1504,55 +1551,59 @@ export class Interpreter {
       right = this.evaluateExpression(expr.right);
     }
 
+    // Resolve union types to actual runtime types based on values
+    const leftType = this.getActualRuntimeType(left);
+    const rightType = this.getActualRuntimeType(right);
+
     // Arithmetic: +, -, *, % (work on int and float)
     if (expr.operator === '+') {
-      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+      if (leftType === 'int' && rightType === 'int') {
         return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) + (right.value as number) };
       }
-      if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
+      if (leftType === 'float' && rightType === 'float') {
         return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) + (right.value as number) };
       }
-      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
-        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+      if ((leftType === 'int' || leftType === 'float') &&
+        (rightType === 'int' || rightType === 'float')) {
         return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) + (right.value as number) };
       }
-      if (left.type.static.kind === 'string' && right.type.static.kind === 'string') {
+      if (leftType === 'string' && rightType === 'string') {
         return { type: { static: { kind: 'string' }, refinements: [] }, value: (left.value as string) + (right.value as string) };
       }
-      throw new Error(`Cannot add ${left.type.static.kind} and ${right.type.static.kind}`);
+      throw new Error(`Cannot add ${leftType} and ${rightType}`);
     }
 
     if (expr.operator === '-') {
-      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+      if (leftType === 'int' && rightType === 'int') {
         return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) - (right.value as number) };
       }
-      if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
+      if (leftType === 'float' && rightType === 'float') {
         return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) - (right.value as number) };
       }
-      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
-        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+      if ((leftType === 'int' || leftType === 'float') &&
+        (rightType === 'int' || rightType === 'float')) {
         return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) - (right.value as number) };
       }
-      throw new Error(`Cannot subtract ${right.type.static.kind} from ${left.type.static.kind}`);
+      throw new Error(`Cannot subtract ${rightType} from ${leftType}`);
     }
 
     if (expr.operator === '*') {
-      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+      if (leftType === 'int' && rightType === 'int') {
         return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) * (right.value as number) };
       }
-      if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
+      if (leftType === 'float' && rightType === 'float') {
         return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) * (right.value as number) };
       }
-      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
-        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+      if ((leftType === 'int' || leftType === 'float') &&
+        (rightType === 'int' || rightType === 'float')) {
         return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) * (right.value as number) };
       }
-      throw new Error(`Cannot multiply ${left.type.static.kind} and ${right.type.static.kind}`);
+      throw new Error(`Cannot multiply ${leftType} and ${rightType}`);
     }
 
     // Integer division: / (requires both operands to be int, returns int)
     if (expr.operator === '/') {
-      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+      if (leftType === 'int' && rightType === 'int') {
         return { type: { static: { kind: 'int' }, refinements: [] }, value: Math.floor((left.value as number) / (right.value as number)) };
       }
       throw new Error(`Integer division requires both operands to be int`);
@@ -1560,22 +1611,22 @@ export class Interpreter {
 
     // Float division: /. (works on int or float, returns float)
     if (expr.operator === '/.') {
-      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
-        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+      if ((leftType === 'int' || leftType === 'float') &&
+        (rightType === 'int' || rightType === 'float')) {
         return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) / (right.value as number) };
       }
       throw new Error(`Float division requires numeric operands`);
     }
 
     if (expr.operator === '%') {
-      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+      if (leftType === 'int' && rightType === 'int') {
         return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) % (right.value as number) };
       }
-      if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
+      if (leftType === 'float' && rightType === 'float') {
         return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) % (right.value as number) };
       }
-      if ((left.type.static.kind === 'int' || left.type.static.kind === 'float') &&
-        (right.type.static.kind === 'int' || right.type.static.kind === 'float')) {
+      if ((leftType === 'int' || leftType === 'float') &&
+        (rightType === 'int' || rightType === 'float')) {
         return { type: { static: { kind: 'float' }, refinements: [] }, value: (left.value as number) % (right.value as number) };
       }
       throw new Error(`Modulo requires numeric operands`);
@@ -1583,14 +1634,14 @@ export class Interpreter {
 
     // Bitwise shift operators: << and >> (require both operands to be int)
     if (expr.operator === '<<') {
-      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+      if (leftType === 'int' && rightType === 'int') {
         return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) << (right.value as number) };
       }
       throw new Error(`Left shift requires both operands to be int`);
     }
 
     if (expr.operator === '>>') {
-      if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
+      if (leftType === 'int' && rightType === 'int') {
         return { type: { static: { kind: 'int' }, refinements: [] }, value: (left.value as number) >> (right.value as number) };
       }
       throw new Error(`Right shift requires both operands to be int`);
@@ -1598,31 +1649,35 @@ export class Interpreter {
 
     // Comparison operators: work on int or float
     if (expr.operator === '<') {
-      if (this.isNumeric(left.type.static) && this.isNumeric(right.type.static)) {
+      if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
+          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) < (right.value as number) };
       }
-      throw new Error(`Cannot compare ${left.type.static.kind} < ${right.type.static.kind}. At line ${expr.line}, column ${expr.column}`);
+      throw new Error(`Cannot compare ${leftType} < ${rightType}. At line ${expr.line}, column ${expr.column}`);
     }
 
     if (expr.operator === '<=') {
-      if (this.isNumeric(left.type.static) && this.isNumeric(right.type.static)) {
+      if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
+          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) <= (right.value as number) };
       }
-      throw new Error(`Cannot compare ${left.type.static.kind} <= ${right.type.static.kind}. At line ${expr.line}, column ${expr.column}`);
+      throw new Error(`Cannot compare ${leftType} <= ${rightType}. At line ${expr.line}, column ${expr.column}`);
     }
 
     if (expr.operator === '>') {
-      if (this.isNumeric(left.type.static) && this.isNumeric(right.type.static)) {
+      if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
+          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) > (right.value as number) };
       }
-      throw new Error(`Cannot compare ${left.type.static.kind} > ${right.type.static.kind}. At line ${expr.line}, column ${expr.column}`);
+      throw new Error(`Cannot compare ${leftType} > ${rightType}. At line ${expr.line}, column ${expr.column}`);
     }
 
     if (expr.operator === '>=') {
-      if (this.isNumeric(left.type.static) && this.isNumeric(right.type.static)) {
+      if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
+          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) >= (right.value as number) };
       }
-      throw new Error(`Cannot compare ${left.type.static.kind} >= ${right.type.static.kind}. At line ${expr.line}, column ${expr.column}`);
+      throw new Error(`Cannot compare ${leftType} >= ${rightType}. At line ${expr.line}, column ${expr.column}`);
     }
 
     // Equality operators
@@ -1714,12 +1769,13 @@ export class Interpreter {
   }
 
   private isTruthy(value: RuntimeTypedBinder): boolean {
-    if (value.type.static.kind === 'boolean') {
+    const actualType = this.getActualRuntimeType(value);
+    if (actualType === 'boolean') {
       return value.value as boolean;
     }
     // In many languages, non-boolean values can be truthy/falsy
     // For now, only booleans are considered for truthiness
-    throw new Error(`Cannot evaluate truthiness of type ${value.type.static.kind}`);
+    throw new Error(`Cannot evaluate truthiness of type ${value.type.static.kind} (actual: ${actualType})`);
   }
 
   private RuntimeTypeBinderToKey(value: RuntimeTypedBinder): any {
@@ -1743,5 +1799,35 @@ export class Interpreter {
     }
     // If it's already a RuntimeTypedBinder, return it as-is
     return key;
+  }
+
+  /**
+   * Get the actual runtime type from a RuntimeTypedBinder, resolving unions based on the actual value
+   */
+  private getActualRuntimeType(binder: RuntimeTypedBinder): string {
+    const type = binder.type.static;
+
+    // If it's not a union, return the type kind directly
+    if (type.kind !== 'union' && type.kind !== 'intersection') {
+      return type.kind;
+    }
+
+    // For unions, determine the actual type from the runtime value
+    const value = binder.value;
+    if (typeof value === 'number') {
+      return Number.isInteger(value) ? 'int' : 'float';
+    }
+    if (typeof value === 'string') {
+      return 'string';
+    }
+    if (typeof value === 'boolean') {
+      return 'boolean';
+    }
+    if (value === undefined || value === null) {
+      return 'void';
+    }
+
+    // For complex types, return the type kind as-is
+    return type.kind;
   }
 }

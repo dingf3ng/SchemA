@@ -518,6 +518,36 @@ describe('TypeChecker - Comprehensive Tests', () => {
         `;
         expect(() => check(code)).toThrow(/Type mismatch/);
       });
+
+      it('should reject array indexing with wrong parameter type', () => {
+        const code = `
+          do main() {
+            let arr: Array<int> = [1, 2, 3]
+            arr[0] = "not an int"
+          }
+        `;
+        expect(() => check(code)).toThrow(/Type mismatch/);
+      });
+
+      it('should not reject array indexing with correct parameter type', () => {
+        const code = `
+          do main() {
+            let arr: Array<int | string> = [1, 2, 3]
+            arr[0] = "not an int"
+          }
+        `;
+        expect(() => check(code)).not.toThrow();
+      });
+
+      it('should reject array indexing with wrong parameter type', () => {
+        const code = `
+          do main() {
+            let arr: Array<int | string> = [1, 2, 3]
+            arr[1] = false
+          }
+        `;
+        expect(() => check(code)).toThrow();
+      });
     });
 
     describe('Map Type Checking', () => {
