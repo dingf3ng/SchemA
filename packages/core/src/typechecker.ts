@@ -1,4 +1,3 @@
-import { stringify } from 'querystring';
 import { Program, Statement, Expression, TypeAnnotation, MemberExpression } from './types';
 
 export type Type =
