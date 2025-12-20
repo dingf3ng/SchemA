@@ -77,7 +77,6 @@ export function RuntimeTypedBinderToString(binder: RuntimeTypedBinder): string {
       return value!.toString()
     case 'tuple': {
       const values = value as RuntimeTypedBinder[]; 
-      const types = type.static.elementTypes;
       return `(${values.map((v) => RuntimeTypedBinderToString(v)).join(', ')})`;
     }
     case 'record': {
@@ -92,13 +91,11 @@ export function RuntimeTypedBinderToString(binder: RuntimeTypedBinder): string {
     case 'function':
       return '<function>';
     case 'union':
-      const unionTypes = type.static.types;
-      return `union<${unionTypes.map(t => t.kind).join(' | ')}>`;
+      return value!.toString();
     case 'intersection':
-      const intersectionTypes = type.static.types;
-      return `intersection<${intersectionTypes.map(t => t.kind).join(' & ')}>`;
+      return value!.toString();
     case 'weak':
-      throw new Error('Internal Error: Weak polymorphic type should not appear at runtime');
+      return value!.toString();
     default:
       const _exhaustiveCheck: never = type.static;
       throw new Error('Internal Error: Unknown type in RuntimeTypedBinderToString');
