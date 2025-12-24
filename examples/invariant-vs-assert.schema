@@ -1,0 +1,219 @@
+// Demonstration: What @invariant can do that assert cannot
+
+print("=== Example 1: Continuous Verification Throughout Loop ===")
+print("Problem: Verify constraints hold throughout entire execution")
+print("")
+
+do countPositives(arr) {
+  let count = 0
+  let n = arr.length()
+
+  for x in arr {
+    // INVARIANT: count should never exceed array length
+    // This checks EVERY iteration automatically!
+    @invariant(count <= n, "count exceeded array length!")
+
+    // With assert, you'd need to manually add checks:
+    // assert(count <= n, "check before")
+    if x > 0 {
+      count = count + 1
+    }
+    // assert(count <= n, "check after")
+    // Tedious and error-prone!
+  }
+
+  return count
+}
+
+let numbers = [1, -2, 3, -4, 5, -6, 7]
+print("Numbers:", numbers)
+print("Positive count:", countPositives(numbers))
+
+print("")
+print("=== Example 2: Scope-Based Invariant Management ===")
+print("Problem: Different invariants for different scopes")
+print("")
+
+do processNestedStructure(matrix) {
+  let totalSum = 0
+
+  for row in matrix {
+    // Function-level invariant stays active even inside nested loops
+    @invariant(totalSum >= 0, "sum should never be negative")
+
+    let rowSum = 0
+
+    for cell in row {
+      // Loop-level invariant: ONLY checked inside this loop
+      @invariant(rowSum >= 0, "row sum should be non-negative")
+
+      rowSum = rowSum + cell
+      // Both invariants are checked here automatically!
+      // With assert, you'd need:
+      // assert(totalSum >= 0, "check totalSum")
+      // assert(rowSum >= 0, "check rowSum")
+      // And you'd have to remember to remove rowSum check outside the loop!
+    }
+
+    totalSum = totalSum + rowSum
+    // Here, rowSum invariant is automatically REMOVED after inner loop
+  }
+
+  // If we had to use assert here, we'd need to manually track
+  // which invariants are still valid in this scope
+
+  return totalSum
+}
+
+let matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+print("Matrix sum:", processNestedStructure(matrix))
+
+print("")
+print("=== Example 3: Rich Error Context with Iteration Numbers ===")
+print("Problem: Find exactly WHEN an invariant breaks in a long loop")
+print("")
+
+do findBugInLongLoop() {
+  let data = Set()
+  let duplicateCount = 0
+
+  for i in 0..100 {
+    // This invariant tracks exactly which iteration it fails on
+    @invariant(duplicateCount < 5, "too many duplicates found")
+    @invariant(data.size() <= i + 1, "set size exceeded expected")
+
+    // Simulate some complex logic that occasionally adds duplicates
+    if i % 7 == 0 && i > 0 {
+      duplicateCount = duplicateCount + 1
+    }
+
+    data.add(i)
+
+    // With assert, you get no iteration context:
+    // assert(duplicateCount < 5, "too many duplicates")
+    // Error: too many duplicates
+    //
+    // With @invariant, you get:
+    // Invariant violated at line X, iteration 35
+    //   too many duplicates found
+    // Current state:
+    //   i = 35
+    //   duplicateCount = 5
+    //   data = {...}
+  }
+}
+
+// Uncomment to see exact iteration where invariant fails:
+// findBugInLongLoop()
+print("(Example commented out - would fail at iteration 35)")
+
+print("")
+print("=== Example 4: Automatic State Snapshot ===")
+print("Problem: Debug complex state when something goes wrong")
+print("")
+
+do complexGraphAlgorithm(graph) {
+  let active = [0]  // Use array instead of set for pop
+  let processed = Set()
+  let distances = Map()
+  let parents = Map()
+
+  until active.length() == 0 {
+    // When this invariant fails, @invariant automatically shows:
+    // - All variable values (active, processed, distances, parents)
+    // - The iteration number
+    // - The exact state that caused the failure
+    @invariant(active.length() + processed.size() <= graph.size(), "nodes exceeded graph size")
+
+    // With assert, you'd have to manually add debug output:
+    // if active.length() + processed.size() > graph.size() {
+    //   print("Debug: active =", active)
+    //   print("Debug: processed =", processed)
+    //   print("Debug: distances =", distances)
+    //   print("Debug: parents =", parents)
+    //   assert(false, "nodes exceeded graph size")
+    // }
+    // This is verbose and clutters your algorithm!
+
+    // ... algorithm continues ...
+    let current = active.pop()
+    processed.add(current)
+  }
+
+  return distances
+}
+
+let simpleGraph = Graph(true)
+simpleGraph.addVertex(0)
+simpleGraph.addVertex(1)
+simpleGraph.addVertex(2)
+simpleGraph.addEdge(0, 1, 1)
+simpleGraph.addEdge(1, 2, 1)
+
+complexGraphAlgorithm(simpleGraph)
+print("Algorithm completed successfully")
+
+print("")
+print("=== Example 5: Multiple Invariants, Clean Code ===")
+print("Problem: Verify many properties without cluttering code")
+print("")
+
+do dijkstraClean(graph, start) {
+  let dist = Map()
+  let visited = Set()
+  let pq = MinHeapMap()
+  let n = graph.size()
+
+  for i in 0..n {
+    dist.set(i, inf)
+  }
+  dist.set(start, 0)
+  pq.push(start, 0)
+
+  until pq.size() == 0 {
+    // Clean, declarative invariants - no code clutter!
+    @invariant(visited.size() <= n)
+    @invariant(dist.size() == n)
+    // These are checked automatically every iteration
+
+    let current = pq.pop()
+
+    if !visited.has(current) {
+      visited.add(current)
+
+      // Compare with assert approach:
+      // assert(visited.size() <= n, "check1")
+      // assert(dist.size() == n, "check2")
+      // ... more code ...
+      // assert(visited.size() <= n, "check3")
+      // assert(dist.size() == n, "check4")
+      // Repetitive and error-prone!
+    }
+  }
+
+  return dist
+}
+
+let g = Graph(true)
+g.addVertex(0)
+g.addVertex(1)
+g.addVertex(2)
+g.addEdge(0, 1, 1)
+g.addEdge(1, 2, 1)
+
+dijkstraClean(g, 0)
+print("Dijkstra completed with all invariants satisfied")
+
+print("")
+print("=== Summary ===")
+print("@invariant provides:")
+print("  1. Automatic continuous checking throughout loop iterations")
+print("  2. Scope-based management (function vs loop level)")
+print("  3. Iteration number tracking")
+print("  4. Automatic state snapshots on failure")
+print("  5. Cleaner, more declarative code")
+print("")
+print("assert is good for:")
+print("  1. One-time precondition/postcondition checks")
+print("  2. Input validation")
+print("  3. Verifying specific computation results")

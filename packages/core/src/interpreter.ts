@@ -12,6 +12,8 @@ import {
   ReturnStatement,
   BlockStatement,
   ExpressionStatement,
+  InvariantStatement,
+  AssertStatement,
   TypeAnnotation,
   Parameter,
 } from './types';
@@ -31,6 +33,7 @@ import {
   BinaryTree,
   AVLTree,
 } from './runtime/data-structures';
+import { Analyzer } from './analyzer';
 
 class ReturnException {
   constructor(public value: RuntimeTypedBinder) { }
@@ -40,6 +43,7 @@ export class Interpreter {
   private globalEnv: Environment = new Environment();
   private currentEnv: Environment;
   private output: string[] = [];
+  private analyzer: Analyzer = new Analyzer();
 
   constructor() {
     this.currentEnv = this.globalEnv;
@@ -203,6 +207,12 @@ export class Interpreter {
           break;
         case 'ExpressionStatement':
           this.evaluateExpression(stmt.expression);
+          break;
+        case 'InvariantStatement':
+          this.evaluateInvariantStatement(stmt);
+          break;
+        case 'AssertStatement':
+          this.evaluateAssertStatement(stmt);
           break;
       }
     } catch (e) {
@@ -441,32 +451,59 @@ export class Interpreter {
   }
 
   private evaluateWhileStatement(stmt: WhileStatement): void {
+    const invariants = this.extractInvariants(stmt.body);
+    let iteration = 0;
+
     while (true) {
       const condition = this.evaluateExpression(stmt.condition);
       if (condition.type.static.kind !== 'boolean') {
         throw new Error('While condition must be boolean');
       }
       if (!(condition.value as boolean)) break;
+
+      // Check invariants before iteration
+      this.checkLoopInvariants(invariants, iteration);
+
       this.evaluateStatement(stmt.body);
+
+      // Check invariants after iteration
+      this.checkLoopInvariants(invariants, iteration);
+
+      iteration++;
     }
   }
 
   private evaluateUntilStatement(stmt: UntilStatement): void {
+    const invariants = this.extractInvariants(stmt.body);
+    let iteration = 0;
+
     while (true) {
       const condition = this.evaluateExpression(stmt.condition);
       if (condition.type.static.kind !== 'boolean') {
         throw new Error('Until condition must be boolean');
       }
       if (condition.value as boolean) break;
+
+      // Check invariants before iteration
+      this.checkLoopInvariants(invariants, iteration);
+
       this.evaluateStatement(stmt.body);
+
+      // Check invariants after iteration
+      this.checkLoopInvariants(invariants, iteration);
+
+      iteration++;
     }
   }
 
   private evaluateForStatement(stmt: ForStatement): void {
     const iterable = this.evaluateExpression(stmt.iterable);
+    const invariants = this.extractInvariants(stmt.body);
 
     const savedEnv = this.currentEnv;
     this.currentEnv = new Environment(savedEnv);
+
+    let iteration = 0;
 
     if (iterable.type.static.kind === 'array') {
       (iterable.value as SchemaArray<RuntimeTypedBinder>).forEach((item) => {
@@ -474,7 +511,16 @@ export class Interpreter {
         if (stmt.variable !== '_') {
           this.currentEnv.define(stmt.variable, item);
         }
+
+        // Check invariants before iteration
+        this.checkLoopInvariants(invariants, iteration);
+
         this.evaluateStatement(stmt.body);
+
+        // Check invariants after iteration
+        this.checkLoopInvariants(invariants, iteration);
+
+        iteration++;
       });
     } else if (iterable.type.static.kind === 'set') {
       (iterable.value as SchemaSet<RuntimeTypedBinder>).forEach((item) => {
@@ -484,7 +530,16 @@ export class Interpreter {
         if (stmt.variable !== '_') {
           this.currentEnv.define(stmt.variable, runtimeItem);
         }
+
+        // Check invariants before iteration
+        this.checkLoopInvariants(invariants, iteration);
+
         this.evaluateStatement(stmt.body);
+
+        // Check invariants after iteration
+        this.checkLoopInvariants(invariants, iteration);
+
+        iteration++;
       });
     } else if (iterable.type.static.kind === 'map') {
       (iterable.value as SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>).forEach((value, key) => {
@@ -494,7 +549,16 @@ export class Interpreter {
         if (stmt.variable !== '_') {
           this.currentEnv.define(stmt.variable, runtimeKey);
         }
+
+        // Check invariants before iteration
+        this.checkLoopInvariants(invariants, iteration);
+
         this.evaluateStatement(stmt.body);
+
+        // Check invariants after iteration
+        this.checkLoopInvariants(invariants, iteration);
+
+        iteration++;
       });
     } else if (iterable.type.static.kind === 'range') {
       (iterable.value as LazyRange).generate();
@@ -505,7 +569,16 @@ export class Interpreter {
         if (stmt.variable !== '_') {
           this.currentEnv.define(stmt.variable, runtimeValue);
         }
+
+        // Check invariants before iteration
+        this.checkLoopInvariants(invariants, iteration);
+
         this.evaluateStatement(stmt.body);
+
+        // Check invariants after iteration
+        this.checkLoopInvariants(invariants, iteration);
+
+        iteration++;
       }
     }
 
@@ -528,6 +601,59 @@ export class Interpreter {
     }
 
     this.currentEnv = savedEnv;
+  }
+
+  private evaluateInvariantStatement(stmt: InvariantStatement): void {
+    this.analyzer.checkInvariant(
+      stmt,
+      (expr) => this.evaluateExpression(expr),
+      this.currentEnv,
+      'function' // Default to function context, will be overridden in loops
+    );
+  }
+
+  private evaluateAssertStatement(stmt: AssertStatement): void {
+    this.analyzer.checkAssert(
+      stmt,
+      (expr) => this.evaluateExpression(expr),
+      this.currentEnv
+    );
+  }
+
+  /**
+   * Extract all invariant statements from a statement (typically a loop body)
+   */
+  private extractInvariants(stmt: Statement): InvariantStatement[] {
+    const invariants: InvariantStatement[] = [];
+
+    const extract = (s: Statement): void => {
+      if (s.type === 'InvariantStatement') {
+        invariants.push(s);
+      } else if (s.type === 'BlockStatement') {
+        for (const child of s.statements) {
+          extract(child);
+        }
+      }
+      // Don't recurse into nested loops or functions
+    };
+
+    extract(stmt);
+    return invariants;
+  }
+
+  /**
+   * Check all loop invariants at a given iteration
+   */
+  private checkLoopInvariants(invariants: InvariantStatement[], iteration: number): void {
+    for (const invariant of invariants) {
+      this.analyzer.checkInvariant(
+        invariant,
+        (expr) => this.evaluateExpression(expr),
+        this.currentEnv,
+        'loop',
+        { iteration }
+      );
+    }
   }
 
   private evaluateExpression(expr: Expression): RuntimeTypedBinder {
@@ -1411,18 +1537,6 @@ export class Interpreter {
       case 'TypeOfExpression': {
         const operand = this.evaluateExpression(expr.operand);
         return { type: { static: { kind: 'string' }, refinements: [] }, value: typeToString(operand.type.static) };
-      }
-
-      case 'AssertExpression': {
-        const condition = this.evaluateExpression(expr.condition);
-        if (condition.type.static.kind !== 'boolean') {
-          throw new Error('Assert condition must be a boolean');
-        }
-        if (condition.value === false) {
-          const message = this.evaluateExpression(expr.message);
-          throw new Error(`Assertion failed: ${RuntimeTypedBinderToString(message)}`);
-        }
-        return { type: { static: { kind: 'boolean' }, refinements: [] }, value: true };
       }
 
       default:

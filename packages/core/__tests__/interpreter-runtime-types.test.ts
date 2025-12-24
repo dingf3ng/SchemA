@@ -7,7 +7,7 @@ describe('Interpreter Runtime Type Resolution', () => {
         let x: int | string = 10
         let y: int | string = 20
         let z = x + y
-        assert(z == 30, "10 + 20 should be 30")
+        @assert(z == 30, "10 + 20 should be 30")
       `;
       expect(() => run(code)).not.toThrow();
     });
@@ -17,7 +17,7 @@ describe('Interpreter Runtime Type Resolution', () => {
         let x: int | string = "hello"
         let y: int | string = "world"
         let z = x + y
-        assert(z == "helloworld", "strings should concatenate")
+        @assert(z == "helloworld", "strings should concatenate")
       `;
       expect(() => run(code)).not.toThrow();
     });
@@ -27,7 +27,7 @@ describe('Interpreter Runtime Type Resolution', () => {
         let x: int | float = 10
         let y: int | float = 2.5
         let z = x + y
-        assert(z == 12.5, "10 + 2.5 should be 12.5")
+        @assert(z == 12.5, "10 + 2.5 should be 12.5")
       `;
       expect(() => run(code)).not.toThrow();
     });
@@ -37,7 +37,7 @@ describe('Interpreter Runtime Type Resolution', () => {
         let x: int | float = 10
         let y: int | float = 20
         let z = x + y
-        assert(z == 30, "10 + 20 should be 30")
+        @assert(z == 30, "10 + 20 should be 30")
       `;
       expect(() => run(code)).not.toThrow();
     });
@@ -56,7 +56,7 @@ describe('Interpreter Runtime Type Resolution', () => {
           let x: boolean | int = true
           let y: boolean | int = false
           let z = x || y
-          assert(z == true, "true || false should be true")
+          @assert(z == true, "true || false should be true")
         `;
         expect(() => run(code)).not.toThrow();
     });

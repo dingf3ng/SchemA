@@ -19,12 +19,10 @@ import {
   EqualityContext,
   ComparisonContext,
   RangeContext,
-  ShiftContext,
   AdditionContext,
   MultiplicationContext,
   UnaryContext,
   PostfixContext,
-  PrimaryContext,
   NumberLiteralContext,
   StringLiteralContext,
   TrueLiteralContext,
@@ -44,8 +42,10 @@ import {
   IndexOpContext,
   BlockContext,
   TypeOfExprContext,
-  AssertExprContext,
   PolyTypeIdentifierContext,
+  MetaStatementContext,
+  InvariantStatementContext,
+  AssertStatementContext,
 } from './generated/src/SchemAParser';
 import {
   Program,
@@ -73,7 +73,8 @@ import {
   BooleanLiteral,
   ArrayLiteral,
   TypeOfExpression,
-  AssertExpression,
+  InvariantStatement,
+  AssertStatement,
   TypeAnnotation as ASTTypeAnnotation,
   Parameter as ASTParameter,
 } from './types';
@@ -120,6 +121,9 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     }
     if (ctx.blockStatement()) {
       return this.visit(ctx.blockStatement()!);
+    }
+    if (ctx.metaStatement()) {
+      return this.visit(ctx.metaStatement()!);
     }
     if (ctx.expressionStatement()) {
       return this.visit(ctx.expressionStatement()!);
@@ -686,14 +690,39 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     };
   }
 
-  visitAssertExpr(ctx: AssertExprContext): Expression {
-    // assert(condition, message)
+  visitMetaStatement(ctx: MetaStatementContext): Statement {
+    if (ctx.invariantStatement()) {
+      return this.visit(ctx.invariantStatement()!);
+    }
+    if (ctx.assertStatement()) {
+      return this.visit(ctx.assertStatement()!);
+    }
+    throw new Error('Unknown meta statement type');
+  }
+
+  visitInvariantStatement(ctx: InvariantStatementContext): InvariantStatement {
+    // @invariant(condition) or @invariant(condition, message)
     const expressions = ctx.expression();
     const condition = this.visit(expressions[0]);
-    const message = this.visit(expressions[1]);
+    const message = expressions.length > 1 ? this.visit(expressions[1]) : undefined;
 
     return {
-      type: 'AssertExpression',
+      type: 'InvariantStatement',
+      condition,
+      message,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitAssertStatement(ctx: AssertStatementContext): AssertStatement {
+    // @assert(condition) or @assert(condition, message)
+    const expressions = ctx.expression();
+    const condition = this.visit(expressions[0]);
+    const message = expressions.length > 1 ? this.visit(expressions[1]) : undefined;
+
+    return {
+      type: 'AssertStatement',
       condition,
       message,
       line: ctx.start.line,

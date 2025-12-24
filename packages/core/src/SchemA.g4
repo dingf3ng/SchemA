@@ -16,6 +16,20 @@ statement
     | returnStatement
     | blockStatement
     | expressionStatement
+    | metaStatement
+    ;
+
+metaStatement
+    : invariantStatement
+    | assertStatement
+    ;
+
+invariantStatement
+    : '@invariant' '(' expression (',' expression)? ')'
+    ;
+
+assertStatement
+    : '@assert' '(' expression (',' expression)? ')'
     ;
 
 functionDeclaration
@@ -160,7 +174,6 @@ primary
     | STRING                     # StringLiteral
     | 'true'                     # TrueLiteral
     | 'false'                    # FalseLiteral
-    | 'assert' '(' expression ',' expression ')'  # AssertExpr
     | POLY_TYPE_ID               # PolyTypeIdentifier
     | IDENTIFIER                 # Identifier
     | arrayLiteral               # ArrayLiteralExpr

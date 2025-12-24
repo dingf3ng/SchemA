@@ -1254,17 +1254,6 @@ class Interpreter {
                 const operand = this.evaluateExpression(expr.operand);
                 return { type: { static: { kind: 'string' }, refinements: [] }, value: operand.type.static.kind };
             }
-            case 'AssertExpression': {
-                const condition = this.evaluateExpression(expr.condition);
-                if (condition.type.static.kind !== 'boolean') {
-                    throw new Error('Assert condition must be a boolean');
-                }
-                if (condition.value === false) {
-                    const message = this.evaluateExpression(expr.message);
-                    throw new Error(`Assertion failed: ${(0, values_1.RuntimeTypedBinderToString)(message)}`);
-                }
-                return { type: { static: { kind: 'boolean' }, refinements: [] }, value: true };
-            }
             default:
                 throw new Error(`Unknown expression type: ${expr.type}`);
         }

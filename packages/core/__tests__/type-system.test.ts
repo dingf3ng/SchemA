@@ -222,12 +222,12 @@ describe('Type System', () => {
       });
     });
 
-    describe('assert expression', () => {
+    describe('@assert expression', () => {
       it('should accept boolean condition and string message', () => {
         const code = `
           do main() {
-            assert(true, "This should pass")
-            assert(1 == 1, "Equality check")
+            @assert(true, "This should pass")
+            @assert(1 == 1, "Equality check")
           }
         `;
         expect(() => check(code)).not.toThrow();
@@ -237,7 +237,7 @@ describe('Type System', () => {
         const code = `
           do main() {
             let x: int = 10
-            assert(x > 5, "x should be greater than 5")
+            @assert(x > 5, "x should be greater than 5")
           }
         `;
         expect(() => check(code)).not.toThrow();
@@ -246,7 +246,7 @@ describe('Type System', () => {
       it('should fail when condition is not boolean', () => {
         const code = `
           do main() {
-            assert(42, "This is wrong")
+            @assert(42, "This is wrong")
           }
         `;
         expect(() => check(code)).toThrow('Type mismatch');
@@ -255,7 +255,7 @@ describe('Type System', () => {
       it('should fail when message is not string', () => {
         const code = `
           do main() {
-            assert(true, 42)
+            @assert(true, 42)
           }
         `;
         expect(() => check(code)).toThrow('Type mismatch');
@@ -264,20 +264,20 @@ describe('Type System', () => {
       it('should fail when condition is a string', () => {
         const code = `
           do main() {
-            assert("not a boolean", "error message")
+            @assert("not a boolean", "error message")
           }
         `;
         expect(() => check(code)).toThrow('Type mismatch');
       });
     });
 
-    describe('Combined typeof and assert', () => {
+    describe('Combined typeof and @assert', () => {
       it('should work together in complex scenarios', () => {
         const code = `
           do main() {
             let x: int = 42
-            let typeStr: string = typeof x
-            assert(typeStr == "int", "x should be an int")
+            let typeStr: string = typeof(x)
+            @assert(typeStr == "int", "x should be an int")
           }
         `;
         expect(() => check(code)).not.toThrow();

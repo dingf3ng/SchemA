@@ -545,19 +545,6 @@ class ASTBuilder extends AbstractParseTreeVisitor_1.AbstractParseTreeVisitor {
             column: ctx.start.charPositionInLine + 1,
         };
     }
-    visitAssertExpr(ctx) {
-        // assert(condition, message)
-        const expressions = ctx.expression();
-        const condition = this.visit(expressions[0]);
-        const message = this.visit(expressions[1]);
-        return {
-            type: 'AssertExpression',
-            condition,
-            message,
-            line: ctx.start.line,
-            column: ctx.start.charPositionInLine + 1,
-        };
-    }
     visitIdentifier(ctx) {
         return {
             type: 'Identifier',

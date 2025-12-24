@@ -759,8 +759,6 @@ class TypeChecker {
                 // If not found in environment
                 throw new Error(`Type checking: cannot infer type for identifier ${expr.name}`);
             }
-            case 'AssertExpression':
-                return { kind: 'void' };
             default:
                 throw new Error(`Type checking: cannot infer type for expression of type ${expr.type}`);
         }
@@ -1301,14 +1299,6 @@ class TypeChecker {
                 // typeof returns a string representing the type
                 this.synthExpression(expr.operand);
                 return { kind: 'string' };
-            }
-            case 'AssertExpression': {
-                // Check that condition is boolean
-                this.checkExpression(expr.condition, { kind: 'boolean' });
-                // Check that message is a string
-                this.checkExpression(expr.message, { kind: 'string' });
-                // assert returns void
-                return { kind: 'void' };
             }
             case 'IntegerLiteral':
                 return { kind: 'int' };

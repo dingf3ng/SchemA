@@ -43,6 +43,9 @@ export class TypeChecker {
   // Current function being checked (for return type validation)
   private currentFunction: string | null = null;
 
+  // Current loop depth (for invariant statement validation)
+  private loopDepth: number = 0;
+
   // Collected return types during inference
   private inferredReturnTypes: Type[] = [];
 
@@ -349,6 +352,8 @@ export class TypeChecker {
 
       case 'ExpressionStatement':
       case 'AssignmentStatement':
+      case 'InvariantStatement':
+      case 'AssertStatement':
         // No type annotations to infer for these statements
         break;
 
@@ -437,14 +442,14 @@ export class TypeChecker {
         const operandType = this.inferExpressionType(expr.operand);
         if (expr.operator === '-' && operandType.kind === 'int') {
           return { kind: 'int' };
-        } 
+        }
         if (expr.operator === '-' && operandType.kind === 'float') {
           return { kind: 'float' };
         }
         if (expr.operator === '!' && operandType.kind === 'boolean') {
           return { kind: 'boolean' };
         }
-        
+
         throw new Error(`Type checking: cannot infer type for unary expression ${expr.toString()}`);
       }
 
@@ -947,7 +952,7 @@ export class TypeChecker {
       }
 
       case 'TypeOfExpression':
-        return { kind: 'string'};
+        return { kind: 'string' };
       case 'Identifier': {
         // Look up identifier type from type environment
         const type = this.typeEnv.get(expr.name);
@@ -957,8 +962,6 @@ export class TypeChecker {
         // If not found in environment
         throw new Error(`Type checking: cannot infer type for identifier ${expr.name}`);
       }
-      case 'AssertExpression':
-        return { kind: 'void' };
       default:
         throw new Error(`Type checking: cannot infer type for expression of type ${expr.type}`);
     }
@@ -1146,8 +1149,8 @@ export class TypeChecker {
         let paramChanged = false;
         for (const param of stmt.parameters) {
           if (param.typeAnnotation &&
-              param.typeAnnotation.kind === 'simple' &&
-              param.typeAnnotation.name === 'weak') {
+            param.typeAnnotation.kind === 'simple' &&
+            param.typeAnnotation.name === 'weak') {
             const constrainedType = constraints.parameters.get(param.name);
             if (constrainedType && constrainedType.kind !== 'weak' && constrainedType.kind !== 'poly') {
               param.typeAnnotation = this.typeToAnnotation(constrainedType, param.typeAnnotation.line, param.typeAnnotation.column);
@@ -1219,32 +1222,32 @@ export class TypeChecker {
 
       case 'VariableDeclaration': {
         for (const declarator of stmt.declarations) {
-           if (declarator.typeAnnotation) {
-             const type = this.resolve(declarator.typeAnnotation);
-             this.typeEnv.set(declarator.name, type);
-             this.variableDeclEnv.set(declarator.name, declarator);
-           }
-           // Also refine initializer
-           this.refineExpression(declarator.initializer);
-           
-           // Update variable type from initializer
-           const initializerType = this.analyzeExpressionType(declarator.initializer, this.typeEnv);
-           const varType = this.typeEnv.get(declarator.name);
+          if (declarator.typeAnnotation) {
+            const type = this.resolve(declarator.typeAnnotation);
+            this.typeEnv.set(declarator.name, type);
+            this.variableDeclEnv.set(declarator.name, declarator);
+          }
+          // Also refine initializer
+          this.refineExpression(declarator.initializer);
 
-           if (varType && initializerType.kind !== 'weak' && initializerType.kind !== 'poly') {
-              // Refine if completely weak/poly
-              if (varType.kind === 'weak' || varType.kind === 'poly') {
-                  Object.assign(varType, initializerType);
-                  this.updateVariableAnnotation(declarator.name, varType);
-                  this.refinementChanged = true;
-              }
-              // Or refine nested weak types in complex types
-              else if (this.hasWeakTypes(varType) && !this.hasWeakTypes(initializerType)) {
-                  this.refineNestedTypes(varType, initializerType);
-                  this.updateVariableAnnotation(declarator.name, varType);
-                  this.refinementChanged = true;
-              }
-           }
+          // Update variable type from initializer
+          const initializerType = this.analyzeExpressionType(declarator.initializer, this.typeEnv);
+          const varType = this.typeEnv.get(declarator.name);
+
+          if (varType && initializerType.kind !== 'weak' && initializerType.kind !== 'poly') {
+            // Refine if completely weak/poly
+            if (varType.kind === 'weak' || varType.kind === 'poly') {
+              Object.assign(varType, initializerType);
+              this.updateVariableAnnotation(declarator.name, varType);
+              this.refinementChanged = true;
+            }
+            // Or refine nested weak types in complex types
+            else if (this.hasWeakTypes(varType) && !this.hasWeakTypes(initializerType)) {
+              this.refineNestedTypes(varType, initializerType);
+              this.updateVariableAnnotation(declarator.name, varType);
+              this.refinementChanged = true;
+            }
+          }
         }
         break;
       }
@@ -1272,26 +1275,26 @@ export class TypeChecker {
         // Add loop variable to env
         const savedEnv = new Map(this.typeEnv);
         const savedDeclEnv = new Map(this.variableDeclEnv);
-        
+
         // We need to infer loop variable type from iterable
         const iterableType = this.analyzeExpressionType(stmt.iterable, this.typeEnv);
         let loopVarType: Type = { kind: 'weak' };
-        
+
         if (iterableType.kind === 'array' || iterableType.kind === 'set') {
-            loopVarType = iterableType.elementType;
+          loopVarType = iterableType.elementType;
         } else if (iterableType.kind === 'map' || iterableType.kind === 'heapmap') {
-            loopVarType = iterableType.keyType;
+          loopVarType = iterableType.keyType;
         } else if (iterableType.kind === 'range') {
-            loopVarType = { kind: 'int' };
+          loopVarType = { kind: 'int' };
         }
-        
+
         this.typeEnv.set(stmt.variable, loopVarType);
         // Loop variable doesn't have a declaration node in the same way, 
         // but we might not need to update its annotation since it's implicit in ForStatement?
         // But ForStatement doesn't have type annotation for variable usually.
-        
+
         this.refineStatement(stmt.body);
-        
+
         this.typeEnv = savedEnv;
         this.variableDeclEnv = savedDeclEnv;
         break;
@@ -1309,11 +1312,11 @@ export class TypeChecker {
           this.refineExpression(stmt.value);
         }
         break;
-        
+
       case 'ExpressionStatement':
         this.refineExpression(stmt.expression);
         break;
-        
+
       case 'AssignmentStatement':
         this.refineExpression(stmt.target);
         this.refineExpression(stmt.value);
@@ -1336,6 +1339,20 @@ export class TypeChecker {
         const valueType = this.analyzeExpressionType(stmt.value, this.typeEnv);
         this.refineExpressionFromType(stmt.target, valueType);
         break;
+
+      case 'InvariantStatement':
+        this.refineExpression(stmt.condition);
+        if (stmt.message) {
+          this.refineExpression(stmt.message);
+        }
+        break;
+
+      case 'AssertStatement':
+        this.refineExpression(stmt.condition);
+        if (stmt.message) {
+          this.refineExpression(stmt.message);
+        }
+        break;
     }
   }
 
@@ -1356,21 +1373,21 @@ export class TypeChecker {
         this.refineExpression(expr.left);
         this.refineExpression(expr.right);
         break;
-        
+
       case 'UnaryExpression':
         this.refineExpression(expr.operand);
         break;
-        
+
       case 'ArrayLiteral':
         for (const elem of expr.elements) {
           this.refineExpression(elem);
         }
         break;
-        
+
       case 'MemberExpression':
         this.refineExpression(expr.object);
         break;
-        
+
       case 'IndexExpression':
         this.refineExpression(expr.object);
         this.refineExpression(expr.index);
@@ -1382,7 +1399,7 @@ export class TypeChecker {
     if (callee.object.type === 'Identifier') {
       const varName = callee.object.name;
       const varType = this.typeEnv.get(varName);
-      
+
       if (!varType) return;
 
       const methodName = callee.property.name;
@@ -1393,42 +1410,42 @@ export class TypeChecker {
 
       if (varType.kind === 'map') {
         if (methodName === 'set' && args.length === 2) {
-           this.refineTypeFromExpression(varType.keyType, args[0], isInferred);
-           this.refineTypeFromExpression(varType.valueType, args[1], isInferred);
-           
-           this.refineExpressionFromType(args[0], varType.keyType);
-           this.refineExpressionFromType(args[1], varType.valueType);
+          this.refineTypeFromExpression(varType.keyType, args[0], isInferred);
+          this.refineTypeFromExpression(varType.valueType, args[1], isInferred);
+
+          this.refineExpressionFromType(args[0], varType.keyType);
+          this.refineExpressionFromType(args[1], varType.valueType);
         }
         if (methodName === 'get' && args.length === 1) {
-           this.refineTypeFromExpression(varType.keyType, args[0], isInferred);
-           this.refineExpressionFromType(args[0], varType.keyType);
+          this.refineTypeFromExpression(varType.keyType, args[0], isInferred);
+          this.refineExpressionFromType(args[0], varType.keyType);
         }
       }
       else if (varType.kind === 'set') {
         if ((methodName === 'add' || methodName === 'has') && args.length === 1) {
-           this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
-           this.refineExpressionFromType(args[0], varType.elementType);
+          this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
+          this.refineExpressionFromType(args[0], varType.elementType);
         }
       }
       else if (varType.kind === 'heap') {
         if (methodName === 'push' && args.length === 1) {
-           this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
-           this.refineExpressionFromType(args[0], varType.elementType);
+          this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
+          this.refineExpressionFromType(args[0], varType.elementType);
         }
       }
       else if (varType.kind === 'heapmap') {
-         if (methodName === 'push' && args.length === 2) {
-            this.refineTypeFromExpression(varType.keyType, args[0], isInferred);
-            this.refineTypeFromExpression(varType.valueType, args[1], isInferred);
+        if (methodName === 'push' && args.length === 2) {
+          this.refineTypeFromExpression(varType.keyType, args[0], isInferred);
+          this.refineTypeFromExpression(varType.valueType, args[1], isInferred);
 
-            this.refineExpressionFromType(args[0], varType.keyType);
-            this.refineExpressionFromType(args[1], varType.valueType);
-         }
+          this.refineExpressionFromType(args[0], varType.keyType);
+          this.refineExpressionFromType(args[1], varType.valueType);
+        }
       }
       else if (varType.kind === 'array') {
         if (methodName === 'push' && args.length === 1) {
-           this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
-           this.refineExpressionFromType(args[0], varType.elementType);
+          this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
+          this.refineExpressionFromType(args[0], varType.elementType);
         }
       }
 
@@ -1451,7 +1468,7 @@ export class TypeChecker {
       const argType = argTypes[i];
 
       if ((paramType.kind === 'weak' || paramType.kind === 'poly') &&
-          argType.kind !== 'weak' && argType.kind !== 'poly') {
+        argType.kind !== 'weak' && argType.kind !== 'poly') {
         Object.assign(paramType, argType);
         paramsChanged = true;
 
@@ -1544,7 +1561,7 @@ export class TypeChecker {
         }
       }
     } else if ((targetType.kind === 'set' || targetType.kind === 'heap') &&
-               (sourceType.kind === 'set' || sourceType.kind === 'heap')) {
+      (sourceType.kind === 'set' || sourceType.kind === 'heap')) {
       if (this.hasWeakTypes(targetType.elementType) && !this.hasWeakTypes(sourceType.elementType)) {
         if (targetType.elementType.kind === 'weak' || targetType.elementType.kind === 'poly') {
           Object.assign(targetType.elementType, sourceType.elementType);
@@ -1574,68 +1591,68 @@ export class TypeChecker {
   }
 
   private refineTypeFromExpression(targetType: Type, expr: Expression, allowBroadening: boolean = false): void {
-     const exprType = this.analyzeExpressionType(expr, this.typeEnv);
+    const exprType = this.analyzeExpressionType(expr, this.typeEnv);
 
-     if (targetType.kind === 'weak' || targetType.kind === 'poly') {
-        if (exprType.kind !== 'weak' && exprType.kind !== 'poly') {
-           Object.assign(targetType, exprType);
-           this.refinementChanged = true;
+    if (targetType.kind === 'weak' || targetType.kind === 'poly') {
+      if (exprType.kind !== 'weak' && exprType.kind !== 'poly') {
+        Object.assign(targetType, exprType);
+        this.refinementChanged = true;
+      }
+    } else if (allowBroadening) {
+      if (!this.typesEqual(exprType, targetType) && exprType.kind !== 'weak' && exprType.kind !== 'poly') {
+        // Broaden to union
+        const oldType = JSON.parse(JSON.stringify(targetType));
+
+        // If already union, add to it
+        if (targetType.kind === 'union') {
+          // Check if type already exists in union
+          const exists = targetType.types.some(t => this.typesEqual(t, exprType));
+          if (!exists) {
+            targetType.types.push(exprType);
+            this.refinementChanged = true;
+          }
+        } else {
+          // Convert to union
+          const newUnion: Type = {
+            kind: 'union',
+            types: [oldType, exprType]
+          };
+
+          // Clear targetType
+          for (const key in targetType) {
+            delete (targetType as any)[key];
+          }
+
+          Object.assign(targetType, newUnion);
+          this.refinementChanged = true;
         }
-     } else if (allowBroadening) {
-        if (!this.typesEqual(exprType, targetType) && exprType.kind !== 'weak' && exprType.kind !== 'poly') {
-           // Broaden to union
-           const oldType = JSON.parse(JSON.stringify(targetType));
-
-           // If already union, add to it
-           if (targetType.kind === 'union') {
-              // Check if type already exists in union
-              const exists = targetType.types.some(t => this.typesEqual(t, exprType));
-              if (!exists) {
-                 targetType.types.push(exprType);
-                 this.refinementChanged = true;
-              }
-           } else {
-              // Convert to union
-              const newUnion: Type = {
-                 kind: 'union',
-                 types: [oldType, exprType]
-              };
-
-              // Clear targetType
-              for (const key in targetType) {
-                 delete (targetType as any)[key];
-              }
-
-              Object.assign(targetType, newUnion);
-              this.refinementChanged = true;
-           }
-        }
-     }
+      }
+    }
   }
 
   private refineExpressionFromType(expr: Expression, type: Type): void {
     if (expr.type === 'Identifier') {
-       const varName = expr.name;
-       const varType = this.typeEnv.get(varName);
-       if (varType && (varType.kind === 'weak' || varType.kind === 'poly')) {
-          if (type.kind !== 'weak' && type.kind !== 'poly') {
-             Object.assign(varType, type);
-             this.updateVariableAnnotation(varName, varType);
-             this.refinementChanged = true;
-          }
-       }
+      const varName = expr.name;
+      const varType = this.typeEnv.get(varName);
+      if (varType && (varType.kind === 'weak' || varType.kind === 'poly')) {
+        if (type.kind !== 'weak' && type.kind !== 'poly') {
+          Object.assign(varType, type);
+          this.updateVariableAnnotation(varName, varType);
+          this.refinementChanged = true;
+        }
+      }
     }
   }
 
   private updateVariableAnnotation(name: string, type: Type): void {
     const decl = this.variableDeclEnv.get(name);
     if (decl) {
-       const wasInferred = decl.typeAnnotation?.isInferred;
-       // decl is VariableDeclarator or Parameter (which has typeAnnotation property)
-       decl.typeAnnotation = this.typeToAnnotation(type, decl.typeAnnotation?.line || 0, decl.typeAnnotation?.column || 0);
-       if (wasInferred) {
-          decl.typeAnnotation.isInferred = true;
-       }
+      const wasInferred = decl.typeAnnotation?.isInferred;
+      // decl is VariableDeclarator or Parameter (which has typeAnnotation property)
+      decl.typeAnnotation = this.typeToAnnotation(type, decl.typeAnnotation?.line || 0, decl.typeAnnotation?.column || 0);
+      if (wasInferred) {
+        decl.typeAnnotation.isInferred = true;
+      }
     }
   }
 
@@ -1768,6 +1785,20 @@ export class TypeChecker {
           collectFromStatement(s.body);
           break;
 
+        case 'InvariantStatement':
+          this.analyzeExpressionForConstraints(s.condition, paramTypes, constraints.parameters);
+          if (s.message) {
+            this.analyzeExpressionForConstraints(s.message, paramTypes, constraints.parameters);
+          }
+          break;
+
+        case 'AssertStatement':
+          this.analyzeExpressionForConstraints(s.condition, paramTypes, constraints.parameters);
+          if (s.message) {
+            this.analyzeExpressionForConstraints(s.message, paramTypes, constraints.parameters);
+          }
+          break;
+
         case 'BlockStatement':
           for (const stmt of s.statements) {
             collectFromStatement(stmt);
@@ -1866,46 +1897,46 @@ export class TypeChecker {
           if (objectType.kind === 'graph') {
             if (methodName === 'size') return { kind: 'int' };
             if (methodName === 'getNeighbors') {
-               return {
-                 kind: 'array',
-                 elementType: {
-                   kind: 'record',
-                   fieldTypes: [
-                     [{ kind: 'string' }, objectType.nodeType],
-                     [{ kind: 'string' }, { kind: 'int' }]
-                   ]
-                 }
-               };
+              return {
+                kind: 'array',
+                elementType: {
+                  kind: 'record',
+                  fieldTypes: [
+                    [{ kind: 'string' }, objectType.nodeType],
+                    [{ kind: 'string' }, { kind: 'int' }]
+                  ]
+                }
+              };
             }
           }
 
           if (objectType.kind === 'map') {
-             if (methodName === 'get') return objectType.valueType;
-             if (methodName === 'size') return { kind: 'int' };
+            if (methodName === 'get') return objectType.valueType;
+            if (methodName === 'size') return { kind: 'int' };
           }
 
           if (objectType.kind === 'heapmap') {
-             if (methodName === 'pop') return objectType.keyType;
-             if (methodName === 'size') return { kind: 'int' };
+            if (methodName === 'pop') return objectType.keyType;
+            if (methodName === 'size') return { kind: 'int' };
           }
 
           if (objectType.kind === 'heap') {
-             if (methodName === 'pop') return objectType.elementType;
-             if (methodName === 'size') return { kind: 'int' };
+            if (methodName === 'pop') return objectType.elementType;
+            if (methodName === 'size') return { kind: 'int' };
           }
 
           if (objectType.kind === 'set') {
-             if (methodName === 'has') return { kind: 'boolean' };
-             if (methodName === 'size') return { kind: 'int' };
+            if (methodName === 'has') return { kind: 'boolean' };
+            if (methodName === 'size') return { kind: 'int' };
           }
 
           if (objectType.kind === 'array') {
-             if (methodName === 'push') return objectType;
-             if (methodName === 'size') return { kind: 'int' };
+            if (methodName === 'push') return objectType;
+            if (methodName === 'size') return { kind: 'int' };
           }
 
           if (objectType.kind === 'string') {
-             if (methodName === 'upper' || methodName === 'lower') return { kind: 'string' };
+            if (methodName === 'upper' || methodName === 'lower') return { kind: 'string' };
           }
         }
 
@@ -1925,22 +1956,22 @@ export class TypeChecker {
         const indexType = this.analyzeExpressionType(expr.index, paramTypes);
 
         if (objectType.kind === 'array') {
-           // Check if it's a slice operation
-           if (indexType.kind === 'range' ||
-               (indexType.kind === 'array' && indexType.elementType.kind === 'int')) {
-              // Slicing returns the whole array type
-              return objectType;
-           }
-           // Regular indexing returns element type
-           return objectType.elementType;
+          // Check if it's a slice operation
+          if (indexType.kind === 'range' ||
+            (indexType.kind === 'array' && indexType.elementType.kind === 'int')) {
+            // Slicing returns the whole array type
+            return objectType;
+          }
+          // Regular indexing returns element type
+          return objectType.elementType;
         }
         if (objectType.kind === 'map') {
-           return objectType.valueType;
+          return objectType.valueType;
         }
         if (objectType.kind === 'record') {
-           const valueTypes = objectType.fieldTypes.map(pair => pair[1]);
-           if (valueTypes.length === 1) return valueTypes[0];
-           return { kind: 'union', types: valueTypes };
+          const valueTypes = objectType.fieldTypes.map(pair => pair[1]);
+          if (valueTypes.length === 1) return valueTypes[0];
+          return { kind: 'union', types: valueTypes };
         }
         return { kind: 'weak' };
       }
@@ -1996,14 +2027,14 @@ export class TypeChecker {
 
       case 'CallExpression':
         // Check for method calls on parameters to infer their types
-        if (expr.callee.type === 'MemberExpression' && 
-            expr.callee.object.type === 'Identifier' && 
-            paramTypes.has(expr.callee.object.name)) {
-          
+        if (expr.callee.type === 'MemberExpression' &&
+          expr.callee.object.type === 'Identifier' &&
+          paramTypes.has(expr.callee.object.name)) {
+
           const paramName = expr.callee.object.name;
           const methodName = expr.callee.property.name;
           const argCount = expr.arguments.length;
-          
+
           let inferredType: Type | null = null;
 
           // Graph methods
@@ -2030,9 +2061,9 @@ export class TypeChecker {
           }
           // BinaryTree/AVLTree methods
           else if (['insert', 'search'].includes(methodName) && argCount === 1) {
-             // Ambiguous between BinaryTree and AVLTree, but maybe we can default to BinaryTree or check if we can handle ambiguity
-             // For now, let's not infer if ambiguous, or maybe infer a generic tree if we had one.
-             // But wait, 'insert' is also on BinaryTree.
+            // Ambiguous between BinaryTree and AVLTree, but maybe we can default to BinaryTree or check if we can handle ambiguity
+            // For now, let's not infer if ambiguous, or maybe infer a generic tree if we had one.
+            // But wait, 'insert' is also on BinaryTree.
           }
 
           if (inferredType) {
@@ -2059,12 +2090,12 @@ export class TypeChecker {
         if (expr.object.type === 'Identifier' && paramTypes.has(expr.object.name)) {
           const paramName = expr.object.name;
           const propertyName = expr.property.name;
-          
+
           if (propertyName === 'length') {
-             const currentConstraint = constraints.get(paramName);
-             if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'poly') {
-               constraints.set(paramName, { kind: 'array', elementType: { kind: 'weak' } });
-             }
+            const currentConstraint = constraints.get(paramName);
+            if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'poly') {
+              constraints.set(paramName, { kind: 'array', elementType: { kind: 'weak' } });
+            }
           }
         }
 
@@ -2148,12 +2179,16 @@ export class TypeChecker {
 
       case 'WhileStatement':
         this.checkExpression(stmt.condition, { kind: 'boolean' });
+        this.loopDepth++;
         this.checkStatement(stmt.body);
+        this.loopDepth--;
         break;
 
       case 'UntilStatement':
         this.checkExpression(stmt.condition, { kind: 'boolean' });
+        this.loopDepth++;
         this.checkStatement(stmt.body);
+        this.loopDepth--;
         break;
 
       case 'ForStatement':
@@ -2187,7 +2222,9 @@ export class TypeChecker {
           }
         }
 
+        this.loopDepth++;
         this.checkStatement(stmt.body);
+        this.loopDepth--;
         this.typeEnv = savedEnv;
         break;
 
@@ -2256,6 +2293,30 @@ export class TypeChecker {
       case 'ExpressionStatement':
         this.synthExpression(stmt.expression);
         break;
+
+      case 'InvariantStatement':
+        // Check that invariant is inside a loop or function (not at top level)
+        if (this.loopDepth === 0 && !this.currentFunction) {
+          throw new Error(
+            `Type checking: @invariant statement must be inside a loop or function. At ${stmt.line}, ${stmt.column}`
+          );
+        }
+        // Check that condition is boolean
+        this.checkExpression(stmt.condition, { kind: 'boolean' });
+        // Check that message (if present) is a string
+        if (stmt.message) {
+          this.checkExpression(stmt.message, { kind: 'string' });
+        }
+        break;
+
+      case 'AssertStatement':
+        // Check that condition is boolean
+        this.checkExpression(stmt.condition, { kind: 'boolean' });
+        // Check that message (if present) is a string
+        if (stmt.message) {
+          this.checkExpression(stmt.message, { kind: 'string' });
+        }
+        break;
     }
   }
 
@@ -2271,17 +2332,17 @@ export class TypeChecker {
     if (type.kind === 'int') return 'int';
     if (type.kind === 'float') return 'float';
     if (type.kind === 'intersection') {
-       const kinds = type.types.map(t => this.getNumericKind(t)).filter(k => k !== null);
-       if (kinds.length === 0) return null;
-       if (kinds.includes('int')) return 'int';
-       if (kinds.includes('float')) return 'float';
-       return null;
+      const kinds = type.types.map(t => this.getNumericKind(t)).filter(k => k !== null);
+      if (kinds.length === 0) return null;
+      if (kinds.includes('int')) return 'int';
+      if (kinds.includes('float')) return 'float';
+      return null;
     }
     if (type.kind === 'union') {
-       const kinds = type.types.map(t => this.getNumericKind(t));
-       if (kinds.some(k => k === null)) return null;
-       if (kinds.includes('float')) return 'float';
-       return 'int';
+      const kinds = type.types.map(t => this.getNumericKind(t));
+      if (kinds.some(k => k === null)) return null;
+      if (kinds.includes('float')) return 'float';
+      return 'int';
     }
     return null;
   }
@@ -2301,15 +2362,6 @@ export class TypeChecker {
         // typeof returns a string representing the type
         this.synthExpression(expr.operand);
         return { kind: 'string' };
-      }
-
-      case 'AssertExpression': {
-        // Check that condition is boolean
-        this.checkExpression(expr.condition, { kind: 'boolean' });
-        // Check that message is a string
-        this.checkExpression(expr.message, { kind: 'string' });
-        // assert returns void
-        return { kind: 'void' };
       }
 
       case 'IntegerLiteral':
@@ -2360,7 +2412,7 @@ export class TypeChecker {
           const startType = this.synthExpression(expr.start);
           if (expr.end) {
             const endType = this.synthExpression(expr.end);
-            
+
             if (startType.kind === 'weak' || endType.kind === 'weak') {
               return { kind: 'array', elementType: { kind: 'int' } };
             }
@@ -2416,32 +2468,32 @@ export class TypeChecker {
         // Arithmetic operators: +, -, *, % (work on int and float)
         if (['+', '-', '*', '%'].includes(expr.operator)) {
           if (leftNumeric && rightNumeric) {
-             if (leftNumeric === 'float' || rightNumeric === 'float') {
-                return { kind: 'float' };
-             }
-             return { kind: 'int' };
+            if (leftNumeric === 'float' || rightNumeric === 'float') {
+              return { kind: 'float' };
+            }
+            return { kind: 'int' };
           }
         }
 
         // Integer division operator: / (requires both operands to be int, returns int)
         if (expr.operator === '/') {
-           if (leftNumeric === 'int' && rightNumeric === 'int') {
-              return { kind: 'int' };
-           }
+          if (leftNumeric === 'int' && rightNumeric === 'int') {
+            return { kind: 'int' };
+          }
         }
 
         // Float division operator: /. (works on int or float, returns float)
         if (expr.operator === '/.') {
-           if (leftNumeric && rightNumeric) {
-              return { kind: 'float' };
-           }
+          if (leftNumeric && rightNumeric) {
+            return { kind: 'float' };
+          }
         }
 
         // Bitwise shift operators: << and >> (require both operands to be int)
         if (['<<', '>>'].includes(expr.operator)) {
-           if (leftNumeric === 'int' && rightNumeric === 'int') {
-              return { kind: 'int' };
-           }
+          if (leftNumeric === 'int' && rightNumeric === 'int') {
+            return { kind: 'int' };
+          }
         }
 
         // String concatenation
@@ -2455,9 +2507,9 @@ export class TypeChecker {
 
         // Comparison operators (work on int or float)
         if (['<', '<=', '>', '>='].includes(expr.operator)) {
-           if (leftNumeric && rightNumeric) {
-              return { kind: 'boolean' };
-           }
+          if (leftNumeric && rightNumeric) {
+            return { kind: 'boolean' };
+          }
         }
 
         // Equality operators (allow comparison if types are compatible)
@@ -2875,12 +2927,12 @@ export class TypeChecker {
           }
           // Support array slicing with ranges
           if (indexType.kind === 'array' && indexType.elementType.kind === 'int') {
-             // Range expression returns array<int>, so this covers ranges
-             return objectType; // Slicing returns an array of the same type
+            // Range expression returns array<int>, so this covers ranges
+            return objectType; // Slicing returns an array of the same type
           }
           // Support array slicing with infinite ranges
           if (indexType.kind === 'range') {
-             return objectType;
+            return objectType;
           }
         }
 

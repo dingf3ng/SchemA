@@ -70,7 +70,8 @@ export type ASTNodeType =
   | 'MapLiteral'
   | 'SetLiteral'
   | 'TypeOfExpression'
-  | 'AssertExpression'
+  | 'InvariantStatement'
+  | 'AssertStatement'
   | 'IfStatement'
   | 'WhileStatement'
   | 'ForStatement'
@@ -206,10 +207,16 @@ export interface TypeOfExpression extends ASTNode {
   operand: Expression;
 }
 
-export interface AssertExpression extends ASTNode {
-  type: 'AssertExpression';
+export interface InvariantStatement extends ASTNode {
+  type: 'InvariantStatement';
   condition: Expression;
-  message: Expression;
+  message?: Expression;
+}
+
+export interface AssertStatement extends ASTNode {
+  type: 'AssertStatement';
+  condition: Expression;
+  message?: Expression;
 }
 
 export interface IfStatement extends ASTNode {
@@ -315,6 +322,8 @@ export type Statement =
   | ForStatement
   | ReturnStatement
   | BlockStatement
+  | InvariantStatement
+  | AssertStatement
   | ExpressionStatement;
 
 export type Expression =
@@ -332,5 +341,4 @@ export type Expression =
   | ArrayLiteral
   | MapLiteral
   | SetLiteral
-  | TypeOfExpression
-  | AssertExpression;
+  | TypeOfExpression;

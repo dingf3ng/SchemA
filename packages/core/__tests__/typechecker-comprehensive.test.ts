@@ -931,11 +931,11 @@ describe('TypeChecker - Comprehensive Tests', () => {
     });
 
     describe('Assert Expression Type Checking', () => {
-      it('should check assert takes boolean and string', () => {
+      it('should check @assert takes boolean and string', () => {
         const code = `
           do main() {
-            assert(true, "message")
-            assert(5 > 3, "five is greater")
+            @assert(true, "message")
+            @assert(5 > 3, "five is greater")
           }
         `;
         expect(() => check(code)).not.toThrow();
@@ -944,7 +944,7 @@ describe('TypeChecker - Comprehensive Tests', () => {
       it('should reject non-boolean condition in assert', () => {
         const code = `
           do main() {
-            assert(42, "bad condition")
+            @assert(42, "bad condition")
           }
         `;
         expect(() => check(code)).toThrow(/Type mismatch/);
@@ -953,7 +953,7 @@ describe('TypeChecker - Comprehensive Tests', () => {
       it('should reject non-string message in assert', () => {
         const code = `
           do main() {
-            assert(true, 42)
+            @assert(true, 42)
           }
         `;
         expect(() => check(code)).toThrow(/Type mismatch/);

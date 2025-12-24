@@ -1,0 +1,114 @@
+// Demo: @invariant annotation for runtime debugging
+// This showcases how invariants help catch bugs during execution
+
+print("=== Binary Search with Invariants ===")
+
+do binarySearch(arr, target) {
+  let left = 0
+  let right = arr.length() - 1
+
+  until left > right {
+    // These invariants document and verify algorithm correctness
+    @invariant(left >= 0, "left index went negative")
+    @invariant(right < arr.length(), "right index out of bounds")
+    @invariant(left <= right + 1, "search space became invalid")
+
+    let mid = (left + right) / 2
+
+    if arr[mid] == target {
+      return mid
+    } else {
+      if arr[mid] < target {
+        left = mid + 1
+      } else {
+        right = mid - 1
+      }
+    }
+  }
+  return -1
+}
+
+let sortedArray = [1, 3, 5, 7, 9, 11, 13, 15]
+print("Array:", sortedArray)
+print("Search for 7:", binarySearch(sortedArray, 7))
+print("Search for 4:", binarySearch(sortedArray, 4))
+
+print("")
+print("=== Graph Traversal with Invariants ===")
+
+do dijkstra(graph, start) {
+  let dist = Map()
+  let visited = Set()
+  let pq = MinHeapMap()
+  let n = graph.size()
+
+  // Initialize distances
+  for i in 0..n {
+    dist.set(i, inf)
+  }
+  dist.set(start, 0)
+  pq.push(start, 0)
+
+  until pq.size() == 0 {
+    // Loop invariants that verify algorithm properties
+    @invariant(visited.size() <= n, "visited too many nodes")
+
+    let current = pq.pop()
+
+    if !visited.has(current) {
+      visited.add(current)
+
+      let neighbors = graph.getNeighbors(current)
+      for adj in neighbors {
+        let neighbor = adj["to"]
+        let weight = adj["weight"]
+        let newDist = dist.get(current) + weight
+
+        if newDist < dist.get(neighbor) {
+          dist.set(neighbor, newDist)
+          pq.push(neighbor, newDist)
+        }
+      }
+    }
+  }
+
+  return dist
+}
+
+// Create a simple graph
+let g = Graph(true)
+for i in 0..4 {
+  g.addVertex(i)
+}
+g.addEdge(0, 1, 2)
+g.addEdge(0, 2, 4)
+g.addEdge(1, 2, 1)
+g.addEdge(1, 3, 7)
+g.addEdge(2, 3, 3)
+
+print("Running Dijkstra from node 0:")
+let distances = dijkstra(g, 0)
+for i in 0..4 {
+  print("Distance to node", i, ":", distances.get(i))
+}
+
+print("")
+print("=== Invariants Catching Bugs ===")
+
+do buggyIncrement(n) {
+  let count = 0
+
+  // This invariant will catch when we go out of bounds
+  for i in 0..n {
+    @invariant(count <= n, "count exceeded expected maximum")
+    count = count + 2  // Bug: incrementing by 2 instead of 1!
+  }
+
+  return count
+}
+
+// This will fail because count grows too fast
+print("Trying buggy increment with n=5...")
+// Uncomment to see the invariant violation:
+// print(buggyIncrement(5))
+print("(Commented out to avoid error)")
