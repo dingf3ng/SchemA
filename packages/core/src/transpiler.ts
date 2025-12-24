@@ -245,7 +245,40 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
 
   visitAssignmentStatement(ctx: AssignmentStatementContext): AssignmentStatement {
     const target = this.visit(ctx.assignmentTarget());
-    const value = this.visit(ctx.expression());
+    let value = this.visit(ctx.expression());
+
+    const assignmentOp = ctx.assignmentOperator();
+    
+    // Handle >>= which is parsed as GT GTE
+    if (assignmentOp.GT() && assignmentOp.GTE()) {
+      value = {
+        type: 'BinaryExpression',
+        operator: '>>',
+        left: target,
+        right: value,
+        line: ctx.start.line,
+        column: ctx.start.charPositionInLine + 1,
+      };
+    } else {
+      const binaryOp = assignmentOp.binaryOperator();
+
+      if (binaryOp) {
+        let operator = binaryOp.text;
+        // Normalize >> (GT GT)
+        if (operator.replace(/\s/g, '') === '>>') {
+            operator = '>>';
+        }
+        
+        value = {
+          type: 'BinaryExpression',
+          operator,
+          left: target,
+          right: value,
+          line: ctx.start.line,
+          column: ctx.start.charPositionInLine + 1,
+        };
+      }
+    }
 
     return {
       type: 'AssignmentStatement',
@@ -351,7 +384,34 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
   }
 
   visitExpression(ctx: ExpressionContext): Expression {
-    return this.visit(ctx.logicalOr());
+    return this.visit(ctx.predicateCheck());
+  }
+
+  visitPredicateCheck(ctx: any): Expression {
+    const subject = this.visit(ctx.logicalOr());
+
+    // Check if there's a turnstile operator
+    if (ctx.IDENTIFIER && ctx.IDENTIFIER()) {
+      const predicateName = ctx.IDENTIFIER().text;
+      let predicateArgs: Expression[] | undefined;
+
+      // Check if there are arguments
+      if (ctx.argumentList && ctx.argumentList()) {
+        const argList = ctx.argumentList();
+        predicateArgs = argList.expression().map((e: any) => this.visit(e));
+      }
+
+      return {
+        type: 'PredicateCheckExpression',
+        subject,
+        predicateName,
+        predicateArgs,
+        line: ctx.start.line,
+        column: ctx.start.charPositionInLine + 1,
+      };
+    }
+
+    return subject;
   }
 
   visitLogicalOr(ctx: LogicalOrContext): Expression {
@@ -475,9 +535,23 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     }
 
     let expr = this.visit(children[0]);
+    let currentChildIndex = 1;
+
     for (let i = 1; i < children.length; i++) {
-      const opIndex = i - 1;
-      const operator = ctx.getChild(opIndex * 2 + 1).text;
+      let operator = ctx.getChild(currentChildIndex).text;
+      
+      if (operator === '>') {
+        const next = ctx.getChild(currentChildIndex + 1).text;
+        if (next === '>') {
+          operator = '>>';
+          currentChildIndex += 2;
+        } else {
+          currentChildIndex++;
+        }
+      } else {
+        currentChildIndex++;
+      }
+
       expr = {
         type: 'BinaryExpression',
         operator,
@@ -486,6 +560,9 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
         line: ctx.start.line,
         column: ctx.start.charPositionInLine + 1,
       };
+      
+      // Skip the right operand
+      currentChildIndex++;
     }
     return expr;
   }

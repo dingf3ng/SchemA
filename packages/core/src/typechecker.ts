@@ -953,6 +953,11 @@ export class TypeChecker {
 
       case 'TypeOfExpression':
         return { kind: 'string' };
+
+      case 'PredicateCheckExpression':
+        // Turnstile operator always returns boolean
+        return { kind: 'boolean' };
+
       case 'Identifier': {
         // Look up identifier type from type environment
         const type = this.typeEnv.get(expr.name);
@@ -2362,6 +2367,21 @@ export class TypeChecker {
         // typeof returns a string representing the type
         this.synthExpression(expr.operand);
         return { kind: 'string' };
+      }
+
+      case 'PredicateCheckExpression': {
+        // Evaluate subject expression to ensure it's well-typed
+        this.synthExpression(expr.subject);
+
+        // Evaluate predicate arguments if any
+        if (expr.predicateArgs) {
+          for (const arg of expr.predicateArgs) {
+            this.synthExpression(arg);
+          }
+        }
+
+        // Turnstile operator always returns boolean
+        return { kind: 'boolean' };
       }
 
       case 'IntegerLiteral':

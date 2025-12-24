@@ -16,8 +16,10 @@ import {
   AssertStatement,
   TypeAnnotation,
   Parameter,
+  PredicateCheckExpression,
 } from './types';
 import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime/values';
+import { checkPredicate, parsePredicateName } from './runtime/predicate-utils';
 import { Environment } from './runtime/environment';
 import { Type, typeToString } from './typechecker';
 import {
@@ -34,6 +36,7 @@ import {
   AVLTree,
 } from './runtime/data-structures';
 import { Analyzer } from './analyzer';
+import { InvariantTracker } from './synthesiser';
 
 class ReturnException {
   constructor(public value: RuntimeTypedBinder) { }
@@ -48,6 +51,20 @@ export class Interpreter {
   constructor() {
     this.currentEnv = this.globalEnv;
     this.initializeBuiltins();
+  }
+
+  /**
+   * Get the current environment (for testing/debugging)
+   */
+  public getEnvironment(): Environment {
+    return this.currentEnv;
+  }
+
+  /**
+   * Get the global environment (for testing/debugging)
+   */
+  public getGlobalEnvironment(): Environment {
+    return this.globalEnv;
   }
 
 
@@ -454,6 +471,12 @@ export class Interpreter {
     const invariants = this.extractInvariants(stmt.body);
     let iteration = 0;
 
+    // Initialize invariant tracker for automatic synthesis
+    const tracker = new InvariantTracker();
+
+    // Record initial state before any iterations
+    tracker.recordState(this.currentEnv, 0);
+
     while (true) {
       const condition = this.evaluateExpression(stmt.condition);
       if (condition.type.static.kind !== 'boolean') {
@@ -464,18 +487,53 @@ export class Interpreter {
       // Check invariants before iteration
       this.checkLoopInvariants(invariants, iteration);
 
-      this.evaluateStatement(stmt.body);
+      try {
+        this.evaluateStatement(stmt.body);
+      } catch (e) {
+        // If early return, check invariants before exiting
+        if (e instanceof ReturnException) {
+          this.checkLoopInvariants(invariants, iteration);
+        }
+        throw e;
+      }
 
       // Check invariants after iteration
+        // Record state after iteration
+        tracker.recordState(this.currentEnv, iteration);
+
       this.checkLoopInvariants(invariants, iteration);
 
+      // Record state after iteration (to capture final values)
+      // Moved to after iteration
+
       iteration++;
+    }
+
+    // Record final state after loop exits
+    // Moved to after iteration
+
+    // Synthesize and attach invariants to variables
+    const synthesizedInvariants = tracker.synthesize();
+    for (const [varName, predicates] of synthesizedInvariants) {
+      if (this.currentEnv.has(varName)) {
+        const binding = this.currentEnv.get(varName);
+        // Merge with existing refinements
+        const existingRefinements = binding.type.refinements;
+        const newRefinements = [...existingRefinements, ...predicates];
+        binding.type.refinements = newRefinements;
+      }
     }
   }
 
   private evaluateUntilStatement(stmt: UntilStatement): void {
     const invariants = this.extractInvariants(stmt.body);
     let iteration = 0;
+
+    // Initialize invariant tracker for automatic synthesis
+    const tracker = new InvariantTracker();
+
+    // Record initial state before any iterations
+    tracker.recordState(this.currentEnv, 0);
 
     while (true) {
       const condition = this.evaluateExpression(stmt.condition);
@@ -487,12 +545,41 @@ export class Interpreter {
       // Check invariants before iteration
       this.checkLoopInvariants(invariants, iteration);
 
-      this.evaluateStatement(stmt.body);
+      try {
+        this.evaluateStatement(stmt.body);
+      } catch (e) {
+        // If early return, check invariants before exiting
+        if (e instanceof ReturnException) {
+          this.checkLoopInvariants(invariants, iteration);
+        }
+        throw e;
+      }
 
       // Check invariants after iteration
+        // Record state after iteration
+        tracker.recordState(this.currentEnv, iteration);
+
       this.checkLoopInvariants(invariants, iteration);
 
+      // Record state after iteration (to capture final values)
+      // Moved to after iteration
+
       iteration++;
+    }
+
+    // Record final state after loop exits
+    // Moved to after iteration
+
+    // Synthesize and attach invariants to variables
+    const synthesizedInvariants = tracker.synthesize();
+    for (const [varName, predicates] of synthesizedInvariants) {
+      if (this.currentEnv.has(varName)) {
+        const binding = this.currentEnv.get(varName);
+        // Merge with existing refinements
+        const existingRefinements = binding.type.refinements;
+        const newRefinements = [...existingRefinements, ...predicates];
+        binding.type.refinements = newRefinements;
+      }
     }
   }
 
@@ -505,6 +592,12 @@ export class Interpreter {
 
     let iteration = 0;
 
+    // Initialize invariant tracker for automatic synthesis
+    const tracker = new InvariantTracker();
+
+    // Record initial state before loop starts
+    tracker.recordState(this.currentEnv, 0);
+
     if (iterable.type.static.kind === 'array') {
       (iterable.value as SchemaArray<RuntimeTypedBinder>).forEach((item) => {
         // Skip binding if the variable name is '_' (unnamed variable)
@@ -515,10 +608,24 @@ export class Interpreter {
         // Check invariants before iteration
         this.checkLoopInvariants(invariants, iteration);
 
-        this.evaluateStatement(stmt.body);
+        try {
+          this.evaluateStatement(stmt.body);
+        } catch (e) {
+          // If early return, check invariants before exiting
+          if (e instanceof ReturnException) {
+            this.checkLoopInvariants(invariants, iteration);
+          }
+          throw e;
+        }
 
         // Check invariants after iteration
+        // Record state after iteration
+        tracker.recordState(this.currentEnv, iteration);
+
         this.checkLoopInvariants(invariants, iteration);
+
+        // Record state after iteration
+        // Moved to after iteration
 
         iteration++;
       });
@@ -532,11 +639,25 @@ export class Interpreter {
         }
 
         // Check invariants before iteration
+        // Moved to after iteration
+
+        // Check invariants before iteration
         this.checkLoopInvariants(invariants, iteration);
 
-        this.evaluateStatement(stmt.body);
+        try {
+          this.evaluateStatement(stmt.body);
+        } catch (e) {
+          // If early return, check invariants before exiting
+          if (e instanceof ReturnException) {
+            this.checkLoopInvariants(invariants, iteration);
+          }
+          throw e;
+        }
 
         // Check invariants after iteration
+        // Record state after iteration
+        tracker.recordState(this.currentEnv, iteration);
+
         this.checkLoopInvariants(invariants, iteration);
 
         iteration++;
@@ -551,11 +672,25 @@ export class Interpreter {
         }
 
         // Check invariants before iteration
+        // Moved to after iteration
+
+        // Check invariants before iteration
         this.checkLoopInvariants(invariants, iteration);
 
-        this.evaluateStatement(stmt.body);
+        try {
+          this.evaluateStatement(stmt.body);
+        } catch (e) {
+          // If early return, check invariants before exiting
+          if (e instanceof ReturnException) {
+            this.checkLoopInvariants(invariants, iteration);
+          }
+          throw e;
+        }
 
         // Check invariants after iteration
+        // Record state after iteration
+        tracker.recordState(this.currentEnv, iteration);
+
         this.checkLoopInvariants(invariants, iteration);
 
         iteration++;
@@ -571,14 +706,40 @@ export class Interpreter {
         }
 
         // Check invariants before iteration
+        // Moved to after iteration
+
+        // Check invariants before iteration
         this.checkLoopInvariants(invariants, iteration);
 
-        this.evaluateStatement(stmt.body);
+        try {
+          this.evaluateStatement(stmt.body);
+        } catch (e) {
+          // If early return, check invariants before exiting
+          if (e instanceof ReturnException) {
+            this.checkLoopInvariants(invariants, iteration);
+          }
+          throw e;
+        }
 
         // Check invariants after iteration
+        // Record state after iteration
+        tracker.recordState(this.currentEnv, iteration);
+
         this.checkLoopInvariants(invariants, iteration);
 
         iteration++;
+      }
+    }
+
+    // Synthesize and attach invariants to variables
+    const synthesizedInvariants = tracker.synthesize();
+    for (const [varName, predicates] of synthesizedInvariants) {
+      if (this.currentEnv.has(varName)) {
+        const binding = this.currentEnv.get(varName);
+        // Merge with existing refinements
+        const existingRefinements = binding.type.refinements;
+        const newRefinements = [...existingRefinements, ...predicates];
+        binding.type.refinements = newRefinements;
       }
     }
 
@@ -1532,6 +1693,25 @@ export class Interpreter {
         } else {
           return { type: { static: { kind: 'range' }, refinements: [] }, value: range };
         }
+      }
+
+      case 'PredicateCheckExpression': {
+        const predicateExpr = expr as PredicateCheckExpression;
+        const subject = this.evaluateExpression(predicateExpr.subject);
+
+        // Evaluate predicate arguments if any
+        let predicateArgs: RuntimeTypedBinder[] | undefined;
+        if (predicateExpr.predicateArgs && predicateExpr.predicateArgs.length > 0) {
+          predicateArgs = predicateExpr.predicateArgs.map(arg => this.evaluateExpression(arg));
+        }
+
+        // Parse the predicate name into a Predicate object
+        const predicate = parsePredicateName(predicateExpr.predicateName, predicateArgs);
+
+        // Check the predicate against the subject value
+        const result = checkPredicate(predicate, subject);
+
+        return { type: { static: { kind: 'boolean' }, refinements: [] }, value: result };
       }
 
       case 'TypeOfExpression': {

@@ -15,9 +15,37 @@ import {
 } from './data-structures';
 import { Environment } from './environment';
 
-export type Predicate = 
-  | { kind: 'int_range' ; min: number; max: number }
-  // TODO: add more predicates
+export type Predicate =
+  // Numeric constraints
+  | { kind: 'int_range'; min: number; max: number }
+  | { kind: 'positive'; strict: boolean }  // > 0 or >= 0
+  | { kind: 'negative'; strict: boolean }  // < 0 or <= 0
+  | { kind: 'divisible_by'; divisor: number }
+  | { kind: 'parity'; value: 'even' | 'odd' }
+
+  // Collection size constraints
+  | { kind: 'size_range'; min: number; max: number }
+  | { kind: 'non_empty' }
+  | { kind: 'size_equals'; size: number }
+
+  // Collection ordering/structure constraints
+  | { kind: 'sorted'; order: 'asc' | 'desc' }
+  | { kind: 'unique_elements' }  // For arrays
+  | { kind: 'heap_property'; heapType: 'min' | 'max' }
+
+  // Graph-specific invariants
+  | { kind: 'acyclic' }
+  | { kind: 'connected' }
+  | { kind: 'bipartite' }
+
+  // Tree-specific invariants
+  | { kind: 'bst_property' }
+  | { kind: 'balanced'; balanceType: 'avl' | 'redblack' }
+  | { kind: 'complete_tree' }
+
+  // Relational constraints (for maps/arrays)
+  | { kind: 'monotonic'; direction: 'increasing' | 'decreasing'; strict: boolean }
+  | { kind: 'all_values_satisfy'; predicate: Predicate }  // Recursive for nested
 
 export type RuntimeType =
   { static: Type, refinements: Predicate[] }

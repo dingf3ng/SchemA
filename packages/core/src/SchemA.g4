@@ -71,7 +71,25 @@ variableDeclarator
     ;
 
 assignmentStatement
-    : assignmentTarget '=' expression
+    : assignmentTarget assignmentOperator expression
+    ;
+
+assignmentOperator
+    : binaryOperator? '='
+    | GT GTE
+    ;
+
+binaryOperator
+    : '+'
+    | '-'
+    | '*'
+    | '/'
+    | '/.'
+    | '%'
+    | LSHIFT
+    | GT GT
+    | '&&'
+    | '||'
     ;
 
 assignmentTarget
@@ -113,7 +131,11 @@ expressionStatement
     ;
 
 expression
-    : logicalOr
+    : predicateCheck
+    ;
+
+predicateCheck
+    : logicalOr ('|-' '@' IDENTIFIER ('(' argumentList? ')')?)?
     ;
 
 logicalOr

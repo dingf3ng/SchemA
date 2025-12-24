@@ -1,0 +1,105 @@
+// Demonstration of automatic invariant synthesis
+// The runtime will track variable values across iterations
+// and synthesize predicates using the Houdini algorithm
+
+// Example 1: Simple counter with range and monotonicity
+do example1() {
+  print("Example 1: Simple Counter")
+  let i = 0
+  while i < 10 {
+    i = i + 1
+  }
+  // Synthesized predicates for i:
+  // - int_range: [0, 10]
+  // - positive: >= 0
+  // - monotonic: increasing (non-strict)
+  print(i)
+}
+
+// Example 2: Even numbers with parity
+do example2() {
+  print("Example 2: Even Numbers")
+  let even = 0
+  while even < 20 {
+    even = even + 2
+  }
+  // Synthesized predicates for even:
+  // - int_range: [0, 20]
+  // - positive: >= 0
+  // - parity: even
+  // - divisible_by: 2
+  // - monotonic: strictly increasing
+  print(even)
+}
+
+// Example 3: Growing array with size predicates
+do example3() {
+  print("Example 3: Growing Array")
+  let arr: Array<int> = []
+  let count = 0
+  while count < 5 {
+    arr.push(count)
+    count = count + 1
+  }
+  // Synthesized predicates for arr:
+  // - size_range: [0, 5]
+  // - sorted: ascending
+  // - monotonic: size strictly increasing
+  print(arr.length())
+}
+
+// Example 4: Multiple variables with relationships
+do example4() {
+  print("Example 4: Binary Search Pattern")
+  let low = 0
+  let high = 100
+  while low < high {
+    let mid = (low + high) / 2
+    if mid < 50 {
+      low = mid + 1
+    } else {
+      high = mid
+    }
+  }
+  // Synthesized predicates:
+  // low: int_range [0, 50], monotonic increasing
+  // high: int_range [50, 100], monotonic decreasing
+  print(low)
+}
+
+// Example 5: Set operations with non-empty predicate
+do example5() {
+  print("Example 5: Set Collection")
+  let visited = Set()
+  for i in 0..10 {
+    visited.add(i)
+  }
+  // Synthesized predicates for visited:
+  // - non_empty
+  // - size_range: [0, 10]
+  // - monotonic: size strictly increasing
+  print(visited.size())
+}
+
+// Example 6: Verified invariant alongside synthesis
+do example6() {
+  print("Example 6: With Explicit Invariant")
+  let positive = 1
+  while positive < 1000 {
+    positive = positive * 2
+    @invariant(positive > 0, "positive must stay positive")
+  }
+  // Synthesized predicates:
+  // - positive: > 0 (strict)
+  // - monotonic: strictly increasing
+  // These align with the explicit @invariant
+  print(positive)
+}
+
+// Run all examples
+example1()
+example2()
+example3()
+example4()
+example5()
+example6()

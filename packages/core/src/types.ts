@@ -70,6 +70,7 @@ export type ASTNodeType =
   | 'MapLiteral'
   | 'SetLiteral'
   | 'TypeOfExpression'
+  | 'PredicateCheckExpression'
   | 'InvariantStatement'
   | 'AssertStatement'
   | 'IfStatement'
@@ -207,6 +208,13 @@ export interface TypeOfExpression extends ASTNode {
   operand: Expression;
 }
 
+export interface PredicateCheckExpression extends ASTNode {
+  type: 'PredicateCheckExpression';
+  subject: Expression;
+  predicateName: string;
+  predicateArgs?: Expression[]; // Optional arguments for predicates like sorted(asc)
+}
+
 export interface InvariantStatement extends ASTNode {
   type: 'InvariantStatement';
   condition: Expression;
@@ -341,4 +349,5 @@ export type Expression =
   | ArrayLiteral
   | MapLiteral
   | SetLiteral
-  | TypeOfExpression;
+  | TypeOfExpression
+  | PredicateCheckExpression;

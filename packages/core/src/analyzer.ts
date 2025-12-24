@@ -95,7 +95,7 @@ export class Analyzer {
     const bindings: string[] = [];
 
     // Get all variable bindings from the environment
-    const envBindings = this.getEnvironmentBindings(env);
+    const envBindings = env.getAllBindings();
 
     for (const [name, binding] of envBindings) {
       // Skip function bindings for cleaner output
@@ -108,28 +108,5 @@ export class Analyzer {
     }
 
     return bindings.length > 0 ? bindings.join('\n') : '  (no variables)';
-  }
-
-  /**
-   * Get all bindings from environment (including parent scopes)
-   */
-  private getEnvironmentBindings(env: Environment): Map<string, RuntimeTypedBinder> {
-    const bindings = new Map<string, RuntimeTypedBinder>();
-
-    // Walk up the environment chain
-    let currentEnv: Environment | null = env;
-    while (currentEnv) {
-      const envBindings = (currentEnv as any).bindings;
-      if (envBindings instanceof Map) {
-        for (const [name, binding] of envBindings.entries()) {
-          if (!bindings.has(name)) {
-            bindings.set(name, binding);
-          }
-        }
-      }
-      currentEnv = (currentEnv as any).parent || null;
-    }
-
-    return bindings;
   }
 }

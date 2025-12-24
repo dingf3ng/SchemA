@@ -51,6 +51,30 @@ export class Environment {
     return allEntries.entries();
   }
 
+  /**
+   * Get all bindings from this environment and parent scopes
+   * Returns a Map with all variable bindings
+   */
+  getAllBindings(): Map<string, RuntimeTypedBinder> {
+    const bindings = new Map<string, RuntimeTypedBinder>();
+
+    // Walk up the environment chain
+    let currentEnv: Environment | null = this;
+    while (currentEnv) {
+      const envBindings = (currentEnv as any).bindings;
+      if (envBindings instanceof Map) {
+        for (const [name, binding] of envBindings.entries()) {
+          if (!bindings.has(name)) {
+            bindings.set(name, binding);
+          }
+        }
+      }
+      currentEnv = currentEnv.parent || null;
+    }
+
+    return bindings;
+  }
+
   private collectAllBindings(result: Map<string, RuntimeTypedBinder>): void {
     if (this.parent) {
       // @ts-ignore - private method access
