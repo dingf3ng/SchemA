@@ -1,12 +1,10 @@
 import { AntlrParser } from '../src/parser';
-import { TypeChecker } from '../src/typechecker';
+import { typeCheck } from '../src/type-checker/type-checker-main';
 
 function check(code: string) {
   const parser = new AntlrParser();
   const ast = parser.parse(code);
-  const typeChecker = new TypeChecker();
-  typeChecker.infer(ast);
-  typeChecker.check(ast);
+  typeCheck(ast);
 }
 
 describe('Type System', () => {

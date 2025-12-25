@@ -1,5 +1,6 @@
 import { AntlrParser } from '../src/parser';
-import { TypeChecker } from '../src/typechecker';
+import { TypeInferer } from '../src/type-checker/type-inferer';
+import { TypeRefiner } from '../src/type-checker/type-refiner';
 import { Program, ASTNode, FunctionDeclaration, VariableDeclaration, BlockStatement, IfStatement, WhileStatement, ForStatement, UntilStatement } from '../src/types';
 
 /**
@@ -89,15 +90,19 @@ function validateTypeAnnotation(annotation: any, context: string) {
 function expectInferenceComplete(code: string) {
   const parser = new AntlrParser();
   const ast = parser.parse(code);
-  const typeChecker = new TypeChecker();
+  const inferer = new TypeInferer();
 
-  // Run inference only
-  typeChecker.infer(ast);
+  // Run inference
+  const inferredEnv = inferer.infer(ast);
+  
+  // Run refinement
+  const refiner = new TypeRefiner(inferredEnv);
+  refiner.refine(ast);
 
   // Validate that inference produced complete types
   validateInferenceCompleteness(ast);
 
-  return { ast, typeChecker };
+  return { ast, inferer };
 }
 
 describe('Type Inference Completeness', () => {

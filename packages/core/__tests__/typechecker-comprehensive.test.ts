@@ -1,5 +1,7 @@
 import { AntlrParser } from '../src/parser';
-import { TypeChecker } from '../src/typechecker';
+import { TypeChecker } from '../src/type-checker/type-checker';
+import { typecheckAndReturn } from '../src/type-checker/type-checker-main';
+import { TypeInferer } from '../src/type-checker/type-inferer';
 import { Program } from '../src/types';
 
 /**
@@ -8,21 +10,19 @@ import { Program } from '../src/types';
 function check(code: string): { ast: Program; typeChecker: TypeChecker } {
   const parser = new AntlrParser();
   const ast = parser.parse(code);
-  const typeChecker = new TypeChecker();
-  typeChecker.infer(ast);
-  typeChecker.check(ast);
+  const typeChecker = typecheckAndReturn(ast);
   return { ast, typeChecker };
 }
 
 /**
  * Helper to just infer types without checking
  */
-function infer(code: string): { ast: Program; typeChecker: TypeChecker } {
+function infer(code: string): { ast: Program; typeInferer: TypeInferer } {
   const parser = new AntlrParser();
   const ast = parser.parse(code);
-  const typeChecker = new TypeChecker();
-  typeChecker.infer(ast);
-  return { ast, typeChecker };
+  const inferer = new TypeInferer();
+  inferer.infer(ast);
+  return { ast, typeInferer: inferer };
 }
 
 describe('TypeChecker - Comprehensive Tests', () => {

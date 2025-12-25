@@ -1,4 +1,4 @@
-import { Type } from '../typechecker';
+;import { Type } from '../type-checker/type-checker-utils';
 import { BlockStatement, Parameter } from '../types';
 import {
   SchemaArray,

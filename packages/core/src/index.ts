@@ -1,10 +1,10 @@
 import { AntlrParser } from './parser';
 import { Interpreter } from './interpreter';
-import { TypeChecker } from './typechecker';
+import { typeCheck } from './type-checker/type-checker-main';
 
 export { AntlrParser } from './parser';
 export { Interpreter } from './interpreter';
-export { TypeChecker } from './typechecker';
+export { TypeChecker } from './type-checker/type-checker';
 export * from './types';
 export * from './runtime/values';
 export * from './runtime/data-structures';
@@ -14,9 +14,7 @@ export function run(code: string): string[] {
   const parser = new AntlrParser();
   const ast = parser.parse(code);
 
-  const typeChecker = new TypeChecker();
-  typeChecker.infer(ast);
-  typeChecker.check(ast);
+  typeCheck(ast);
 
   const interpreter = new Interpreter();
   return interpreter.evaluate(ast);
@@ -27,9 +25,7 @@ export function runWithEnv(code: string) {
   const parser = new AntlrParser();
   const ast = parser.parse(code);
 
-  const typeChecker = new TypeChecker();
-  typeChecker.infer(ast);
-  typeChecker.check(ast);
+  typeCheck(ast);
 
   const interpreter = new Interpreter();
   const output = interpreter.evaluate(ast);

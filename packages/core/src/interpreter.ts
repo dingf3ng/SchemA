@@ -21,7 +21,7 @@ import {
 import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime/values';
 import { checkPredicate, parsePredicateName } from './runtime/predicate-utils';
 import { Environment } from './runtime/environment';
-import { Type, typeToString } from './typechecker';
+import { typeToString } from './type-checker/type-checker-utils';
 import {
   SchemaArray,
   SchemaMap,
@@ -37,6 +37,7 @@ import {
 } from './runtime/data-structures';
 import { Analyzer } from './analyzer';
 import { InvariantTracker } from './synthesiser';
+import { Type } from './type-checker/type-checker-utils';
 
 class ReturnException {
   constructor(public value: RuntimeTypedBinder) { }
