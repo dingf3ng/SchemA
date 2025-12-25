@@ -1,0 +1,7 @@
+// Minimal test case
+do reverseArray(arr) {
+  let right = arr.length() - 1
+  print(right)
+}
+
+reverseArray([1, 2, 3])

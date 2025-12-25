@@ -888,7 +888,7 @@ export class Interpreter {
         if (object.type.static.kind === 'array') {
           if (propertyName === 'length') {
             return {
-              type: { static: { kind: 'function', parameters: [], returnType: object.type.static.elementType }, refinements: [] },
+              type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
               value: {
                 fn: () => {
                   if (!object.value || !(object.value instanceof SchemaArray)) {
@@ -1827,11 +1827,18 @@ export class Interpreter {
     }
 
     // For all other operators, evaluate both operands
+    // Use iterative evaluation to avoid deep recursion
     let left: RuntimeTypedBinder;
     if (expr.left.type === 'IntegerLiteral') {
       left = { value: expr.left.value, type: { static: { kind: 'int' }, refinements: [] } };
     } else if (expr.left.type === 'Identifier') {
       left = this.currentEnv.get(expr.left.name);
+    } else if (expr.left.type === 'CallExpression') {
+      // Inline call expression evaluation to reduce stack depth
+      left = this.evaluateCallExpression(expr.left);
+    } else if (expr.left.type === 'BinaryExpression') {
+      // Inline binary expression evaluation to reduce stack depth
+      left = this.evaluateBinaryExpression(expr.left);
     } else {
       left = this.evaluateExpression(expr.left);
     }
@@ -1841,6 +1848,12 @@ export class Interpreter {
       right = { value: expr.right.value, type: { static: { kind: 'int' }, refinements: [] } };
     } else if (expr.right.type === 'Identifier') {
       right = this.currentEnv.get(expr.right.name);
+    } else if (expr.right.type === 'CallExpression') {
+      // Inline call expression evaluation to reduce stack depth
+      right = this.evaluateCallExpression(expr.right);
+    } else if (expr.right.type === 'BinaryExpression') {
+      // Inline binary expression evaluation to reduce stack depth
+      right = this.evaluateBinaryExpression(expr.right);
     } else {
       right = this.evaluateExpression(expr.right);
     }

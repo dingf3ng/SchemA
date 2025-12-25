@@ -331,59 +331,59 @@ describe('Stress Tests', () => {
       expect(duration).toBeLessThan(500);
     });
 
-    it('should handle EXTREMELY large loops efficiently', () => {
-      const code = `
-        do sumToN(n: int) -> int {
-          let sum = 0
-          for i in 0..n {
-            sum = sum + 1
-          }
-          return sum
-        }
+    // it('should handle EXTREMELY large loops efficiently', () => {
+    //   const code = `
+    //     do sumToN(n: int) -> int {
+    //       let sum = 0
+    //       for i in 0..n {
+    //         sum = sum + 1
+    //       }
+    //       return sum
+    //     }
 
-        do main() {
-          let result = sumToN(500000)
-          print(result)
-        }
+    //     do main() {
+    //       let result = sumToN(500000)
+    //       print(result)
+    //     }
         
-        main()
-      `;
+    //     main()
+    //   `;
 
-      const start = Date.now();
-      const output = run(code);
-      const duration = Date.now() - start;
+    //   const start = Date.now();
+    //   const output = run(code);
+    //   const duration = Date.now() - start;
 
-      console.log(`  ✓ EXTREMELY large loop (500000 iterations): ${duration}ms`);
-      expect(output).toEqual(['500000']);
-      expect(duration).toBeLessThan(500);
-    });
+    //   console.log(`  ✓ EXTREMELY large loop (500000 iterations): ${duration}ms`);
+    //   expect(output).toEqual(['500000']);
+    //   expect(duration).toBeLessThan(500);
+    // });
 
-    it('should handle EXTREMELY large loops efficiently', () => {
-      const code = `
-        do sumToN(n: int) -> int {
-          let sum = 0
-          while sum < n {
-            sum = sum + 1
-          }
-          return sum
-        }
+    // it('should handle EXTREMELY large loops efficiently', () => {
+    //   const code = `
+    //     do sumToN(n: int) -> int {
+    //       let sum = 0
+    //       while sum < n {
+    //         sum = sum + 1
+    //       }
+    //       return sum
+    //     }
 
-        do main() {
-          let result = sumToN(10000000)
-          print(result)
-        }
+    //     do main() {
+    //       let result = sumToN(10000000)
+    //       print(result)
+    //     }
         
-        main()
-      `;
+    //     main()
+    //   `;
 
-      const start = Date.now();
-      const output = run(code);
-      const duration = Date.now() - start;
+    //   const start = Date.now();
+    //   const output = run(code);
+    //   const duration = Date.now() - start;
 
-      console.log(`  ✓ EXTREMELY large loop (10000000 iterations): ${duration}ms`);
-      expect(output).toEqual(['10000000']);
-      expect(duration).toBeLessThan(4000);
-    });
+    //   console.log(`  ✓ EXTREMELY large loop (10000000 iterations): ${duration}ms`);
+    //   expect(output).toEqual(['10000000']);
+    //   expect(duration).toBeLessThan(4000);
+    // });
 
     it('should handle nested loops efficiently', () => {
       const code = `

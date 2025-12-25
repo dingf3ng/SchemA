@@ -1486,6 +1486,151 @@ export class TypeChecker {
           );
         }
       }
+      // Refine array element types
+      else if (paramType.kind === 'array' && argType.kind === 'array') {
+        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
+          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
+          Object.assign(paramType.elementType, argType.elementType);
+          paramsChanged = true;
+
+          // Update the function declaration's parameter annotation
+          if (i < funcDecl.parameters.length) {
+            funcDecl.parameters[i].typeAnnotation = this.typeToAnnotation(
+              paramType,
+              funcDecl.parameters[i].typeAnnotation?.line || 0,
+              funcDecl.parameters[i].typeAnnotation?.column || 0
+            );
+          }
+        }
+      }
+      // Refine map key/value types
+      else if (paramType.kind === 'map' && argType.kind === 'map') {
+        let mapChanged = false;
+        if ((paramType.keyType.kind === 'weak' || paramType.keyType.kind === 'poly') &&
+          argType.keyType.kind !== 'weak' && argType.keyType.kind !== 'poly') {
+          Object.assign(paramType.keyType, argType.keyType);
+          mapChanged = true;
+        }
+        if ((paramType.valueType.kind === 'weak' || paramType.valueType.kind === 'poly') &&
+          argType.valueType.kind !== 'weak' && argType.valueType.kind !== 'poly') {
+          Object.assign(paramType.valueType, argType.valueType);
+          mapChanged = true;
+        }
+        if (mapChanged) {
+          paramsChanged = true;
+          if (i < funcDecl.parameters.length) {
+            funcDecl.parameters[i].typeAnnotation = this.typeToAnnotation(
+              paramType,
+              funcDecl.parameters[i].typeAnnotation?.line || 0,
+              funcDecl.parameters[i].typeAnnotation?.column || 0
+            );
+          }
+        }
+      }
+      // Refine set element types
+      else if (paramType.kind === 'set' && argType.kind === 'set') {
+        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
+          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
+          Object.assign(paramType.elementType, argType.elementType);
+          paramsChanged = true;
+
+          if (i < funcDecl.parameters.length) {
+            funcDecl.parameters[i].typeAnnotation = this.typeToAnnotation(
+              paramType,
+              funcDecl.parameters[i].typeAnnotation?.line || 0,
+              funcDecl.parameters[i].typeAnnotation?.column || 0
+            );
+          }
+        }
+      }
+      // Refine heap element types
+      else if (paramType.kind === 'heap' && argType.kind === 'heap') {
+        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
+          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
+          Object.assign(paramType.elementType, argType.elementType);
+          paramsChanged = true;
+
+          if (i < funcDecl.parameters.length) {
+            funcDecl.parameters[i].typeAnnotation = this.typeToAnnotation(
+              paramType,
+              funcDecl.parameters[i].typeAnnotation?.line || 0,
+              funcDecl.parameters[i].typeAnnotation?.column || 0
+            );
+          }
+        }
+      }
+      // Refine heapmap key/value types
+      else if (paramType.kind === 'heapmap' && argType.kind === 'heapmap') {
+        let heapmapChanged = false;
+        if ((paramType.keyType.kind === 'weak' || paramType.keyType.kind === 'poly') &&
+          argType.keyType.kind !== 'weak' && argType.keyType.kind !== 'poly') {
+          Object.assign(paramType.keyType, argType.keyType);
+          heapmapChanged = true;
+        }
+        if ((paramType.valueType.kind === 'weak' || paramType.valueType.kind === 'poly') &&
+          argType.valueType.kind !== 'weak' && argType.valueType.kind !== 'poly') {
+          Object.assign(paramType.valueType, argType.valueType);
+          heapmapChanged = true;
+        }
+        if (heapmapChanged) {
+          paramsChanged = true;
+          if (i < funcDecl.parameters.length) {
+            funcDecl.parameters[i].typeAnnotation = this.typeToAnnotation(
+              paramType,
+              funcDecl.parameters[i].typeAnnotation?.line || 0,
+              funcDecl.parameters[i].typeAnnotation?.column || 0
+            );
+          }
+        }
+      }
+      // Refine binarytree element types
+      else if (paramType.kind === 'binarytree' && argType.kind === 'binarytree') {
+        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
+          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
+          Object.assign(paramType.elementType, argType.elementType);
+          paramsChanged = true;
+
+          if (i < funcDecl.parameters.length) {
+            funcDecl.parameters[i].typeAnnotation = this.typeToAnnotation(
+              paramType,
+              funcDecl.parameters[i].typeAnnotation?.line || 0,
+              funcDecl.parameters[i].typeAnnotation?.column || 0
+            );
+          }
+        }
+      }
+      // Refine avltree element types
+      else if (paramType.kind === 'avltree' && argType.kind === 'avltree') {
+        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
+          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
+          Object.assign(paramType.elementType, argType.elementType);
+          paramsChanged = true;
+
+          if (i < funcDecl.parameters.length) {
+            funcDecl.parameters[i].typeAnnotation = this.typeToAnnotation(
+              paramType,
+              funcDecl.parameters[i].typeAnnotation?.line || 0,
+              funcDecl.parameters[i].typeAnnotation?.column || 0
+            );
+          }
+        }
+      }
+      // Refine graph node types
+      else if (paramType.kind === 'graph' && argType.kind === 'graph') {
+        if ((paramType.nodeType.kind === 'weak' || paramType.nodeType.kind === 'poly') &&
+          argType.nodeType.kind !== 'weak' && argType.nodeType.kind !== 'poly') {
+          Object.assign(paramType.nodeType, argType.nodeType);
+          paramsChanged = true;
+
+          if (i < funcDecl.parameters.length) {
+            funcDecl.parameters[i].typeAnnotation = this.typeToAnnotation(
+              paramType,
+              funcDecl.parameters[i].typeAnnotation?.line || 0,
+              funcDecl.parameters[i].typeAnnotation?.column || 0
+            );
+          }
+        }
+      }
     }
 
     // If parameters changed, re-infer return type if it's still weak
@@ -2130,14 +2275,21 @@ export class TypeChecker {
     switch (stmt.type) {
       case 'FunctionDeclaration': {
         // Safe since we fully annotate program using infer beforehand
-        const paramTypes: Type[] =
-          stmt.parameters.map((p) => this.resolve(p.typeAnnotation!));
-        const returnType: Type = this.resolve(stmt.returnType!);
+        // Use existing refined types from functionEnv if available, otherwise resolve from annotations
+        const existingFuncInfo = this.functionEnv.get(stmt.name);
+        const paramTypes: Type[] = existingFuncInfo
+          ? existingFuncInfo.parameters
+          : stmt.parameters.map((p) => this.resolve(p.typeAnnotation!));
+        const returnType: Type = existingFuncInfo
+          ? existingFuncInfo.returnType
+          : this.resolve(stmt.returnType!);
 
-        this.functionEnv.set(stmt.name, {
-          parameters: paramTypes,
-          returnType,
-        });
+        if (!existingFuncInfo) {
+          this.functionEnv.set(stmt.name, {
+            parameters: paramTypes,
+            returnType,
+          });
+        }
 
         const savedEnv = new Map(this.typeEnv);
         const savedDeclEnv = new Map(this.variableDeclEnv);
@@ -2167,7 +2319,12 @@ export class TypeChecker {
               `Type mismatch: expected ${this.typeToString(annotatedType)}, got ${this.typeToString(initializerType)}. At ${declarator.line}, ${declarator.column}`
             );
           }
-          this.typeEnv.set(declarator.name, annotatedType);
+          // If the annotated type is weak but the initializer has a concrete type, use the initializer type
+          const finalType = (annotatedType.kind === 'weak' || annotatedType.kind === 'poly') &&
+                           initializerType.kind !== 'weak' && initializerType.kind !== 'poly'
+            ? initializerType
+            : annotatedType;
+          this.typeEnv.set(declarator.name, finalType);
           // Also add to variableDeclEnv so we can check type annotations in assignments
           this.variableDeclEnv.set(declarator.name, declarator);
         }
@@ -2537,6 +2694,10 @@ export class TypeChecker {
           // Types can be compared if they're equal or one is assignable to the other
           if (this.typesEqual(leftType, rightType) ||
             this.typesEqual(rightType, leftType)) {
+            return { kind: 'boolean' };
+          }
+          // Allow comparison between numeric types (int and float)
+          if (leftNumeric && rightNumeric) {
             return { kind: 'boolean' };
           }
         }
