@@ -1,4 +1,5 @@
 export const examples = {
+  'New File':``,
     'Hello World': `
 // SchemA Quickstart Example
 // A simple program demonstrating the language basics

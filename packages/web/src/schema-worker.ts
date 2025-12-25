@@ -1,12 +1,23 @@
 // SchemA diagnostics worker
 // Using dynamic import to avoid bundling issues
 let schemaCore: any = null;
+let currentExecutionId = 0;
+let isExecuting = false;
 
 self.onmessage = async (event: MessageEvent) => {
   const { type, payload } = event.data;
 
   if (type === 'analyze') {
     const { source } = payload;
+
+    // Increment execution ID to invalidate any in-progress execution
+    currentExecutionId++;
+    const executionId = currentExecutionId;
+
+    // If already executing, the previous execution will be abandoned
+    if (isExecuting) {
+      console.log('Cancelling previous execution');
+    }
 
     // Lazy load the core library
     if (!schemaCore) {
@@ -36,10 +47,14 @@ self.onmessage = async (event: MessageEvent) => {
     }
 
     const result = analyzeSchemaSource(source);
-    self.postMessage({
-      type: 'diagnostics',
-      payload: result
-    });
+
+    // Only send result if this execution hasn't been superseded
+    if (executionId === currentExecutionId) {
+      self.postMessage({
+        type: 'diagnostics',
+        payload: result
+      });
+    }
   }
 };
 
@@ -56,6 +71,8 @@ function analyzeSchemaSource(source: string) {
   let output: string[] = [];
 
   try {
+    isExecuting = true;
+
     // Run the SchemA code
     if (schemaCore && schemaCore.run) {
       output = schemaCore.run(source);
@@ -64,6 +81,8 @@ function analyzeSchemaSource(source: string) {
       output = [`Code ready to run (${source.split('\n').length} lines)`];
     }
 
+    isExecuting = false;
+
     // No errors means success
     return {
       diagnostics: [],
@@ -71,6 +90,8 @@ function analyzeSchemaSource(source: string) {
       output: output
     };
   } catch (error: any) {
+    isExecuting = false;
+
     // Parse the error and create diagnostic
     const diagnostic = parseError(error, source);
     diagnostics.push(diagnostic);

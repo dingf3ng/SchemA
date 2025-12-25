@@ -69,15 +69,34 @@
     }
 
     .main-content {
-      display: grid;
-      grid-template-columns: 1fr 400px;
+      display: flex;
       height: 100%;
       overflow: hidden;
+      position: relative;
     }
 
     #editor {
+      flex: 1;
+      min-width: 200px;
       height: 100%;
       border-right: 1px solid #3e3e42;
+    }
+
+    .resizer {
+      width: 4px;
+      background: #3e3e42;
+      cursor: col-resize;
+      position: relative;
+      z-index: 10;
+      transition: background 0.2s;
+    }
+
+    .resizer:hover {
+      background: #007acc;
+    }
+
+    .resizer.dragging {
+      background: #007acc;
     }
 
     .preview {
@@ -86,6 +105,8 @@
       flex-direction: column;
       height: 100%;
       overflow: hidden;
+      min-width: 200px;
+      width: 400px;
     }
 
     .preview-header {
@@ -184,6 +205,7 @@
 
     <div class="main-content">
       <div id="editor"></div>
+      <div class="resizer" id="resizer"></div>
       <div class="preview">
         <div class="preview-header">
           <h2>Output</h2>

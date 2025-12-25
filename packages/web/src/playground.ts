@@ -19,6 +19,8 @@ const previewOutput = document.getElementById('preview-output') as HTMLElement;
 
 let diagnosticsWorker: Worker | null = null;
 let monacoApi: typeof Monaco | null = null;
+let workerTimeout: number | null = null;
+let currentAnalysisId = 0;
 
 function setSummary(message: string, tone: 'neutral' | 'success' | 'warning' | 'error' = 'neutral') {
   if (previewSummary) {
@@ -75,17 +77,18 @@ function applyDiagnostics(monaco: typeof Monaco, editor: Monaco.editor.IStandalo
   renderPreviewText(`${location}\n${primary.message}`, tone);
 }
 
-function initializeDiagnostics(editor: Monaco.editor.IStandaloneCodeEditor) {
-  if (!('Worker' in window)) {
-    setSummary('Diagnostics unavailable in this browser.', 'warning');
-    return null;
-  }
-
+function createWorker() {
   const worker = new Worker(new URL('./schema-worker.ts', import.meta.url), { type: 'module' });
+
   worker.onmessage = event => {
+    if (workerTimeout !== null) {
+      window.clearTimeout(workerTimeout);
+      workerTimeout = null;
+    }
+
     const { type, payload } = event.data;
     if (type === 'diagnostics' && monacoApi) {
-      applyDiagnostics(monacoApi, editor, payload);
+      applyDiagnostics(monacoApi, (window as any).__schemaEditor, payload);
     }
   };
 
@@ -99,6 +102,15 @@ function initializeDiagnostics(editor: Monaco.editor.IStandaloneCodeEditor) {
   };
 
   return worker;
+}
+
+function initializeDiagnostics(editor: Monaco.editor.IStandaloneCodeEditor) {
+  if (!('Worker' in window)) {
+    setSummary('Diagnostics unavailable in this browser.', 'warning');
+    return null;
+  }
+
+  return createWorker();
 }
 
 function registerSchemaLanguage(monaco: typeof Monaco) {
@@ -243,12 +255,36 @@ function initializeEditor(monaco: typeof Monaco) {
   }, 120);
 
   const queueDiagnostics = debounce((text: string) => {
+    currentAnalysisId++;
+
+    // Terminate the previous worker if it's taking too long (likely stuck in infinite loop)
+    if (workerTimeout !== null) {
+      window.clearTimeout(workerTimeout);
+      workerTimeout = null;
+    }
+
+    if (diagnosticsWorker) {
+      diagnosticsWorker.terminate();
+      diagnosticsWorker = createWorker();
+    }
+
     setSummary('Running checks…', 'warning');
+
     if (diagnosticsWorker) {
       diagnosticsWorker.postMessage({
         type: 'analyze',
         payload: { source: text }
       });
+
+      // Set a timeout to detect infinite loops
+      workerTimeout = window.setTimeout(() => {
+        if (diagnosticsWorker) {
+          diagnosticsWorker.terminate();
+          diagnosticsWorker = createWorker();
+          setSummary('TIMEOUT', 'error');
+          renderPreviewText('Execution timeout: possible infinite loop detected (exceeded 3 seconds)', 'error');
+        }
+      }, 3000);
     }
   }, 220);
 
@@ -286,6 +322,45 @@ function initializeExamplePicker(editor: Monaco.editor.IStandaloneCodeEditor) {
   });
 }
 
+function initializeResizer() {
+  const resizer = document.getElementById('resizer');
+  const preview = document.querySelector('.preview') as HTMLElement;
+  const editor = document.getElementById('editor') as HTMLElement;
+
+  if (!resizer || !preview || !editor) return;
+
+  let isResizing = false;
+  let startX = 0;
+  let startWidth = 0;
+
+  resizer.addEventListener('mousedown', (e: MouseEvent) => {
+    isResizing = true;
+    startX = e.clientX;
+    startWidth = preview.offsetWidth;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e: MouseEvent) => {
+    if (!isResizing) return;
+
+    const deltaX = startX - e.clientX;
+    const newWidth = Math.max(200, Math.min(window.innerWidth - 200, startWidth + deltaX));
+    preview.style.width = `${newWidth}px`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isResizing) {
+      isResizing = false;
+      resizer.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
+}
+
 async function boot() {
   if (!window.require) {
     console.error('Monaco loader not available');
@@ -303,6 +378,7 @@ async function boot() {
     const editor = initializeEditor(monacoApi);
     diagnosticsWorker = initializeDiagnostics(editor);
     initializeExamplePicker(editor);
+    initializeResizer();
 
     if (diagnosticsWorker) {
       diagnosticsWorker.postMessage({
