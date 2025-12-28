@@ -22,6 +22,7 @@ export type Predicate =
   | { kind: 'negative'; strict: boolean }  // < 0 or <= 0
   | { kind: 'divisible_by'; divisor: number }
   | { kind: 'parity'; value: 'even' | 'odd' }
+  | { kind: 'monotonic'; direction: 'increasing' | 'decreasing'; strict: boolean }  // For numeric values over time
 
   // Collection size constraints
   | { kind: 'size_range'; min: number; max: number }
@@ -37,6 +38,8 @@ export type Predicate =
   | { kind: 'acyclic' }
   | { kind: 'connected' }
   | { kind: 'bipartite' }
+  | { kind: 'no_negative_cycles' }
+  | { kind: 'all_weights_non_negative' }
 
   // Tree-specific invariants
   | { kind: 'bst_property' }
@@ -44,8 +47,27 @@ export type Predicate =
   | { kind: 'complete_tree' }
 
   // Relational constraints (for maps/arrays)
-  | { kind: 'monotonic'; direction: 'increasing' | 'decreasing'; strict: boolean }
+  | { kind: 'size_monotonic'; direction: 'increasing' | 'decreasing'; strict: boolean }
+  | { kind: 'range_satisfies'; from: number; to: number; predicate: Predicate }  // All elements in range satisfy predicate, for arrays
   | { kind: 'all_values_satisfy'; predicate: Predicate }  // Recursive for nested
+
+  // Array partitioning (for quicksort)
+  | { kind: 'partitioned_at'; pivotIndex: number }  // Elements before pivot <= pivot, after >= pivot
+  | { kind: 'partitioned_by_value'; pivotValue: number }  // Elements partitioned by value
+
+  // Permutation invariant (for sorting)
+  | { kind: 'is_permutation_of'; original: any[] }  // Array is a permutation of original
+
+  // Map/distance properties (for graph algorithms)
+  | { kind: 'distance_to_self_zero' }  // dist[start] == 0
+  | { kind: 'triangle_inequality' }  // dist[u] + weight(u,v) >= dist[v]
+
+  // Set properties
+  | { kind: 'subset_of'; superset: SchemaSet<any> }  // Set is subset of another
+  | { kind: 'disjoint_from'; other: SchemaSet<any> }  // Set has no overlap with another
+
+  // Immutability constraints
+  | { kind: 'frozen' }  // Elements/values cannot be modified
 
 export type RuntimeType =
   { static: Type, refinements: Predicate[] }

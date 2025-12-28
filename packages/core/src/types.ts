@@ -1,55 +1,3 @@
-export type TokenType =
-  | 'NUMBER'
-  | 'STRING'
-  | 'IDENTIFIER'
-  | 'LET'
-  | 'FN'
-  | 'IF'
-  | 'ELSE'
-  | 'WHILE'
-  | 'UNTIL'
-  | 'FOR'
-  | 'IN'
-  | 'RETURN'
-  | 'TRUE'
-  | 'FALSE'
-  | 'LPAREN'
-  | 'RPAREN'
-  | 'LBRACE'
-  | 'RBRACE'
-  | 'LBRACKET'
-  | 'RBRACKET'
-  | 'COMMA'
-  | 'COLON'
-  | 'SEMICOLON'
-  | 'ARROW'
-  | 'PLUS'
-  | 'MINUS'
-  | 'STAR'
-  | 'SLASH'
-  | 'PERCENT'
-  | 'EQ'
-  | 'EQEQ'
-  | 'NEQ'
-  | 'LT'
-  | 'LTE'
-  | 'GT'
-  | 'GTE'
-  | 'AND'
-  | 'OR'
-  | 'NOT'
-  | 'DOT'
-  | 'LESS'
-  | 'GREATER'
-  | 'EOF';
-
-export interface Token {
-  type: TokenType;
-  value: string;
-  line: number;
-  column: number;
-}
-
 export type ASTNodeType =
   | 'Program'
   | 'FunctionDeclaration'
@@ -62,6 +10,7 @@ export type ASTNodeType =
   | 'IndexExpression'
   | 'RangeExpression'
   | 'Identifier'
+  | 'MetaIdentifier'
   | 'IntegerLiteral'
   | 'FloatLiteral'
   | 'StringLiteral'
@@ -165,6 +114,11 @@ export interface RangeExpression extends ASTNode {
 
 export interface Identifier extends ASTNode {
   type: 'Identifier';
+  name: string;
+}
+
+export interface MetaIdentifier extends ASTNode {
+  type: 'MetaIdentifier';
   name: string;
 }
 
@@ -342,6 +296,7 @@ export type Expression =
   | IndexExpression
   | RangeExpression
   | Identifier
+  | MetaIdentifier
   | IntegerLiteral
   | FloatLiteral
   | StringLiteral

@@ -348,6 +348,9 @@ export class TypeChecker {
         return type;
       }
 
+      case 'MetaIdentifier':
+        return { kind: 'string' };
+
       case 'RangeExpression': {
         // Range expressions can be int..int or string..string
         if (expr.start) {

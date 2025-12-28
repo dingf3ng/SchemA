@@ -178,9 +178,9 @@ describe('Invariant Synthesis - Runtime Refinement System', () => {
       const growing = env.get('growing');
 
       // Should have monotonic predicate
-      expect(hasPredicate(growing.type.refinements, 'monotonic')).toBe(true);
+      expect(hasPredicate(growing.type.refinements, 'size_monotonic')).toBe(true);
 
-      const monotonic = getPredicate(growing.type.refinements, 'monotonic');
+      const monotonic = getPredicate(growing.type.refinements, 'size_monotonic');
       expect(monotonic).toBeDefined();
       expect(monotonic!.direction).toBe('increasing');
     });
@@ -213,9 +213,9 @@ describe('Invariant Synthesis - Runtime Refinement System', () => {
       const unique = env.get('unique');
 
       // Should have monotonic predicate
-      expect(hasPredicate(unique.type.refinements, 'monotonic')).toBe(true);
+      expect(hasPredicate(unique.type.refinements, 'size_monotonic')).toBe(true);
 
-      const monotonic = getPredicate(unique.type.refinements, 'monotonic');
+      const monotonic = getPredicate(unique.type.refinements, 'size_monotonic');
       expect(monotonic).toBeDefined();
       expect(monotonic!.direction).toBe('increasing');
     });

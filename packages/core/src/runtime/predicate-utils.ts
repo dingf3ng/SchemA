@@ -1,133 +1,4 @@
 import { Predicate, RuntimeTypedBinder } from './values';
-import { SchemaArray } from './data-structures';
-
-/**
- * Check if a predicate holds for a given value
- */
-export function checkPredicate(predicate: Predicate, value: RuntimeTypedBinder): boolean {
-  const val = value.value;
-  const type = value.type.static.kind;
-
-  switch (predicate.kind) {
-    // Numeric predicates
-    case 'int_range':
-      if (type === 'int' || type === 'float') {
-        const num = val as number;
-        return num >= predicate.min && num <= predicate.max;
-      }
-      return false;
-
-    case 'positive':
-      if (type === 'int' || type === 'float') {
-        const num = val as number;
-        return predicate.strict ? num > 0 : num >= 0;
-      }
-      return false;
-
-    case 'negative':
-      if (type === 'int' || type === 'float') {
-        const num = val as number;
-        return predicate.strict ? num < 0 : num <= 0;
-      }
-      return false;
-
-    case 'divisible_by':
-      if (type === 'int') {
-        const num = val as number;
-        return num % predicate.divisor === 0;
-      }
-      return false;
-
-    case 'parity':
-      if (type === 'int') {
-        const num = val as number;
-        const isEven = num % 2 === 0;
-        return predicate.value === 'even' ? isEven : !isEven;
-      }
-      return false;
-
-    // Collection size predicates
-    case 'size_range':
-    case 'size_equals':
-    case 'non_empty': {
-      let size = 0;
-      if (type === 'array' && val instanceof SchemaArray) {
-        size = val.length;
-      } else if (typeof val === 'object' && val !== null && 'size' in val) {
-        size = (val as any).size;
-      } else {
-        return false;
-      }
-
-      if (predicate.kind === 'size_range') {
-        return size >= predicate.min && size <= predicate.max;
-      } else if (predicate.kind === 'size_equals') {
-        return size === predicate.size;
-      } else { // non_empty
-        return size > 0;
-      }
-    }
-
-    // Structural predicates
-    case 'sorted': {
-      if (type !== 'array' || !(val instanceof SchemaArray)) return false;
-      const arr = val as SchemaArray<RuntimeTypedBinder>;
-      if (arr.length <= 1) return true;
-
-      for (let i = 0; i < arr.length - 1; i++) {
-        const curr = arr.get(i);
-        const next = arr.get(i + 1);
-        if (!curr || !next) return false;
-
-        const currVal = curr.value;
-        const nextVal = next.value;
-
-        if (typeof currVal !== 'number' || typeof nextVal !== 'number') {
-          return false;
-        }
-
-        if (predicate.order === 'asc' && currVal > nextVal) return false;
-        if (predicate.order === 'desc' && currVal < nextVal) return false;
-      }
-      return true;
-    }
-
-    case 'unique_elements': {
-      if (type !== 'array' || !(val instanceof SchemaArray)) return false;
-      const arr = val as SchemaArray<RuntimeTypedBinder>;
-      const seen = new Set<any>();
-
-      for (let i = 0; i < arr.length; i++) {
-        const elem = arr.get(i);
-        if (!elem) continue;
-
-        const key = getElementKey(elem);
-        if (seen.has(key)) return false;
-        seen.add(key);
-      }
-      return true;
-    }
-
-    // Predicates that require historical context (not supported for single-value checks)
-    case 'monotonic':
-      throw new Error('Monotonic predicates require historical context and cannot be checked on a single value');
-
-    // Unimplemented predicates
-    case 'heap_property':
-    case 'acyclic':
-    case 'connected':
-    case 'bipartite':
-    case 'bst_property':
-    case 'balanced':
-    case 'complete_tree':
-    case 'all_values_satisfy':
-      throw new Error(`Predicate checking for '${predicate.kind}' is not yet implemented`);
-
-    default:
-      const _exhaustive: never = predicate;
-      return false;
-  }
-}
 
 /**
  * Get a hashable key for an element (for uniqueness checking)
@@ -187,6 +58,34 @@ export function parsePredicateName(name: string, args?: RuntimeTypedBinder[]): P
         return { kind: 'negative', strict: strictArg.value as boolean };
       }
 
+      case 'range_satisfies': {
+        if (args.length !== 3) {
+          throw new Error('range_satisfies predicate expects 3 arguments: from, to, predicate');
+        }
+        const fromArg = args[0];
+        const toArg = args[1];
+        const predArg = args[2];
+
+        if (fromArg.type.static.kind !== 'int') {
+          throw new Error('range_satisfies: from argument must be an integer');
+        }
+        if (toArg.type.static.kind !== 'int') {
+          throw new Error('range_satisfies: to argument must be an integer');
+        }
+        if (predArg.type.static.kind !== 'string') {
+          throw new Error('range_satisfies: predicate argument must be a string/identifier');
+        }
+
+        const nestedPredicate = parsePredicateName(predArg.value as string);
+        
+        return {
+          kind: 'range_satisfies',
+          from: fromArg.value as number,
+          to: toArg.value as number,
+          predicate: nestedPredicate
+        };
+      }
+
       default:
         throw new Error(`Predicate '${name}' does not accept arguments`);
     }
@@ -217,6 +116,9 @@ export function parsePredicateName(name: string, args?: RuntimeTypedBinder[]): P
     case 'odd':
       return { kind: 'parity', value: 'odd' };
 
+    case 'frozen':
+      return { kind: 'frozen' };
+
     default:
       throw new Error(`Unknown predicate: ${name}`);
   }
@@ -241,6 +143,11 @@ export function predicateToString(predicate: Predicate): string {
 
     case 'parity':
       return predicate.value === 'even' ? 'even' : 'odd';
+
+    case 'monotonic': {
+      const strictness = predicate.strict ? 'strictly ' : '';
+      return `${strictness}monotonic ${predicate.direction}`;
+    }
 
     case 'size_range':
       return `size ∈ [${predicate.min}, ${predicate.max}]`;
@@ -278,12 +185,46 @@ export function predicateToString(predicate: Predicate): string {
     case 'complete_tree':
       return 'complete tree';
 
-    case 'monotonic':
+    case 'size_monotonic': {
       const strictness = predicate.strict ? 'strictly ' : '';
-      return `${strictness}monotonic ${predicate.direction}`;
+      return `size ${strictness}monotonic ${predicate.direction}`;
+    }
 
     case 'all_values_satisfy':
       return `all values satisfy: ${predicateToString(predicate.predicate)}`;
+
+    case 'range_satisfies':
+      return `range [${predicate.from}, ${predicate.to}) satisfies: ${predicateToString(predicate.predicate)}`;
+
+    case 'partitioned_at':
+      return `partitioned at index ${predicate.pivotIndex}`;
+
+    case 'partitioned_by_value':
+      return `partitioned by value ${predicate.pivotValue}`;
+
+    case 'is_permutation_of':
+      return 'is permutation of original';
+
+    case 'no_negative_cycles':
+      return 'no negative cycles';
+
+    case 'all_weights_non_negative':
+      return 'all weights non-negative';
+
+    case 'distance_to_self_zero':
+      return 'distance to self is zero';
+
+    case 'triangle_inequality':
+      return 'satisfies triangle inequality';
+
+    case 'subset_of':
+      return 'subset of reference set';
+
+    case 'disjoint_from':
+      return 'disjoint from reference set';
+
+    case 'frozen':
+      return 'frozen (immutable)';
 
     default:
       const _exhaustive: never = predicate;

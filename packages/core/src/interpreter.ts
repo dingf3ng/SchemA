@@ -19,7 +19,7 @@ import {
   PredicateCheckExpression,
 } from './types';
 import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime/values';
-import { checkPredicate, parsePredicateName } from './runtime/predicate-utils';
+import { parsePredicateName } from './runtime/predicate-utils';
 import { Environment } from './runtime/environment';
 import { typeToString } from './type-checker/type-checker-utils';
 import {
@@ -36,7 +36,7 @@ import {
   AVLTree,
 } from './runtime/data-structures';
 import { Analyzer } from './analyzer';
-import { InvariantTracker } from './synthesiser';
+import { InvariantTracker } from './synthesizer';
 import { Type } from './type-checker/type-checker-utils';
 
 class ReturnException {
@@ -176,6 +176,53 @@ export class Interpreter {
     this.globalEnv.define('inf', {
       value: Infinity,
       type: { static: { kind: 'intersection', types: [{ kind: 'int' }, { kind: 'float' }] }, refinements: [] },
+    });
+
+    // Utility functions
+    this.globalEnv.define('len', {
+      value: {
+        fn: (str: RuntimeTypedBinder) => {
+          const stringValue = str.value as string;
+          return { value: stringValue.length, type: { static: { kind: 'int' }, refinements: [] } };
+        },
+      },
+      type: { static: { kind: 'function', parameters: [{ kind: 'string' }], returnType: { kind: 'int' } }, refinements: [] },
+    });
+
+    this.globalEnv.define('min', {
+      value: {
+        fn: (...args: RuntimeTypedBinder[]) => {
+          if (args.length === 0) {
+            throw new Error('min() requires at least one argument');
+          }
+          const numbers = args.map(arg => arg.value as number);
+          const minValue = Math.min(...numbers);
+          const hasFloat = args.some(arg => arg.type.static.kind === 'float');
+          return {
+            value: minValue,
+            type: { static: { kind: hasFloat ? 'float' : 'int' }, refinements: [] }
+          };
+        },
+      },
+      type: { static: { kind: 'function', parameters: [{ kind: 'union', types: [{ kind: 'int' }, { kind: 'float' }] }], returnType: { kind: 'union', types: [{ kind: 'int' }, { kind: 'float' }] }, variadic: true }, refinements: [] },
+    });
+
+    this.globalEnv.define('max', {
+      value: {
+        fn: (...args: RuntimeTypedBinder[]) => {
+          if (args.length === 0) {
+            throw new Error('max() requires at least one argument');
+          }
+          const numbers = args.map(arg => arg.value as number);
+          const maxValue = Math.max(...numbers);
+          const hasFloat = args.some(arg => arg.type.static.kind === 'float');
+          return {
+            value: maxValue,
+            type: { static: { kind: hasFloat ? 'float' : 'int' }, refinements: [] }
+          };
+        },
+      },
+      type: { static: { kind: 'function', parameters: [{ kind: 'union', types: [{ kind: 'int' }, { kind: 'float' }] }], returnType: { kind: 'union', types: [{ kind: 'int' }, { kind: 'float' }] }, variadic: true }, refinements: [] },
     });
   }
 
@@ -852,6 +899,9 @@ export class Interpreter {
         }
         return value;
       }
+
+      case 'MetaIdentifier':
+        return { value: expr.name, type: { static: { kind: 'string' }, refinements: [] } };
 
       case 'BinaryExpression':
         return this.evaluateBinaryExpression(expr);
@@ -1699,6 +1749,7 @@ export class Interpreter {
       case 'PredicateCheckExpression': {
         const predicateExpr = expr as PredicateCheckExpression;
         const subject = this.evaluateExpression(predicateExpr.subject);
+        const tracker = new InvariantTracker();
 
         // Evaluate predicate arguments if any
         let predicateArgs: RuntimeTypedBinder[] | undefined;
@@ -1708,9 +1759,9 @@ export class Interpreter {
 
         // Parse the predicate name into a Predicate object
         const predicate = parsePredicateName(predicateExpr.predicateName, predicateArgs);
-
+        
         // Check the predicate against the subject value
-        const result = checkPredicate(predicate, subject);
+        const result = tracker.check(predicate, subject);
 
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: result };
       }

@@ -135,7 +135,7 @@ expression
     ;
 
 predicateCheck
-    : logicalOr ('|-' '@' IDENTIFIER ('(' argumentList? ')')?)?
+    : logicalOr ('|-' META_IDENTIFIER ('(' argumentList? ')')?)?
     ;
 
 logicalOr
@@ -198,6 +198,7 @@ primary
     | 'false'                    # FalseLiteral
     | POLY_TYPE_ID               # PolyTypeIdentifier
     | IDENTIFIER                 # Identifier
+    | META_IDENTIFIER            # MetaIdentifier
     | arrayLiteral               # ArrayLiteralExpr
     | '(' expression ')'         # ParenExpr
     ;
@@ -237,6 +238,10 @@ POLY_TYPE_ID
 IDENTIFIER
     : [a-z_][a-zA-Z0-9_]*
     | '_'
+    ;
+
+META_IDENTIFIER
+    : '@' [a-z_][a-zA-Z0-9_]*
     ;
 
 // Whitespace and Comments

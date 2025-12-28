@@ -46,6 +46,7 @@ import {
   MetaStatementContext,
   InvariantStatementContext,
   AssertStatementContext,
+  MetaIdentifierContext,
 } from './generated/src/SchemAParser';
 import {
   Program,
@@ -77,6 +78,7 @@ import {
   AssertStatement,
   TypeAnnotation as ASTTypeAnnotation,
   Parameter as ASTParameter,
+  MetaIdentifier,
 } from './types';
 
 export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<any> {
@@ -391,8 +393,8 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     const subject = this.visit(ctx.logicalOr());
 
     // Check if there's a turnstile operator
-    if (ctx.IDENTIFIER && ctx.IDENTIFIER()) {
-      const predicateName = ctx.IDENTIFIER().text;
+    if (ctx.META_IDENTIFIER && ctx.META_IDENTIFIER()) {
+      const predicateName = ctx.META_IDENTIFIER().text;
       let predicateArgs: Expression[] | undefined;
 
       // Check if there are arguments
@@ -811,6 +813,15 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
     return {
       type: 'Identifier',
       name: ctx.IDENTIFIER().text,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitMetaIdentifier(ctx: MetaIdentifierContext): MetaIdentifier {
+    return {
+      type: 'MetaIdentifier',
+      name: ctx.META_IDENTIFIER().text,
       line: ctx.start.line,
       column: ctx.start.charPositionInLine + 1,
     };
