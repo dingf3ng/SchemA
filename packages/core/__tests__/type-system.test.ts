@@ -1,9 +1,8 @@
-import { AntlrParser } from '../src/parser';
+import { parse } from '../src/transpiler/parser';
 import { typeCheck } from '../src/type-checker/type-checker-main';
 
 function check(code: string) {
-  const parser = new AntlrParser();
-  const ast = parser.parse(code);
+  const ast = parse(code);
   typeCheck(ast);
 }
 

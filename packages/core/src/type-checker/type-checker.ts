@@ -1,4 +1,4 @@
-import { Program, Statement, Expression } from '../types';
+import { Program, Statement, Expression } from '../transpiler/ast-types';
 import { FunEnv, TypeEnv } from './type-checker-main';
 import { resolve, Type, typesEqual, typeToString } from './type-checker-utils';
 
@@ -24,8 +24,8 @@ export class TypeChecker {
   private typeEqualityCache: Map<string, boolean> = new Map();
 
   constructor(refined: { typeEnv: TypeEnv; functionEnv: FunEnv }) {
-      this.typeEnv = refined.typeEnv;
-      this.functionEnv = refined.functionEnv;
+    this.typeEnv = refined.typeEnv;
+    this.functionEnv = refined.functionEnv;
   }
 
   public check(program: Program): void {
@@ -513,6 +513,17 @@ export class TypeChecker {
         const callee = expr.callee;
         let funcType: Type;
 
+        // Special case: MetaIdentifier callee means this is a predicate call like @greater_than(5)
+        // These are used as arguments to other predicates
+        if (callee.type === 'MetaIdentifier') {
+          // Type-check all arguments to ensure they're valid expressions
+          for (const arg of expr.arguments) {
+            this.synthExpression(arg);
+          }
+          // Predicate calls have the predicate type
+          return { kind: 'predicate' };
+        }
+
         if (callee.type === 'Identifier') {
           const envType = this.functionEnv.get(callee.name);
           if (envType) {
@@ -948,4 +959,15 @@ export class TypeChecker {
         throw new Error(`Type checking: unknown expression type ${(expr as any).type}, at ${expr.line}, ${expr.column}`);
     }
   }
+}
+
+export function check(refined: { typeEnv: TypeEnv; functionEnv: FunEnv }, program: Program): void {
+  const typeChecker = new TypeChecker(refined);
+  typeChecker.check(program);
+}
+
+export function checkAndReturn(refined: { typeEnv: TypeEnv; functionEnv: FunEnv }, program: Program): TypeChecker {
+  const typeChecker = new TypeChecker(refined);
+  typeChecker.check(program);
+  return typeChecker;
 }

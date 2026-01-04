@@ -1,5 +1,5 @@
 import { AbstractParseTreeVisitor } from 'antlr4ts/tree/AbstractParseTreeVisitor';
-import { SchemAVisitor } from './generated/src/SchemAVisitor';
+import { SchemAVisitor } from '../generated/src/SchemAVisitor';
 import {
   ProgramContext,
   StatementContext,
@@ -47,7 +47,7 @@ import {
   InvariantStatementContext,
   AssertStatementContext,
   MetaIdentifierContext,
-} from './generated/src/SchemAParser';
+} from '../generated/src/SchemAParser';
 import {
   Program,
   Statement,
@@ -79,9 +79,9 @@ import {
   TypeAnnotation as ASTTypeAnnotation,
   Parameter as ASTParameter,
   MetaIdentifier,
-} from './types';
+} from './ast-types';
 
-export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<any> {
+class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<any> {
   protected defaultResult(): any {
     return null;
   }
@@ -910,4 +910,14 @@ export class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAV
       column: ctx.start.charPositionInLine + 1,
     };
   }
+}
+/**
+ * Author's note: Maybe when writing OOP programs, we should never export the classes directly.
+ * Instead, we should use a function that do what the class's main function do, and export that function.
+ * This way, we can change the internal implementation without affecting any external code.
+ * Like this:
+ */
+export function transpile(programCtx: ProgramContext): Program {
+  const astBuilder = new ASTBuilder();
+  return astBuilder.visit(programCtx);
 }

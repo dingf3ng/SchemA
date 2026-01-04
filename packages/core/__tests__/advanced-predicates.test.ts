@@ -1,6 +1,8 @@
-import { InvariantTracker } from '../src/synthesizer';
-import { RuntimeTypedBinder, Predicate } from '../src/runtime/values';
-import { SchemaSet, SchemaMap, Graph } from '../src/runtime/data-structures';
+import { InvariantTracker } from '../src/analyzer/synthesizer';
+import { RuntimeTypedBinder } from '../src/runtime/runtime-utils';
+import { Environment } from '../src/runtime/environment';
+import { Predicate } from '../src/analyzer/analyzer-utils';
+import { SchemaSet, SchemaMap, Graph, SchemaArray } from '../src/builtins/data-structures';
 
 describe('Advanced Predicate Checking', () => {
   describe('Graph Predicates', () => {
@@ -290,17 +292,235 @@ describe('Advanced Predicate Checking', () => {
     });
   });
 
-  describe('Frozen Predicate', () => {
-    test('frozen predicate should return true (enforcement is at type-checker level)', () => {
-      const arr = [1, 2, 3];
+  describe('Numeric Predicates', () => {
+    test('int_range should pass when value is within range', () => {
       const tracker = new InvariantTracker();
-      const arrayBinder: RuntimeTypedBinder = {
-        value: arr as any,
+      const binder: RuntimeTypedBinder = { value: 5, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'int_range', min: 0, max: 10 };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+
+    test('int_range should fail when value is outside range', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 15, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'int_range', min: 0, max: 10 };
+      expect(tracker.check(predicate, binder)).toBe(false);
+    });
+
+    test('positive should pass for positive numbers', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 5, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'positive', strict: true };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+
+    test('positive should fail for negative numbers', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: -5, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'positive', strict: true };
+      expect(tracker.check(predicate, binder)).toBe(false);
+    });
+
+    test('divisible_by should pass when divisible', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 10, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'divisible_by', divisor: 2 };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+
+    test('divisible_by should fail when not divisible', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 10, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'divisible_by', divisor: 3 };
+      expect(tracker.check(predicate, binder)).toBe(false);
+    });
+
+    test('parity should check for even numbers', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 4, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'parity', value: 'even' };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+
+    test('parity should check for odd numbers', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 3, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'parity', value: 'odd' };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+  });
+
+  describe('Collection Predicates', () => {
+    test('sorted should pass for sorted array', () => {
+      const tracker = new InvariantTracker();
+      const arr = new SchemaArray<RuntimeTypedBinder>();
+      arr.push({ value: 1, type: { static: { kind: 'int' }, refinements: [] } });
+      arr.push({ value: 2, type: { static: { kind: 'int' }, refinements: [] } });
+      arr.push({ value: 3, type: { static: { kind: 'int' }, refinements: [] } });
+
+      const binder: RuntimeTypedBinder = {
+        value: arr,
         type: { static: { kind: 'array', elementType: { kind: 'int' } }, refinements: [] }
       };
 
-      const predicate: Predicate = { kind: 'frozen' };
-      expect(tracker.check(predicate, arrayBinder)).toBe(true);
+      const predicate: Predicate = { kind: 'sorted', order: 'asc' };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+
+    test('sorted should fail for unsorted array', () => {
+      const tracker = new InvariantTracker();
+      const arr = new SchemaArray<RuntimeTypedBinder>();
+      arr.push({ value: 1, type: { static: { kind: 'int' }, refinements: [] } });
+      arr.push({ value: 3, type: { static: { kind: 'int' }, refinements: [] } });
+      arr.push({ value: 2, type: { static: { kind: 'int' }, refinements: [] } });
+
+      const binder: RuntimeTypedBinder = {
+        value: arr,
+        type: { static: { kind: 'array', elementType: { kind: 'int' } }, refinements: [] }
+      };
+
+      const predicate: Predicate = { kind: 'sorted', order: 'asc' };
+      expect(tracker.check(predicate, binder)).toBe(false);
+    });
+
+    test('unique_elements should pass for array with unique elements', () => {
+      const tracker = new InvariantTracker();
+      const arr = new SchemaArray<RuntimeTypedBinder>();
+      arr.push({ value: 1, type: { static: { kind: 'int' }, refinements: [] } });
+      arr.push({ value: 2, type: { static: { kind: 'int' }, refinements: [] } });
+
+      const binder: RuntimeTypedBinder = {
+        value: arr,
+        type: { static: { kind: 'array', elementType: { kind: 'int' } }, refinements: [] }
+      };
+
+      const predicate: Predicate = { kind: 'unique_elements' };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+
+    test('unique_elements should fail for array with duplicates', () => {
+      const tracker = new InvariantTracker();
+      const arr = new SchemaArray<RuntimeTypedBinder>();
+      arr.push({ value: 1, type: { static: { kind: 'int' }, refinements: [] } });
+      arr.push({ value: 1, type: { static: { kind: 'int' }, refinements: [] } });
+
+      const binder: RuntimeTypedBinder = {
+        value: arr,
+        type: { static: { kind: 'array', elementType: { kind: 'int' } }, refinements: [] }
+      };
+
+      const predicate: Predicate = { kind: 'unique_elements' };
+      expect(tracker.check(predicate, binder)).toBe(false);
+    });
+
+    test('non_empty should pass for non-empty collection', () => {
+      const tracker = new InvariantTracker();
+      const arr = new SchemaArray<RuntimeTypedBinder>();
+      arr.push({ value: 1, type: { static: { kind: 'int' }, refinements: [] } });
+
+      const binder: RuntimeTypedBinder = {
+        value: arr,
+        type: { static: { kind: 'array', elementType: { kind: 'int' } }, refinements: [] }
+      };
+
+      const predicate: Predicate = { kind: 'non_empty' };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+
+    test('size_equals should check collection size', () => {
+      const tracker = new InvariantTracker();
+      const arr = new SchemaArray<RuntimeTypedBinder>();
+      arr.push({ value: 1, type: { static: { kind: 'int' }, refinements: [] } });
+      arr.push({ value: 2, type: { static: { kind: 'int' }, refinements: [] } });
+
+      const binder: RuntimeTypedBinder = {
+        value: arr,
+        type: { static: { kind: 'array', elementType: { kind: 'int' } }, refinements: [] }
+      };
+
+      const predicate: Predicate = { kind: 'size_equals', size: 2 };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+  });
+
+  describe('More Numeric Predicates', () => {
+    test('greater_than should pass when value is greater', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 10, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'greater_than', threshold: 5 };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+
+    test('greater_than should fail when value is smaller', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 3, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'greater_than', threshold: 5 };
+      expect(tracker.check(predicate, binder)).toBe(false);
+    });
+
+    test('greater_equal_than should pass when value is equal', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 5, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'greater_equal_than', threshold: 5 };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+
+    test('negative should pass for negative numbers', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: -5, type: { static: { kind: 'int' }, refinements: [] } };
+      const predicate: Predicate = { kind: 'negative', strict: true };
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+  });
+
+  describe('Logical Predicates', () => {
+    test('not should negate predicate', () => {
+      const tracker = new InvariantTracker();
+      const binder: RuntimeTypedBinder = { value: 5, type: { static: { kind: 'int' }, refinements: [] } };
+      const innerPredicate: Predicate = { kind: 'greater_than', threshold: 10 }; // False
+      const predicate: Predicate = { kind: 'not', predicate: innerPredicate }; // True
+      expect(tracker.check(predicate, binder)).toBe(true);
+    });
+  });
+
+  describe('Temporal Predicates', () => {
+    test('monotonic increasing should pass for increasing sequence', () => {
+      const tracker = new InvariantTracker();
+      const env = new Environment();
+      
+      // Iteration 0: x = 1
+      env.define('x', { value: 1, type: { static: { kind: 'int' }, refinements: [] } });
+      tracker.recordState(env, 0);
+
+      // Iteration 1: x = 2
+      env.set('x', { value: 2, type: { static: { kind: 'int' }, refinements: [] } });
+      tracker.recordState(env, 1);
+
+      // Iteration 2: x = 3
+      env.set('x', { value: 3, type: { static: { kind: 'int' }, refinements: [] } });
+      tracker.recordState(env, 2);
+
+      const predicate: Predicate = { kind: 'monotonic', direction: 'increasing', strict: true };
+      const currentVal = env.get('x');
+      expect(tracker.check(predicate, currentVal, 'x')).toBe(true);
+    });
+
+    test('monotonic increasing should fail for non-increasing sequence', () => {
+      const tracker = new InvariantTracker();
+      const env = new Environment();
+      
+      env.define('x', { value: 1, type: { static: { kind: 'int' }, refinements: [] } });
+      tracker.recordState(env, 0);
+
+      env.set('x', { value: 3, type: { static: { kind: 'int' }, refinements: [] } });
+      tracker.recordState(env, 1);
+
+      env.set('x', { value: 2, type: { static: { kind: 'int' }, refinements: [] } });
+      tracker.recordState(env, 2);
+
+      const predicate: Predicate = { kind: 'monotonic', direction: 'increasing', strict: true };
+      const currentVal = env.get('x');
+      expect(tracker.check(predicate, currentVal, 'x')).toBe(false);
     });
   });
 });

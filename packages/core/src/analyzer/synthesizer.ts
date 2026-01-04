@@ -1,7 +1,7 @@
-import { RuntimeTypedBinder } from './runtime/values';
-import { Environment } from './runtime/environment';
-import { Predicate } from './runtime/values';
-import { SchemaArray, SchemaSet, SchemaMap, Graph } from './runtime/data-structures';
+import { RuntimeTypedBinder } from '../runtime/runtime-utils';
+import { Environment } from '../runtime/environment';
+import { Predicate, getElementKey } from './analyzer-utils';
+import { SchemaArray, SchemaMap, SchemaSet, Graph } from '../builtins/data-structures';
 
 /**
  * State snapshot for a single variable at a specific iteration
@@ -14,10 +14,6 @@ interface VariableSnapshot {
   numericValue?: number;
   arrayLength?: number;
   collectionSize?: number;
-  // For frozen predicate: cache array elements
-  arrayElements?: Map<number, any>;
-  // For frozen predicate: cache primitive value for comparison
-  frozenValue?: any;
 }
 
 /**
@@ -33,28 +29,8 @@ class VariableHistory {
     const type = value.type.static.kind;
     if (type === 'int' || type === 'float') {
       snapshot.numericValue = value.value as number;
-      snapshot.frozenValue = value.value as number;
-    } else if (type === 'string' || type === 'boolean') {
-      snapshot.frozenValue = value.value;
     } else if (type === 'array' && value.value instanceof SchemaArray) {
       snapshot.arrayLength = (value.value as SchemaArray<RuntimeTypedBinder>).length;
-      // Cache array elements for frozen checking
-      const arr = value.value as SchemaArray<RuntimeTypedBinder>;
-      const elements = new Map<number, any>();
-      for (let i = 0; i < arr.length; i++) {
-        const elem = arr.get(i);
-        if (elem) {
-          // Store primitive value or serialized form
-          const elemType = elem.type.static.kind;
-          if (elemType === 'int' || elemType === 'float' || elemType === 'string' || elemType === 'boolean') {
-            elements.set(i, elem.value);
-          } else {
-            // For complex types, store reference (not ideal but necessary)
-            elements.set(i, elem);
-          }
-        }
-      }
-      snapshot.arrayElements = elements;
     } else if (typeof value.value === 'object' && value.value !== null && 'size' in value.value) {
       snapshot.collectionSize = (value.value as any).size;
     }
@@ -103,24 +79,52 @@ export class InvariantTracker {
 
   /**
    * Check if a predicate holds for a given value
+   *
+   * This method routes predicates to the appropriate checker:
+   * - Temporal predicates (require history): monotonic, size_monotonic
+   * - Meta predicates with temporal components: range_satisfies
+   * - Point-in-time predicates: all others (checked on latest snapshot)
    */
-  public check(predicate: Predicate, value: RuntimeTypedBinder): boolean {
-    const history = new VariableHistory();
-    history.addSnapshot(value, 0);
-    const snapshots = history.getSnapshots();
+  public check(predicate: Predicate, value: RuntimeTypedBinder, variableName?: string): boolean {
+    let snapshots: VariableSnapshot[];
 
-    if (predicate.kind === 'monotonic') {
-      return this.checkMonotonicPredicate(predicate, snapshots);
-    } else if (predicate.kind === 'size_monotonic') {
-      return this.checkSizeMonotonicPredicate(predicate, snapshots);
-    } else if (predicate.kind === 'frozen') {
-      return this.checkFrozenPredicate(predicate, snapshots);
-    } else if (predicate.kind === 'range_satisfies') {
-      return this.checkRangeSatisfiesPredicate(predicate, snapshots);
-    } else if (predicate.kind === 'partitioned_at' || predicate.kind === 'partitioned_by_value') {
-      return this.holdsForAllSnapshots(predicate, snapshots);
+    if (variableName && this.histories.has(variableName)) {
+      snapshots = this.histories.get(variableName)!.getSnapshots();
     } else {
-      return this.checkPredicate(predicate, snapshots[0]);
+      const history = new VariableHistory();
+      history.addSnapshot(value, 0);
+      snapshots = history.getSnapshots();
+    }
+
+    // Route to appropriate checker based on predicate type
+    if (this.isTemporalPredicate(predicate)) {
+      // Temporal predicates require full history
+      return this.checkTemporalPredicate(predicate, snapshots);
+    } else {
+      // Point-in-time predicates only check current state
+      return this.checkPredicate(predicate, snapshots[snapshots.length - 1]);
+    }
+  }
+
+  /**
+   * Determine if a predicate is temporal (requires history)
+   */
+  private isTemporalPredicate(predicate: Predicate): boolean {
+    return predicate.kind === 'monotonic' ||
+           predicate.kind === 'size_monotonic';
+  }
+
+  /**
+   * Check temporal predicates that require full snapshot history
+   */
+  private checkTemporalPredicate(predicate: Predicate, snapshots: VariableSnapshot[]): boolean {
+    switch (predicate.kind) {
+      case 'monotonic':
+        return this.checkMonotonicPredicate(predicate, snapshots);
+      case 'size_monotonic':
+        return this.checkSizeMonotonicPredicate(predicate, snapshots);
+      default:
+        throw new Error(`Unknown temporal predicate: ${(predicate as any).kind}`);
     }
   }
 
@@ -171,12 +175,10 @@ export class InvariantTracker {
         holds = this.checkMonotonicPredicate(candidate, snapshots);
       } else if (candidate.kind === 'size_monotonic') {
         holds = this.checkSizeMonotonicPredicate(candidate, snapshots);
-      } else if (candidate.kind === 'frozen') {
-        holds = this.checkFrozenPredicate(candidate, snapshots);
       } else if (candidate.kind === 'range_satisfies') {
         holds = this.checkRangeSatisfiesPredicate(candidate, snapshots);
-      } else if (candidate.kind === 'partitioned_at' || candidate.kind === 'partitioned_by_value') {
-        holds = this.holdsForAllSnapshots(candidate, snapshots);
+      } else if (candidate.kind === 'all_elements_satisfy') {
+        holds = this.checkAllElementsSatisfy(candidate, snapshots);
       } else {
         holds = this.holdsForAllSnapshots(candidate, snapshots);
       }
@@ -202,13 +204,7 @@ export class InvariantTracker {
       candidates.push(...this.generateArrayCandidates(snapshots));
     } else if (type === 'set' || type === 'map') {
       candidates.push(...this.generateCollectionCandidates(snapshots));
-    } else if (type === 'string' || type === 'boolean') {
-      // For strings and booleans, we can only check if they're frozen
-      if (snapshots.length > 1) {
-        candidates.push({ kind: 'frozen' });
-      }
-    }
-
+    } 
     return candidates;
   }
 
@@ -251,9 +247,6 @@ export class InvariantTracker {
       candidates.push({ kind: 'monotonic', direction: 'increasing', strict: false });
       candidates.push({ kind: 'monotonic', direction: 'decreasing', strict: true });
       candidates.push({ kind: 'monotonic', direction: 'decreasing', strict: false });
-
-      // Frozen: value never changes
-      candidates.push({ kind: 'frozen' });
     }
 
     return candidates;
@@ -288,28 +281,12 @@ export class InvariantTracker {
     candidates.push({ kind: 'sorted', order: 'desc' });
     candidates.push({ kind: 'unique_elements' });
 
-    // Partitioning properties (for quicksort verification)
-    // We'll generate these based on observed pivot positions
-    const firstArr = snapshots[0].value.value;
-    if (firstArr instanceof SchemaArray && firstArr.length > 0) {
-      for (let i = 0; i < Math.min(firstArr.length, 5); i++) {
-        const pivotElem = firstArr.get(i);
-        if (pivotElem && typeof pivotElem.value === 'number') {
-          candidates.push({ kind: 'partitioned_at', pivotIndex: i });
-          candidates.push({ kind: 'partitioned_by_value', pivotValue: pivotElem.value });
-        }
-      }
-    }
-
     // Monotonic size (growing/shrinking arrays)
     if (snapshots.length > 1) {
       candidates.push({ kind: 'size_monotonic', direction: 'increasing', strict: true });
       candidates.push({ kind: 'size_monotonic', direction: 'increasing', strict: false });
       candidates.push({ kind: 'size_monotonic', direction: 'decreasing', strict: true });
       candidates.push({ kind: 'size_monotonic', direction: 'decreasing', strict: false });
-
-      // Frozen: array elements never change
-      candidates.push({ kind: 'frozen' });
     }
 
     return candidates;
@@ -407,6 +384,20 @@ export class InvariantTracker {
         }
         return false;
 
+      case 'greater_than':
+        if (type === 'int' || type === 'float') {
+          const num = value as number;
+          return num > predicate.threshold;
+        }
+        return false;
+
+      case 'greater_equal_than':
+        if (type === 'int' || type === 'float') {
+          const num = value as number;
+          return num >= predicate.threshold;
+        }
+        return false;
+
       // Collection size predicates
       case 'size_range':
       case 'size_equals':
@@ -414,8 +405,10 @@ export class InvariantTracker {
         let size = 0;
         if (type === 'array' && value instanceof SchemaArray) {
           size = value.length;
-        } else if (typeof value === 'object' && value !== null && 'size' in value) {
-          size = (value as any).size;
+        } else if (value instanceof SchemaMap) {
+          size = value.size;
+        } else if (value instanceof SchemaSet) {
+          size = value.size;
         } else {
           return false;
         }
@@ -462,77 +455,16 @@ export class InvariantTracker {
           const elem = arr.get(i);
           if (!elem) continue;
 
-          const key = this.getElementKey(elem);
+          const key = getElementKey(elem);
           if (seen.has(key)) return false;
           seen.add(key);
         }
         return true;
       }
 
-      // Partitioning predicates
-      case 'partitioned_at': {
-        if (type !== 'array' || !(value instanceof SchemaArray)) return false;
-        const arr = value as SchemaArray<RuntimeTypedBinder>;
-        const pivotIndex = predicate.pivotIndex;
-
-        if (pivotIndex >= arr.length) return false;
-
-        const pivot = arr.get(pivotIndex);
-        if (!pivot || typeof pivot.value !== 'number') return false;
-        const pivotValue = pivot.value;
-
-        // Check all elements before pivot are <= pivotValue
-        for (let i = 0; i < pivotIndex; i++) {
-          const elem = arr.get(i);
-          if (!elem || typeof elem.value !== 'number') return false;
-          if (elem.value > pivotValue) return false;
-        }
-
-        // Check all elements after pivot are >= pivotValue
-        for (let i = pivotIndex + 1; i < arr.length; i++) {
-          const elem = arr.get(i);
-          if (!elem || typeof elem.value !== 'number') return false;
-          if (elem.value < pivotValue) return false;
-        }
-
-        return true;
-      }
-
-      case 'partitioned_by_value': {
-        if (type !== 'array' || !(value instanceof SchemaArray)) return false;
-        const arr = value as SchemaArray<RuntimeTypedBinder>;
-        const pivotValue = predicate.pivotValue;
-
-        let foundPivot = false;
-        let pivotIndex = -1;
-
-        // Find the pivot
-        for (let i = 0; i < arr.length; i++) {
-          const elem = arr.get(i);
-          if (elem && typeof elem.value === 'number' && elem.value === pivotValue) {
-            foundPivot = true;
-            pivotIndex = i;
-            break;
-          }
-        }
-
-        if (!foundPivot) return false;
-
-        // Check partitioning
-        for (let i = 0; i < pivotIndex; i++) {
-          const elem = arr.get(i);
-          if (!elem || typeof elem.value !== 'number') return false;
-          if (elem.value > pivotValue) return false;
-        }
-
-        for (let i = pivotIndex + 1; i < arr.length; i++) {
-          const elem = arr.get(i);
-          if (!elem || typeof elem.value !== 'number') return false;
-          if (elem.value < pivotValue) return false;
-        }
-
-        return true;
-      }
+      // Logical predicates
+      case 'not':
+        return !this.checkPredicate(predicate.predicate, snapshot);
 
       // Meta predicates
       case 'range_satisfies': {
@@ -543,10 +475,10 @@ export class InvariantTracker {
         // Check range bounds
         if (from < 0 || to > arr.length || from > to) return false;
 
-        // For nested predicates that need historical context (like frozen),
+        // For nested predicates that need historical context,
         // we cannot check them here in single-snapshot mode
         // Return true and let the special handler deal with it
-        if (nestedPredicate.kind === 'frozen' || nestedPredicate.kind === 'monotonic' || nestedPredicate.kind === 'size_monotonic') {
+        if (nestedPredicate.kind === 'monotonic' || nestedPredicate.kind === 'size_monotonic') {
           return true; // Handled separately
         }
 
@@ -555,8 +487,17 @@ export class InvariantTracker {
           const elem = arr.get(i);
           if (!elem) return false;
 
+          // Create a snapshot for the element to check the nested predicate
+          const elemSnapshot: VariableSnapshot = {
+            value: elem,
+            iteration: snapshot.iteration,
+            numericValue: (elem.type.static.kind === 'int' || elem.type.static.kind === 'float') ? elem.value as number : undefined,
+            arrayLength: (elem.type.static.kind === 'array' && elem.value instanceof SchemaArray) ? (elem.value as SchemaArray<RuntimeTypedBinder>).length : undefined,
+            collectionSize: (elem.value instanceof SchemaMap || elem.value instanceof SchemaSet) ? (elem.value as any).size : undefined
+          };
+
           // Recursively check the nested predicate on the element
-          if (!this.checkPredicate(nestedPredicate, snapshot)) {
+          if (!this.checkPredicate(nestedPredicate, elemSnapshot)) {
             return false;
           }
         }
@@ -566,29 +507,43 @@ export class InvariantTracker {
       // Graph predicates
       case 'no_negative_cycles': {
         if (type !== 'graph') return false;
-        const graph = value as any; // Graph<RuntimeTypedBinder>
-        if (!graph || typeof graph.getEdges !== 'function') return false;
+
+        // Type guard for Graph instance
+        if (!(value instanceof Graph)) {
+          throw new Error('Graph predicate expects Graph instance');
+        }
+        const graph = value as Graph<RuntimeTypedBinder>;
 
         // Use Bellman-Ford algorithm to detect negative cycles
         const vertices = graph.getVertices();
         const edges = graph.getEdges();
+
+        // Validate edges have required weight property
+        for (const edge of edges) {
+          if (!edge || typeof edge.weight !== 'number') {
+            throw new Error('Graph edges must have numeric weight property');
+          }
+          if (!edge.from || !edge.to) {
+            throw new Error('Graph edges must have from and to properties');
+          }
+        }
 
         if (vertices.length === 0) return true;
 
         // Initialize distances
         const dist = new Map<any, number>();
         for (const v of vertices) {
-          const key = this.getElementKey(v);
+          const key = getElementKey(v);
           dist.set(key, Infinity);
         }
-        const startKey = this.getElementKey(vertices[0]);
+        const startKey = getElementKey(vertices[0]);
         dist.set(startKey, 0);
 
         // Relax edges V-1 times
         for (let i = 0; i < vertices.length - 1; i++) {
           for (const edge of edges) {
-            const fromKey = this.getElementKey(edge.from);
-            const toKey = this.getElementKey(edge.to);
+            const fromKey = getElementKey(edge.from);
+            const toKey = getElementKey(edge.to);
             const fromDist = dist.get(fromKey) ?? Infinity;
             const toDist = dist.get(toKey) ?? Infinity;
 
@@ -600,8 +555,8 @@ export class InvariantTracker {
 
         // Check for negative cycles
         for (const edge of edges) {
-          const fromKey = this.getElementKey(edge.from);
-          const toKey = this.getElementKey(edge.to);
+          const fromKey = getElementKey(edge.from);
+          const toKey = getElementKey(edge.to);
           const fromDist = dist.get(fromKey) ?? Infinity;
           const toDist = dist.get(toKey) ?? Infinity;
 
@@ -615,11 +570,18 @@ export class InvariantTracker {
 
       case 'all_weights_non_negative': {
         if (type !== 'graph') return false;
-        const graph = value as any; // Graph<RuntimeTypedBinder>
-        if (!graph || typeof graph.getEdges !== 'function') return false;
+
+        // Type guard for Graph instance
+        if (!(value instanceof Graph)) {
+          throw new Error('Graph predicate expects Graph instance');
+        }
+        const graph = value as Graph<RuntimeTypedBinder>;
 
         const edges = graph.getEdges();
         for (const edge of edges) {
+          if (!edge || typeof edge.weight !== 'number') {
+            throw new Error('Graph edges must have numeric weight property');
+          }
           if (edge.weight < 0) return false;
         }
         return true;
@@ -628,21 +590,26 @@ export class InvariantTracker {
       // Distance/Map predicates
       case 'distance_to_self_zero': {
         if (type !== 'map') return false;
-        const map = value as any; // SchemaMap or Map
+
+        // Type guard for SchemaMap instance
+        if (!(value instanceof SchemaMap)) {
+          throw new Error('Map predicate expects SchemaMap instance');
+        }
+        const map = value as SchemaMap<any, any>;
 
         // Check if this is a distance map where dist[v] should have v->0
         // This works if the map has entries for each vertex
-        const entries = (typeof map.entries === 'function') ? map.entries() : [];
+        const entries = map.entries();
 
         for (const [key, val] of entries) {
           // If key is a RuntimeTypedBinder, extract its value
-          const keyValue = (key as any).value !== undefined ? (key as any).value : key;
-          const distance = (val as any).value !== undefined ? (val as any).value : val;
+          const keyValue = (key as RuntimeTypedBinder).value !== undefined ? (key as RuntimeTypedBinder).value : key;
+          const distance = (val as RuntimeTypedBinder).value !== undefined ? (val as RuntimeTypedBinder).value : val;
 
           // Check if key maps to itself with distance 0
           if (typeof distance === 'object' && distance !== null) {
             // This might be a nested map structure like dist[u][v]
-            const selfDist = (typeof distance.get === 'function') ? distance.get(keyValue) : undefined;
+            const selfDist = (typeof (distance as any).get === 'function') ? (distance as any).get(keyValue) : undefined;
             if (selfDist !== undefined && selfDist !== 0) return false;
           }
         }
@@ -651,23 +618,28 @@ export class InvariantTracker {
 
       case 'triangle_inequality': {
         if (type !== 'map') return false;
-        const map = value as any; // SchemaMap representing distances
+
+        // Type guard for SchemaMap instance
+        if (!(value instanceof SchemaMap)) {
+          throw new Error('Map predicate expects SchemaMap instance');
+        }
+        const map = value as SchemaMap<any, any>;
 
         // For a distance map dist[u][v], triangle inequality: dist[u][v] <= dist[u][k] + dist[k][v]
-        const entries = (typeof map.entries === 'function') ? map.entries() : [];
+        const entries = map.entries();
         const vertices = new Set<any>();
 
         // Collect all vertices and build distance lookup
         const distMap = new Map<any, Map<any, number>>();
         for (const [key, val] of entries) {
-          const u = (key as any).value !== undefined ? (key as any).value : key;
+          const u = (key as RuntimeTypedBinder).value !== undefined ? (key as RuntimeTypedBinder).value : key;
           vertices.add(u);
 
-          if (typeof val === 'object' && val !== null && typeof val.entries === 'function') {
+          if (typeof val === 'object' && val !== null && typeof (val as any).entries === 'function') {
             const innerMap = new Map<any, number>();
-            for (const [k2, v2] of val.entries()) {
-              const v = (k2 as any).value !== undefined ? (k2 as any).value : k2;
-              const dist = (v2 as any).value !== undefined ? (v2 as any).value : v2;
+            for (const [k2, v2] of (val as any).entries()) {
+              const v = (k2 as RuntimeTypedBinder).value !== undefined ? (k2 as RuntimeTypedBinder).value : k2;
+              const dist = (v2 as RuntimeTypedBinder).value !== undefined ? (v2 as RuntimeTypedBinder).value : v2;
               vertices.add(v);
               innerMap.set(v, dist);
             }
@@ -702,11 +674,13 @@ export class InvariantTracker {
       // Set predicates
       case 'subset_of': {
         if (type !== 'set') return false;
-        const thisSet = value as any; // SchemaSet
-        const otherSet = predicate.superset;
 
-        if (!thisSet || typeof thisSet.toArray !== 'function') return false;
-        if (!otherSet || typeof otherSet.has !== 'function') return false;
+        // Type guard for SchemaSet instance
+        if (!(value instanceof SchemaSet)) {
+          throw new Error('Set predicate expects SchemaSet instance');
+        }
+        const thisSet = value as SchemaSet<RuntimeTypedBinder>;
+        const otherSet = predicate.superset;
 
         // Check if all elements in this set are in the superset
         const elements = thisSet.toArray();
@@ -718,11 +692,13 @@ export class InvariantTracker {
 
       case 'disjoint_from': {
         if (type !== 'set') return false;
-        const thisSet = value as any; // SchemaSet
-        const otherSet = predicate.other;
 
-        if (!thisSet || typeof thisSet.toArray !== 'function') return false;
-        if (!otherSet || typeof otherSet.has !== 'function') return false;
+        // Type guard for SchemaSet instance
+        if (!(value instanceof SchemaSet)) {
+          throw new Error('Set predicate expects SchemaSet instance');
+        }
+        const thisSet = value as SchemaSet<RuntimeTypedBinder>;
+        const otherSet = predicate.other;
 
         // Check if no elements in this set are in the other set
         const elements = thisSet.toArray();
@@ -731,11 +707,6 @@ export class InvariantTracker {
         }
         return true;
       }
-
-      // Immutability
-      case 'frozen':
-        // Handled separately via checkFrozenPredicate which has access to historical snapshots
-        return true;
 
       // Predicates that require full history context
       case 'monotonic':
@@ -746,8 +717,78 @@ export class InvariantTracker {
         // Handled separately
         return true;
 
-      default:
-        return true; // Default to true for unimplemented predicates
+      case 'is_permutation_of': {
+        if (type !== 'array' || !(value instanceof SchemaArray)) return false;
+        const arr = value as SchemaArray<RuntimeTypedBinder>;
+        const original = predicate.original;
+
+        // Check if lengths match
+        if (arr.length !== original.length) return false;
+
+        // Count occurrences in both arrays
+        const arrCounts = new Map<any, number>();
+        const origCounts = new Map<any, number>();
+
+        for (let i = 0; i < arr.length; i++) {
+          const elem = arr.get(i);
+          if (!elem) return false;
+          const key = getElementKey(elem);
+          arrCounts.set(key, (arrCounts.get(key) || 0) + 1);
+        }
+
+        for (let i = 0; i < original.length; i++) {
+          const elem = original.get(i);
+          if (!elem) return false;
+          const key = getElementKey(elem);
+          origCounts.set(key, (origCounts.get(key) || 0) + 1);
+        }
+
+        // Check if counts match
+        if (arrCounts.size !== origCounts.size) return false;
+        for (const [key, count] of arrCounts) {
+          if (origCounts.get(key) !== count) return false;
+        }
+
+        return true;
+      }
+
+      case 'all_elements_satisfy': {
+        if (type !== 'array' || !(value instanceof SchemaArray)) return false;
+        const arr = value as SchemaArray<RuntimeTypedBinder>;
+
+        // Check if all elements satisfy the nested predicate
+        for (let i = 0; i < arr.length; i++) {
+          const elem = arr.get(i);
+          if (!elem) return false;
+
+          // Convert element to a snapshot for checking
+          const elemSnapshot: VariableSnapshot = {
+            value: elem,
+            iteration: 0  // Not applicable for element checking
+          };
+
+          // Check the nested predicate on this element
+          if (!this.checkPredicate(predicate.predicate, elemSnapshot)) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      // Unimplemented predicates - explicitly list them and throw errors
+      case 'acyclic':
+      case 'connected':
+      case 'bipartite':
+      case 'bst_property':
+      case 'balanced':
+      case 'complete_tree':
+      case 'heap_property':
+        throw new Error(`Predicate '${predicate.kind}' is not yet implemented in checkPredicate`);
+
+      default: {
+        const _exhaustive: never = predicate;
+        throw new Error(`Unknown predicate kind in checkPredicate: ${JSON.stringify(_exhaustive)}`);
+      }
     }
   }
 
@@ -794,8 +835,9 @@ export class InvariantTracker {
       const curr = snapshots[i];
       const next = snapshots[i + 1];
 
-      const currValue = this.getSizeValue(curr.value);
-      const nextValue = this.getSizeValue(next.value);
+      // Use cached size values from snapshots to avoid mutable reference issues
+      const currValue = curr.arrayLength ?? curr.collectionSize ?? null;
+      const nextValue = next.arrayLength ?? next.collectionSize ?? null;
 
       if (currValue === null || nextValue === null) return false;
 
@@ -811,9 +853,46 @@ export class InvariantTracker {
     return true;
   }
 
+  private checkAllElementsSatisfy(
+    predicate: { kind: 'all_elements_satisfy'; predicate: Predicate },
+    snapshots: VariableSnapshot[]
+  ): boolean {
+    if (snapshots.length === 0) return true;
+
+    for (const snapshot of snapshots) {
+      const type = snapshot.value.type.static.kind;
+      if (type !== 'array') return false;
+
+      const arr = snapshot.value.value;
+      if (!(arr instanceof SchemaArray)) return false;
+
+      const { predicate: nestedPredicate } = predicate;
+
+      for (let i = 0; i < arr.length; i++) {
+        const elem = arr.get(i);
+        if (!elem) return false;
+
+        // Create a snapshot for the element to check the nested predicate
+        const elemSnapshot: VariableSnapshot = {
+          value: elem,
+          iteration: snapshot.iteration,
+          numericValue: (elem.type.static.kind === 'int' || elem.type.static.kind === 'float') ? elem.value as number : undefined,
+          arrayLength: (elem.type.static.kind === 'array' && elem.value instanceof SchemaArray) ? (elem.value as SchemaArray<RuntimeTypedBinder>).length : undefined,
+          collectionSize: (elem.value instanceof SchemaMap || elem.value instanceof SchemaSet) ? (elem.value as any).size : undefined
+        };
+
+        if (!this.checkPredicate(nestedPredicate, elemSnapshot)) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  }
+
   /**
    * Special check for range_satisfies predicates with nested temporal predicates
-   * Handles cases like range_satisfies(0, i, frozen)
+   * Handles cases like @range_satisfies(0, i, @positive)
    */
   private checkRangeSatisfiesPredicate(
     predicate: { kind: 'range_satisfies'; from: number; to: number; predicate: Predicate },
@@ -834,132 +913,26 @@ export class InvariantTracker {
       // Check range bounds
       if (from < 0 || to > arr.length || from > to) return false;
 
-      // For frozen nested predicate, check that elements in range don't change across snapshots
-      if (nestedPredicate.kind === 'frozen') {
-        // We need to check this across ALL snapshots
-        return this.checkRangeFrozen(from, to, snapshots);
-      }
-
       // For other predicates, check normally
       for (let i = from; i < to; i++) {
         const elem = arr.get(i);
         if (!elem) return false;
-        if (!this.checkPredicate(nestedPredicate, snapshot)) {
+
+        // Create a snapshot for the element to check the nested predicate
+        const elemSnapshot: VariableSnapshot = {
+          value: elem,
+          iteration: snapshot.iteration,
+          numericValue: (elem.type.static.kind === 'int' || elem.type.static.kind === 'float') ? elem.value as number : undefined,
+          arrayLength: (elem.type.static.kind === 'array' && elem.value instanceof SchemaArray) ? (elem.value as SchemaArray<RuntimeTypedBinder>).length : undefined,
+          collectionSize: (elem.value instanceof SchemaMap || elem.value instanceof SchemaSet) ? (elem.value as any).size : undefined
+        };
+
+        if (!this.checkPredicate(nestedPredicate, elemSnapshot)) {
           return false;
         }
       }
     }
 
     return true;
-  }
-
-  /**
-   * Check if elements in a specific range remain frozen across all snapshots
-   */
-  private checkRangeFrozen(from: number, to: number, snapshots: VariableSnapshot[]): boolean {
-    if (snapshots.length < 2) return true;
-
-    // For each index in the range, check if it stays the same across all snapshots
-    for (let index = from; index < to; index++) {
-      const firstElements = snapshots[0].arrayElements;
-      if (!firstElements || !firstElements.has(index)) return false;
-
-      const firstValue = firstElements.get(index);
-
-      // Check this index in all subsequent snapshots
-      for (let i = 1; i < snapshots.length; i++) {
-        const currentElements = snapshots[i].arrayElements;
-        if (!currentElements || !currentElements.has(index)) return false;
-
-        const currentValue = currentElements.get(index);
-        if (firstValue !== currentValue) {
-          return false;
-        }
-      }
-    }
-
-    return true;
-  }
-
-  /**
-   * Special check for frozen predicates across snapshots
-   * Verifies that a value (or array elements) never changes across iterations
-   */
-  private checkFrozenPredicate(
-    _predicate: { kind: 'frozen' },
-    snapshots: VariableSnapshot[]
-  ): boolean {
-    if (snapshots.length < 2) return true;
-
-    const firstSnapshot = snapshots[0];
-    const type = firstSnapshot.value.type.static.kind;
-
-    // For primitives: check if value never changes
-    if (type === 'int' || type === 'float' || type === 'string' || type === 'boolean') {
-      const firstValue = firstSnapshot.frozenValue;
-      for (let i = 1; i < snapshots.length; i++) {
-        const currentValue = snapshots[i].frozenValue;
-        if (firstValue !== currentValue) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    // For arrays: check if ALL elements never change
-    if (type === 'array') {
-      const firstElements = firstSnapshot.arrayElements;
-      if (!firstElements) return false;
-
-      // Check each subsequent snapshot
-      for (let i = 1; i < snapshots.length; i++) {
-        const currentElements = snapshots[i].arrayElements;
-        if (!currentElements) return false;
-
-        // If array length changed, it's not frozen
-        if (firstElements.size !== currentElements.size) {
-          return false;
-        }
-
-        // Check each element remains the same
-        for (const [index, firstValue] of firstElements.entries()) {
-          const currentValue = currentElements.get(index);
-          if (firstValue !== currentValue) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-
-    // For other types, we can't reliably check frozen property
-    return false;
-  }
-
-  /**
-   * Extract size value from RuntimeTypedBinder (for collections)
-   */
-  private getSizeValue(binder: RuntimeTypedBinder): number | null {
-    const type = binder.type.static.kind;
-    const value = binder.value;
-
-    if (type === 'array' && value instanceof SchemaArray) {
-      return value.length;
-    } else if (typeof value === 'object' && value !== null && 'size' in value) {
-      return (value as any).size;
-    }
-
-    return null;
-  }
-
-  /**
-   * Get a hashable key for an element (for uniqueness checking)
-   */
-  private getElementKey(elem: RuntimeTypedBinder): any {
-    const type = elem.type.static.kind;
-    if (type === 'int' || type === 'float' || type === 'string' || type === 'boolean') {
-      return elem.value;
-    }
-    return elem; // For complex types, use object identity
   }
 }

@@ -1,4 +1,4 @@
-import { RuntimeTypedBinder } from './values';
+import { RuntimeTypedBinder } from './runtime-utils';
 
 export class Environment {
   private bindings: Map<string, RuntimeTypedBinder> = new Map();

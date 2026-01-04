@@ -1,4 +1,4 @@
-import { Program, Statement, Expression } from '../types';
+import { Program, Statement, Expression } from '../transpiler/ast-types';
 import { FunEnv, initializeBuiltins, TypeEnv } from './type-checker-main';
 import { resolve, Type, typesEqual, typeToAnnotation, typeToString } from './type-checker-utils';
 
@@ -856,4 +856,9 @@ export class TypeInferer {
         throw new Error(`Type checking: cannot infer type for expression of type ${expr.type}`);
     }
   }
+}
+
+export function infer(program: Program): { typeEnv: TypeEnv; functionEnv: FunEnv; functionDeclEnv: Map<string, any> } {
+  const inferer = new TypeInferer();
+  return inferer.infer(program);
 }

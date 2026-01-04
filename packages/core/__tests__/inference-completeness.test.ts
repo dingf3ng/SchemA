@@ -1,7 +1,7 @@
-import { AntlrParser } from '../src/parser';
-import { TypeInferer } from '../src/type-checker/type-inferer';
-import { TypeRefiner } from '../src/type-checker/type-refiner';
-import { Program, ASTNode, FunctionDeclaration, VariableDeclaration, BlockStatement, IfStatement, WhileStatement, ForStatement, UntilStatement } from '../src/types';
+import { parse } from '../src/transpiler/parser';
+import { infer } from '../src/type-checker/type-inferer';
+import { refine } from '../src/type-checker/type-refiner';
+import { Program, ASTNode, FunctionDeclaration, VariableDeclaration, BlockStatement, IfStatement, WhileStatement, ForStatement, UntilStatement } from '../src/transpiler/ast-types';
 
 /**
  * Validates that the AST has complete type annotations after inference.
@@ -88,21 +88,17 @@ function validateTypeAnnotation(annotation: any, context: string) {
  * Helper to infer types and validate completeness
  */
 function expectInferenceComplete(code: string) {
-  const parser = new AntlrParser();
-  const ast = parser.parse(code);
-  const inferer = new TypeInferer();
+  const ast = parse(code);
 
   // Run inference
-  const inferredEnv = inferer.infer(ast);
+  const inferredEnv = infer(ast);
   
   // Run refinement
-  const refiner = new TypeRefiner(inferredEnv);
-  refiner.refine(ast);
-
+  const refinedEnv = refine(inferredEnv, ast);
   // Validate that inference produced complete types
   validateInferenceCompleteness(ast);
 
-  return { ast, inferer };
+  return { ast, inferredEnv, refinedEnv };
 }
 
 describe('Type Inference Completeness', () => {

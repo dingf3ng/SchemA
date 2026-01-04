@@ -1,4 +1,4 @@
-import { TypeAnnotation } from "../types";
+import { TypeAnnotation } from "../transpiler/ast-types";
 
 export type Type =
   | { kind: 'weak' } // weak polymorphic type, like in ocaml
@@ -8,6 +8,7 @@ export type Type =
   | { kind: 'string' }
   | { kind: 'boolean' }
   | { kind: 'void' }
+  | { kind: 'predicate' } // predicate type for nested predicates like @greater_than(5)
   | { kind: 'array'; elementType: Type }
   | { kind: 'map'; keyType: Type; valueType: Type }
   | { kind: 'set'; elementType: Type }
@@ -44,6 +45,8 @@ export function typeToString(type: Type): string {
       return 'boolean';
     case 'void':
       return 'void';
+    case 'predicate':
+      return 'Predicate';
     case 'range':
       return 'Range';
     case 'array':

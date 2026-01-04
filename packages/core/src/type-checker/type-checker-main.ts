@@ -1,7 +1,7 @@
-import { Program } from "../types";
-import { TypeChecker } from "./type-checker";
-import { TypeInferer } from "./type-inferer";
-import { TypeRefiner } from "./type-refiner";
+import { Program } from "../transpiler/ast-types";
+import { check, checkAndReturn, TypeChecker } from "./type-checker";
+import { infer } from "./type-inferer";
+import { refine } from "./type-refiner";
 import { Type } from "./type-checker-utils";
 
 export type FunEnv = Map<string, { parameters: Type[]; returnType: Type; variadic?: boolean } >;
@@ -80,9 +80,9 @@ export function initializeBuiltins(): [ FunEnv, TypeEnv ] {
  */
 export function typeCheck(program: Program): void {
   [program]
-    .map((prog) => new TypeInferer().infer(prog))
-    .map((infered) => new TypeRefiner(infered).refine(program))
-    .forEach((refined) => new TypeChecker(refined).check(program));
+    .map((prog) => infer(prog))
+    .map((infered) => refine(infered, program))
+    .forEach((refined) => check(refined, program));
 }
 
 /**
@@ -92,13 +92,8 @@ export function typeCheck(program: Program): void {
  */
 export function typecheckAndReturn(program: Program): TypeChecker {
   const checkers = [program]
-    .map((prog) => new TypeInferer().infer(prog))
-    .map((infered) => new TypeRefiner(infered).refine(program))
-    .map((refined) => {
-      const typeChecker = new TypeChecker(refined);
-      typeChecker.check(program);
-      return typeChecker;
-    });
-  
+    .map((prog) => infer(prog))
+    .map((infered) => refine(infered, program))
+    .map((refined) => checkAndReturn(refined, program));
   return checkers[0];
 }

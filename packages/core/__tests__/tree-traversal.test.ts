@@ -1,4 +1,4 @@
-import { BinaryTree, AVLTree } from '../src/runtime/data-structures';
+import { BinaryTree, AVLTree } from '../src/builtins/data-structures';
 
 describe('Tree Traversal Tests', () => {
   describe('BinaryTree Traversals', () => {

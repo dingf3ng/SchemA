@@ -1,15 +1,14 @@
-import { AntlrParser } from '../src/parser';
+import { parse } from '../src/transpiler/parser';
 import { TypeChecker } from '../src/type-checker/type-checker';
-import { typecheckAndReturn } from '../src/type-checker/type-checker-main';
 import { TypeInferer } from '../src/type-checker/type-inferer';
-import { Program } from '../src/types';
+import { Program } from '../src/transpiler/ast-types';
+import { typecheckAndReturn } from '../src/type-checker/type-checker-main';
 
 /**
  * Helper function to parse and typecheck code
  */
 function check(code: string): { ast: Program; typeChecker: TypeChecker } {
-  const parser = new AntlrParser();
-  const ast = parser.parse(code);
+  const ast = parse(code);
   const typeChecker = typecheckAndReturn(ast);
   return { ast, typeChecker };
 }
@@ -18,8 +17,7 @@ function check(code: string): { ast: Program; typeChecker: TypeChecker } {
  * Helper to just infer types without checking
  */
 function infer(code: string): { ast: Program; typeInferer: TypeInferer } {
-  const parser = new AntlrParser();
-  const ast = parser.parse(code);
+  const ast = parse(code);
   const inferer = new TypeInferer();
   inferer.infer(ast);
   return { ast, typeInferer: inferer };

@@ -1,33 +1,24 @@
-import { AntlrParser } from './parser';
-import { Interpreter } from './interpreter';
+import { parse } from './transpiler/parser';
+import { interpret, interpretWithFinalEnv } from './runtime/interpreter';
 import { typeCheck } from './type-checker/type-checker-main';
 
-export { AntlrParser } from './parser';
-export { Interpreter } from './interpreter';
-export { TypeChecker } from './type-checker/type-checker';
-export * from './types';
-export * from './runtime/values';
-export * from './runtime/data-structures';
+export { parse } from './transpiler/parser';
+export { interpret } from './runtime/interpreter';
+export { typeCheck } from './type-checker/type-checker-main';
+export * from './transpiler/ast-types';
+export * from './runtime/runtime-utils';
+export * from './builtins/data-structures';
 
 // New ANTLR-based API (recommended)
 export function run(code: string): string[] {
-  const parser = new AntlrParser();
-  const ast = parser.parse(code);
-
+  const ast = parse(code);
   typeCheck(ast);
-
-  const interpreter = new Interpreter();
-  return interpreter.evaluate(ast);
+  return interpret(ast);
 }
 
 // Run and return environment for testing/debugging
 export function runWithEnv(code: string) {
-  const parser = new AntlrParser();
-  const ast = parser.parse(code);
-
+  const ast = parse(code);
   typeCheck(ast);
-
-  const interpreter = new Interpreter();
-  const output = interpreter.evaluate(ast);
-  return { output, env: interpreter.getGlobalEnvironment() };
+  return interpretWithFinalEnv(ast);
 }

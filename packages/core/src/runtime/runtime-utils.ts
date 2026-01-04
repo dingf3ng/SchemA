@@ -1,5 +1,5 @@
-;import { Type } from '../type-checker/type-checker-utils';
-import { BlockStatement, Parameter } from '../types';
+import { Type } from '../type-checker/type-checker-utils';
+import { BlockStatement, Parameter } from '../transpiler/ast-types';
 import {
   SchemaArray,
   SchemaMap,
@@ -12,62 +12,9 @@ import {
   AVLTree,
   MinHeapMap,
   MaxHeapMap,
-} from './data-structures';
+} from '../builtins/data-structures';
 import { Environment } from './environment';
-
-export type Predicate =
-  // Numeric constraints
-  | { kind: 'int_range'; min: number; max: number }
-  | { kind: 'positive'; strict: boolean }  // > 0 or >= 0
-  | { kind: 'negative'; strict: boolean }  // < 0 or <= 0
-  | { kind: 'divisible_by'; divisor: number }
-  | { kind: 'parity'; value: 'even' | 'odd' }
-  | { kind: 'monotonic'; direction: 'increasing' | 'decreasing'; strict: boolean }  // For numeric values over time
-
-  // Collection size constraints
-  | { kind: 'size_range'; min: number; max: number }
-  | { kind: 'non_empty' }
-  | { kind: 'size_equals'; size: number }
-
-  // Collection ordering/structure constraints
-  | { kind: 'sorted'; order: 'asc' | 'desc' }
-  | { kind: 'unique_elements' }  // For arrays
-  | { kind: 'heap_property'; heapType: 'min' | 'max' }
-
-  // Graph-specific invariants
-  | { kind: 'acyclic' }
-  | { kind: 'connected' }
-  | { kind: 'bipartite' }
-  | { kind: 'no_negative_cycles' }
-  | { kind: 'all_weights_non_negative' }
-
-  // Tree-specific invariants
-  | { kind: 'bst_property' }
-  | { kind: 'balanced'; balanceType: 'avl' | 'redblack' }
-  | { kind: 'complete_tree' }
-
-  // Relational constraints (for maps/arrays)
-  | { kind: 'size_monotonic'; direction: 'increasing' | 'decreasing'; strict: boolean }
-  | { kind: 'range_satisfies'; from: number; to: number; predicate: Predicate }  // All elements in range satisfy predicate, for arrays
-  | { kind: 'all_values_satisfy'; predicate: Predicate }  // Recursive for nested
-
-  // Array partitioning (for quicksort)
-  | { kind: 'partitioned_at'; pivotIndex: number }  // Elements before pivot <= pivot, after >= pivot
-  | { kind: 'partitioned_by_value'; pivotValue: number }  // Elements partitioned by value
-
-  // Permutation invariant (for sorting)
-  | { kind: 'is_permutation_of'; original: any[] }  // Array is a permutation of original
-
-  // Map/distance properties (for graph algorithms)
-  | { kind: 'distance_to_self_zero' }  // dist[start] == 0
-  | { kind: 'triangle_inequality' }  // dist[u] + weight(u,v) >= dist[v]
-
-  // Set properties
-  | { kind: 'subset_of'; superset: SchemaSet<any> }  // Set is subset of another
-  | { kind: 'disjoint_from'; other: SchemaSet<any> }  // Set has no overlap with another
-
-  // Immutability constraints
-  | { kind: 'frozen' }  // Elements/values cannot be modified
+import { Predicate } from '../analyzer/analyzer-utils';
 
 export type RuntimeType =
   { static: Type, refinements: Predicate[] }
@@ -90,6 +37,13 @@ export type RuntimeTypedBinder =
   | { value: LazyRange; type: RuntimeType }
   | { value: RuntimeTypedBinder[]; type: RuntimeType } // tuples
   | { value: Map<RuntimeTypedBinder, RuntimeTypedBinder>; type: RuntimeType } // records
+  | {
+      value: {
+        predicateName: string;
+        predicateArgs: RuntimeTypedBinder[];
+      };
+      type: RuntimeType;
+    } // predicate type for nested predicates like @greater_than(5)
   | {
       value: {
         parameters: Parameter[];
@@ -125,8 +79,15 @@ export function RuntimeTypedBinderToString(binder: RuntimeTypedBinder): string {
     case 'graph':
     case 'range':
       return value!.toString()
+    case 'predicate': {
+      const predicateValue = value as { predicateName: string; predicateArgs: RuntimeTypedBinder[] };
+      const argsStr = predicateValue.predicateArgs
+        .map((arg) => RuntimeTypedBinderToString(arg))
+        .join(', ');
+      return `${predicateValue.predicateName}(${argsStr})`;
+    }
     case 'tuple': {
-      const values = value as RuntimeTypedBinder[]; 
+      const values = value as RuntimeTypedBinder[];
       return `(${values.map((v) => RuntimeTypedBinderToString(v)).join(', ')})`;
     }
     case 'record': {

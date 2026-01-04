@@ -1,4 +1,4 @@
-import { Program, Statement, Expression, MemberExpression } from '../types';
+import { Program, Statement, Expression, MemberExpression } from '../transpiler/ast-types';
 import { FunEnv, TypeEnv } from './type-checker-main';
 import { resolve, Type, typesEqual, typeToAnnotation } from './type-checker-utils';
 
@@ -6,7 +6,7 @@ import { resolve, Type, typesEqual, typeToAnnotation } from './type-checker-util
  * TypeRefiner is responsible for refining weak polymorphic types into more precise types.
  * It analyzes usage patterns and constraints to determine the most specific types possible.
  */
-export class TypeRefiner {
+class TypeRefiner {
   // Maps variable names to their types
   private typeEnv: TypeEnv = new Map();
 
@@ -1192,4 +1192,16 @@ export class TypeRefiner {
         break;
     }
   }
+}
+
+export function refine(
+  inferred : { typeEnv: TypeEnv; functionEnv: FunEnv; functionDeclEnv: Map<string, any>; },
+  program: Program
+): { typeEnv: TypeEnv; functionEnv: FunEnv } {
+  const refiner = new TypeRefiner(
+    { typeEnv: inferred.typeEnv,
+      functionEnv: inferred.functionEnv,
+      functionDeclEnv: inferred.functionDeclEnv
+    });
+  return refiner.refine(program);
 }

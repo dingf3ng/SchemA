@@ -1,19 +1,16 @@
 import {
-  Statement,
   Expression,
   InvariantStatement,
   AssertStatement,
-} from './types';
-import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime/values';
-import { Environment } from './runtime/environment';
+} from '../transpiler/ast-types';
+import { RuntimeTypedBinder, RuntimeTypedBinderToString } from '../runtime/runtime-utils';
+import { Environment } from '../runtime/environment';
 
 /**
  * Analyzer class for checking @invariant and @assert statements
  * Sits on top of the interpreter and performs runtime verification
  */
 export class Analyzer {
-  // Track loop iteration count for better error messages
-  private loopIterationCount: number = 0;
 
   /**
    * Check an @assert statement

@@ -1,5 +1,5 @@
 import { runWithEnv } from '../src/index';
-import { Predicate } from '../src/runtime/values';
+import { Predicate } from '../src/analyzer/analyzer-utils';
 
 /**
  * Helper to check if a predicate of a specific kind exists

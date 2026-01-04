@@ -17,11 +17,9 @@ import {
   TypeAnnotation,
   Parameter,
   PredicateCheckExpression,
-} from './types';
-import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime/values';
-import { parsePredicateName } from './runtime/predicate-utils';
-import { Environment } from './runtime/environment';
-import { typeToString } from './type-checker/type-checker-utils';
+} from '../transpiler/ast-types';
+import { parsePredicateName } from '../analyzer/analyzer-utils';
+import { typeToString } from '../type-checker/type-checker-utils';
 import {
   SchemaArray,
   SchemaMap,
@@ -34,20 +32,23 @@ import {
   LazyRange,
   BinaryTree,
   AVLTree,
-} from './runtime/data-structures';
-import { Analyzer } from './analyzer';
-import { InvariantTracker } from './synthesizer';
-import { Type } from './type-checker/type-checker-utils';
+} from '../builtins/data-structures';
+import { Analyzer } from '../analyzer/analyzer';
+import { InvariantTracker } from '../analyzer/synthesizer';
+import { Type } from '../type-checker/type-checker-utils';
+import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime-utils';
+import { Environment } from './environment';
 
 class ReturnException {
   constructor(public value: RuntimeTypedBinder) { }
 }
 
-export class Interpreter {
+class Interpreter {
   private globalEnv: Environment = new Environment();
   private currentEnv: Environment;
   private output: string[] = [];
   private analyzer: Analyzer = new Analyzer();
+  private trackerStack: InvariantTracker[] = [];
 
   constructor() {
     this.currentEnv = this.globalEnv;
@@ -68,6 +69,18 @@ export class Interpreter {
     return this.globalEnv;
   }
 
+  /**
+   * 
+   */
+  public getEnvironmentStack(): Environment[] {
+    const envs: Environment[] = [];
+    let env: Environment | null = this.currentEnv;
+    while (env) {
+      envs.push(env);
+      env = env['parent'];
+    }
+    return envs;
+  }
 
 
   private initializeBuiltins(): void {
@@ -521,40 +534,45 @@ export class Interpreter {
 
     // Initialize invariant tracker for automatic synthesis
     const tracker = new InvariantTracker();
+    this.trackerStack.push(tracker);
 
     // Record initial state before any iterations
     tracker.recordState(this.currentEnv, 0);
 
-    while (true) {
-      const condition = this.evaluateExpression(stmt.condition);
-      if (condition.type.static.kind !== 'boolean') {
-        throw new Error('While condition must be boolean');
-      }
-      if (!(condition.value as boolean)) break;
-
-      // Check invariants before iteration
-      this.checkLoopInvariants(invariants, iteration);
-
-      try {
-        this.evaluateStatement(stmt.body);
-      } catch (e) {
-        // If early return, check invariants before exiting
-        if (e instanceof ReturnException) {
-          this.checkLoopInvariants(invariants, iteration);
+    try {
+      while (true) {
+        const condition = this.evaluateExpression(stmt.condition);
+        if (condition.type.static.kind !== 'boolean') {
+          throw new Error('While condition must be boolean');
         }
-        throw e;
-      }
+        if (!(condition.value as boolean)) break;
 
-      // Check invariants after iteration
+        // Check invariants before iteration
+        this.checkLoopInvariants(invariants, iteration);
+
+        try {
+          this.evaluateStatement(stmt.body);
+        } catch (e) {
+          // If early return, check invariants before exiting
+          if (e instanceof ReturnException) {
+            this.checkLoopInvariants(invariants, iteration);
+          }
+          throw e;
+        }
+
+        // Check invariants after iteration
         // Record state after iteration
         tracker.recordState(this.currentEnv, iteration);
 
-      this.checkLoopInvariants(invariants, iteration);
+        this.checkLoopInvariants(invariants, iteration);
 
-      // Record state after iteration (to capture final values)
-      // Moved to after iteration
+        // Record state after iteration (to capture final values)
+        // Moved to after iteration
 
-      iteration++;
+        iteration++;
+      }
+    } finally {
+      this.trackerStack.pop();
     }
 
     // Record final state after loop exits
@@ -579,40 +597,45 @@ export class Interpreter {
 
     // Initialize invariant tracker for automatic synthesis
     const tracker = new InvariantTracker();
+    this.trackerStack.push(tracker);
 
     // Record initial state before any iterations
     tracker.recordState(this.currentEnv, 0);
 
-    while (true) {
-      const condition = this.evaluateExpression(stmt.condition);
-      if (condition.type.static.kind !== 'boolean') {
-        throw new Error('Until condition must be boolean');
-      }
-      if (condition.value as boolean) break;
-
-      // Check invariants before iteration
-      this.checkLoopInvariants(invariants, iteration);
-
-      try {
-        this.evaluateStatement(stmt.body);
-      } catch (e) {
-        // If early return, check invariants before exiting
-        if (e instanceof ReturnException) {
-          this.checkLoopInvariants(invariants, iteration);
+    try {
+      while (true) {
+        const condition = this.evaluateExpression(stmt.condition);
+        if (condition.type.static.kind !== 'boolean') {
+          throw new Error('Until condition must be boolean');
         }
-        throw e;
-      }
+        if (condition.value as boolean) break;
 
-      // Check invariants after iteration
+        // Check invariants before iteration
+        this.checkLoopInvariants(invariants, iteration);
+
+        try {
+          this.evaluateStatement(stmt.body);
+        } catch (e) {
+          // If early return, check invariants before exiting
+          if (e instanceof ReturnException) {
+            this.checkLoopInvariants(invariants, iteration);
+          }
+          throw e;
+        }
+
+        // Check invariants after iteration
         // Record state after iteration
         tracker.recordState(this.currentEnv, iteration);
 
-      this.checkLoopInvariants(invariants, iteration);
+        this.checkLoopInvariants(invariants, iteration);
 
-      // Record state after iteration (to capture final values)
-      // Moved to after iteration
+        // Record state after iteration (to capture final values)
+        // Moved to after iteration
 
-      iteration++;
+        iteration++;
+      }
+    } finally {
+      this.trackerStack.pop();
     }
 
     // Record final state after loop exits
@@ -642,141 +665,146 @@ export class Interpreter {
 
     // Initialize invariant tracker for automatic synthesis
     const tracker = new InvariantTracker();
+    this.trackerStack.push(tracker);
 
     // Record initial state before loop starts
     tracker.recordState(this.currentEnv, 0);
 
-    if (iterable.type.static.kind === 'array') {
-      (iterable.value as SchemaArray<RuntimeTypedBinder>).forEach((item) => {
-        // Skip binding if the variable name is '_' (unnamed variable)
-        if (stmt.variable !== '_') {
-          this.currentEnv.define(stmt.variable, item);
-        }
-
-        // Check invariants before iteration
-        this.checkLoopInvariants(invariants, iteration);
-
-        try {
-          this.evaluateStatement(stmt.body);
-        } catch (e) {
-          // If early return, check invariants before exiting
-          if (e instanceof ReturnException) {
-            this.checkLoopInvariants(invariants, iteration);
+    try {
+      if (iterable.type.static.kind === 'array') {
+        (iterable.value as SchemaArray<RuntimeTypedBinder>).forEach((item) => {
+          // Skip binding if the variable name is '_' (unnamed variable)
+          if (stmt.variable !== '_') {
+            this.currentEnv.define(stmt.variable, item);
           }
-          throw e;
-        }
 
-        // Check invariants after iteration
-        // Record state after iteration
-        tracker.recordState(this.currentEnv, iteration);
+          // Check invariants before iteration
+          this.checkLoopInvariants(invariants, iteration);
 
-        this.checkLoopInvariants(invariants, iteration);
-
-        // Record state after iteration
-        // Moved to after iteration
-
-        iteration++;
-      });
-    } else if (iterable.type.static.kind === 'set') {
-      (iterable.value as SchemaSet<RuntimeTypedBinder>).forEach((item) => {
-        // Items in sets are already RuntimeTypedBinders
-        const runtimeItem = item as RuntimeTypedBinder;
-        // Skip binding if the variable name is '_' (unnamed variable)
-        if (stmt.variable !== '_') {
-          this.currentEnv.define(stmt.variable, runtimeItem);
-        }
-
-        // Check invariants before iteration
-        // Moved to after iteration
-
-        // Check invariants before iteration
-        this.checkLoopInvariants(invariants, iteration);
-
-        try {
-          this.evaluateStatement(stmt.body);
-        } catch (e) {
-          // If early return, check invariants before exiting
-          if (e instanceof ReturnException) {
-            this.checkLoopInvariants(invariants, iteration);
+          try {
+            this.evaluateStatement(stmt.body);
+          } catch (e) {
+            // If early return, check invariants before exiting
+            if (e instanceof ReturnException) {
+              this.checkLoopInvariants(invariants, iteration);
+            }
+            throw e;
           }
-          throw e;
-        }
 
-        // Check invariants after iteration
-        // Record state after iteration
-        tracker.recordState(this.currentEnv, iteration);
+          // Check invariants after iteration
+          // Record state after iteration
+          tracker.recordState(this.currentEnv, iteration);
 
-        this.checkLoopInvariants(invariants, iteration);
+          this.checkLoopInvariants(invariants, iteration);
 
-        iteration++;
-      });
-    } else if (iterable.type.static.kind === 'map') {
-      (iterable.value as SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>).forEach((value, key) => {
-        // Keys in maps are already RuntimeTypedBinders
-        const runtimeKey = key as RuntimeTypedBinder;
-        // Skip binding if the variable name is '_' (unnamed variable)
-        if (stmt.variable !== '_') {
-          this.currentEnv.define(stmt.variable, runtimeKey);
-        }
+          // Record state after iteration
+          // Moved to after iteration
 
-        // Check invariants before iteration
-        // Moved to after iteration
-
-        // Check invariants before iteration
-        this.checkLoopInvariants(invariants, iteration);
-
-        try {
-          this.evaluateStatement(stmt.body);
-        } catch (e) {
-          // If early return, check invariants before exiting
-          if (e instanceof ReturnException) {
-            this.checkLoopInvariants(invariants, iteration);
+          iteration++;
+        });
+      } else if (iterable.type.static.kind === 'set') {
+        (iterable.value as SchemaSet<RuntimeTypedBinder>).forEach((item) => {
+          // Items in sets are already RuntimeTypedBinders
+          const runtimeItem = item as RuntimeTypedBinder;
+          // Skip binding if the variable name is '_' (unnamed variable)
+          if (stmt.variable !== '_') {
+            this.currentEnv.define(stmt.variable, runtimeItem);
           }
-          throw e;
-        }
 
-        // Check invariants after iteration
-        // Record state after iteration
-        tracker.recordState(this.currentEnv, iteration);
+          // Check invariants before iteration
+          // Moved to after iteration
 
-        this.checkLoopInvariants(invariants, iteration);
+          // Check invariants before iteration
+          this.checkLoopInvariants(invariants, iteration);
 
-        iteration++;
-      });
-    } else if (iterable.type.static.kind === 'range') {
-      (iterable.value as LazyRange).generate();
-      // Support for infinite ranges - use the generator
-      for (const value of (iterable.value as LazyRange).generate()) {
-        const runtimeValue: RuntimeTypedBinder = { value, type: { static: { kind: 'int' }, refinements: [] } };
-        // Skip binding if the variable name is '_' (unnamed variable)
-        if (stmt.variable !== '_') {
-          this.currentEnv.define(stmt.variable, runtimeValue);
-        }
-
-        // Check invariants before iteration
-        // Moved to after iteration
-
-        // Check invariants before iteration
-        this.checkLoopInvariants(invariants, iteration);
-
-        try {
-          this.evaluateStatement(stmt.body);
-        } catch (e) {
-          // If early return, check invariants before exiting
-          if (e instanceof ReturnException) {
-            this.checkLoopInvariants(invariants, iteration);
+          try {
+            this.evaluateStatement(stmt.body);
+          } catch (e) {
+            // If early return, check invariants before exiting
+            if (e instanceof ReturnException) {
+              this.checkLoopInvariants(invariants, iteration);
+            }
+            throw e;
           }
-          throw e;
+
+          // Check invariants after iteration
+          // Record state after iteration
+          tracker.recordState(this.currentEnv, iteration);
+
+          this.checkLoopInvariants(invariants, iteration);
+
+          iteration++;
+        });
+      } else if (iterable.type.static.kind === 'map') {
+        (iterable.value as SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>).forEach((value, key) => {
+          // Keys in maps are already RuntimeTypedBinders
+          const runtimeKey = key as RuntimeTypedBinder;
+          // Skip binding if the variable name is '_' (unnamed variable)
+          if (stmt.variable !== '_') {
+            this.currentEnv.define(stmt.variable, runtimeKey);
+          }
+
+          // Check invariants before iteration
+          // Moved to after iteration
+
+          // Check invariants before iteration
+          this.checkLoopInvariants(invariants, iteration);
+
+          try {
+            this.evaluateStatement(stmt.body);
+          } catch (e) {
+            // If early return, check invariants before exiting
+            if (e instanceof ReturnException) {
+              this.checkLoopInvariants(invariants, iteration);
+            }
+            throw e;
+          }
+
+          // Check invariants after iteration
+          // Record state after iteration
+          tracker.recordState(this.currentEnv, iteration);
+
+          this.checkLoopInvariants(invariants, iteration);
+
+          iteration++;
+        });
+      } else if (iterable.type.static.kind === 'range') {
+        (iterable.value as LazyRange).generate();
+        // Support for infinite ranges - use the generator
+        for (const value of (iterable.value as LazyRange).generate()) {
+          const runtimeValue: RuntimeTypedBinder = { value, type: { static: { kind: 'int' }, refinements: [] } };
+          // Skip binding if the variable name is '_' (unnamed variable)
+          if (stmt.variable !== '_') {
+            this.currentEnv.define(stmt.variable, runtimeValue);
+          }
+
+          // Check invariants before iteration
+          // Moved to after iteration
+
+          // Check invariants before iteration
+          this.checkLoopInvariants(invariants, iteration);
+
+          try {
+            this.evaluateStatement(stmt.body);
+          } catch (e) {
+            // If early return, check invariants before exiting
+            if (e instanceof ReturnException) {
+              this.checkLoopInvariants(invariants, iteration);
+            }
+            throw e;
+          }
+
+          // Check invariants after iteration
+          // Record state after iteration
+          tracker.recordState(this.currentEnv, iteration);
+
+          this.checkLoopInvariants(invariants, iteration);
+
+          iteration++;
         }
-
-        // Check invariants after iteration
-        // Record state after iteration
-        tracker.recordState(this.currentEnv, iteration);
-
-        this.checkLoopInvariants(invariants, iteration);
-
-        iteration++;
       }
+    } finally {
+      this.trackerStack.pop();
     }
 
     // Synthesize and attach invariants to variables
@@ -1749,7 +1777,11 @@ export class Interpreter {
       case 'PredicateCheckExpression': {
         const predicateExpr = expr as PredicateCheckExpression;
         const subject = this.evaluateExpression(predicateExpr.subject);
-        const tracker = new InvariantTracker();
+
+        // Use existing tracker if available (inside a loop), otherwise create a new one
+        const tracker = this.trackerStack.length > 0
+          ? this.trackerStack[this.trackerStack.length - 1]
+          : new InvariantTracker();
 
         // Evaluate predicate arguments if any
         let predicateArgs: RuntimeTypedBinder[] | undefined;
@@ -1759,9 +1791,15 @@ export class Interpreter {
 
         // Parse the predicate name into a Predicate object
         const predicate = parsePredicateName(predicateExpr.predicateName, predicateArgs);
-        
+
+        // Get variable name if subject is an identifier
+        let variableName: string | undefined;
+        if (predicateExpr.subject.type === 'Identifier') {
+          variableName = (predicateExpr.subject as any).name;
+        }
+
         // Check the predicate against the subject value
-        const result = tracker.check(predicate, subject);
+        const result = tracker.check(predicate, subject, variableName);
 
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: result };
       }
@@ -2009,7 +2047,7 @@ export class Interpreter {
     // Comparison operators: work on int or float
     if (expr.operator === '<') {
       if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
+        (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) < (right.value as number) };
       }
       throw new Error(`Cannot compare ${leftType} < ${rightType}. At line ${expr.line}, column ${expr.column}`);
@@ -2017,7 +2055,7 @@ export class Interpreter {
 
     if (expr.operator === '<=') {
       if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
+        (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) <= (right.value as number) };
       }
       throw new Error(`Cannot compare ${leftType} <= ${rightType}. At line ${expr.line}, column ${expr.column}`);
@@ -2025,7 +2063,7 @@ export class Interpreter {
 
     if (expr.operator === '>') {
       if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
+        (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) > (right.value as number) };
       }
       throw new Error(`Cannot compare ${leftType} > ${rightType}. At line ${expr.line}, column ${expr.column}`);
@@ -2033,7 +2071,7 @@ export class Interpreter {
 
     if (expr.operator === '>=') {
       if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
+        (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
         return { type: { static: { kind: 'boolean' }, refinements: [] }, value: (left.value as number) >= (right.value as number) };
       }
       throw new Error(`Cannot compare ${leftType} >= ${rightType}. At line ${expr.line}, column ${expr.column}`);
@@ -2052,6 +2090,22 @@ export class Interpreter {
   }
 
   private evaluateCallExpression(expr: any): RuntimeTypedBinder {
+    // Special case: MetaIdentifier callee means this is a predicate call like @greater_than(5)
+    // We encode this with the predicate type
+    if (expr.callee.type === 'MetaIdentifier') {
+      const predicateName = expr.callee.name;
+      const predicateArgs = expr.arguments.map((arg: Expression) => this.evaluateExpression(arg));
+
+      // Create a proper predicate value
+      return {
+        value: {
+          predicateName,
+          predicateArgs
+        },
+        type: { static: { kind: 'predicate' }, refinements: [] }
+      };
+    }
+
     const callee = this.evaluateExpression(expr.callee);
 
     // Check if it's a function with the new runtime type system
@@ -2189,4 +2243,15 @@ export class Interpreter {
     // For complex types, return the type kind as-is
     return type.kind;
   }
+}
+
+export function interpret(program: Program): string[] {
+  const interpreter = new Interpreter();
+  return interpreter.evaluate(program);
+}
+
+export function interpretWithFinalEnv(program: Program): { output: string[]; env: Environment } {
+  const interpreter = new Interpreter();
+  const output = interpreter.evaluate(program);
+  return { output, env: interpreter.getEnvironment() };
 }
