@@ -68,6 +68,113 @@
       border-color: #007acc;
     }
 
+    .stepper-toggle {
+      background: #3c3c3c;
+      color: #cccccc;
+      border: 1px solid #3e3e42;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      outline: none;
+      transition: background 0.2s;
+    }
+
+    .stepper-toggle:hover {
+      background: #464646;
+    }
+
+    .stepper-toggle.active {
+      background: #007acc;
+      border-color: #007acc;
+      color: white;
+    }
+
+    .stepper-controls {
+      display: none;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .stepper-controls.active {
+      display: flex;
+    }
+
+    .stepper-btn {
+      background: #3c3c3c;
+      color: #cccccc;
+      border: 1px solid #3e3e42;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      outline: none;
+      transition: background 0.2s;
+    }
+
+    .stepper-btn:hover:not(:disabled) {
+      background: #464646;
+    }
+
+    .stepper-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .stepper-info {
+      font-size: 12px;
+      color: #858585;
+    }
+
+    .environment-viewer {
+      display: none;
+      border-top: 1px solid #3e3e42;
+      max-height: 50%;
+      overflow-y: auto;
+      background: #1e1e1e;
+    }
+
+    .environment-viewer.active {
+      display: block;
+    }
+
+    .environment-header {
+      background: #252526;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #cccccc;
+      border-bottom: 1px solid #3e3e42;
+    }
+
+    .environment-content {
+      padding: 12px 16px;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .env-var {
+      margin-bottom: 8px;
+    }
+
+    .env-var-name {
+      color: #9cdcfe;
+      font-weight: 500;
+    }
+
+    .env-var-value {
+      color: #ce9178;
+      margin-left: 8px;
+    }
+
+    .current-line-highlight {
+      background: rgba(255, 255, 0, 0.1);
+      position: absolute;
+      width: 100%;
+      pointer-events: none;
+    }
+
     .main-content {
       display: flex;
       height: 100%;
@@ -200,6 +307,13 @@
         <select id="example-picker" class="example-picker">
           <option value="">Select an example...</option>
         </select>
+        <button id="stepper-toggle" class="stepper-toggle">Stepper Mode</button>
+        <div id="stepper-controls" class="stepper-controls">
+          <button id="step-btn" class="stepper-btn">Step</button>
+          <button id="continue-btn" class="stepper-btn">Continue</button>
+          <button id="reset-btn" class="stepper-btn">Reset</button>
+          <span id="stepper-info" class="stepper-info">Ready</span>
+        </div>
       </div>
     </header>
 
@@ -212,6 +326,12 @@
           <span id="preview-summary">Ready</span>
         </div>
         <div id="preview-output">Program is empty.</div>
+        <div id="environment-viewer" class="environment-viewer">
+          <div class="environment-header">Environment</div>
+          <div id="environment-content" class="environment-content">
+            No variables yet.
+          </div>
+        </div>
       </div>
     </div>
   </div>

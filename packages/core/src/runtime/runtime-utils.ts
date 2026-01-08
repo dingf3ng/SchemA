@@ -51,13 +51,13 @@ export type RuntimeTypedBinder =
         closure: Environment;
       };
       type: RuntimeType;
-    }
+    } // function type
   | {
       value: {
         fn: (...args: RuntimeTypedBinder[]) => RuntimeTypedBinder;
       };
       type: RuntimeType;
-    };
+    }; // builtin function type
 
 export function RuntimeTypedBinderToString(binder: RuntimeTypedBinder): string {
   const { value, type } = binder;

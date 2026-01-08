@@ -43,7 +43,7 @@ class ReturnException {
   constructor(public value: RuntimeTypedBinder) { }
 }
 
-class Interpreter {
+export class Interpreter {
   private globalEnv: Environment = new Environment();
   private currentEnv: Environment;
   private output: string[] = [];
@@ -63,6 +63,13 @@ class Interpreter {
   }
 
   /**
+   * Set the current environment (for stepper)
+   */
+  public setEnvironment(env: Environment): void {
+    this.currentEnv = env;
+  }
+
+  /**
    * Get the global environment (for testing/debugging)
    */
   public getGlobalEnvironment(): Environment {
@@ -70,7 +77,7 @@ class Interpreter {
   }
 
   /**
-   * 
+   *
    */
   public getEnvironmentStack(): Environment[] {
     const envs: Environment[] = [];
@@ -80,6 +87,13 @@ class Interpreter {
       env = env['parent'];
     }
     return envs;
+  }
+
+  /**
+   * Public wrapper for evaluateExpression (for stepper)
+   */
+  public evaluateExpressionPublic(expr: Expression): RuntimeTypedBinder {
+    return this.evaluateExpression(expr);
   }
 
 
@@ -253,7 +267,7 @@ class Interpreter {
     return this.output;
   }
 
-  private evaluateStatement(stmt: Statement): void {
+  public evaluateStatement(stmt: Statement): void {
     try {
       switch (stmt.type) {
         case 'FunctionDeclaration':

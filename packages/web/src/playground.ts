@@ -361,6 +361,194 @@ function initializeResizer() {
   });
 }
 
+// Stepper mode state
+let stepperMode = false;
+let stepperWorker: Worker | null = null;
+let currentLineDecoration: string[] = [];
+
+function initializeStepper(editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) {
+  const toggleBtn = document.getElementById('stepper-toggle') as HTMLButtonElement;
+  const stepperControls = document.getElementById('stepper-controls') as HTMLElement;
+  const stepBtn = document.getElementById('step-btn') as HTMLButtonElement;
+  const continueBtn = document.getElementById('continue-btn') as HTMLButtonElement;
+  const resetBtn = document.getElementById('reset-btn') as HTMLButtonElement;
+  const stepperInfo = document.getElementById('stepper-info') as HTMLElement;
+  const environmentViewer = document.getElementById('environment-viewer') as HTMLElement;
+  const environmentContent = document.getElementById('environment-content') as HTMLElement;
+
+  if (!toggleBtn || !stepperControls || !stepBtn || !continueBtn || !resetBtn || !stepperInfo) {
+    return;
+  }
+
+  // Toggle stepper mode
+  toggleBtn.addEventListener('click', () => {
+    stepperMode = !stepperMode;
+
+    if (stepperMode) {
+      toggleBtn.classList.add('active');
+      stepperControls.classList.add('active');
+      environmentViewer?.classList.add('active');
+
+      // Initialize stepper worker
+      initializeStepperWorker(editor, monaco);
+
+      stepperInfo.textContent = 'Ready';
+      stepBtn.disabled = false;
+      continueBtn.disabled = false;
+      resetBtn.disabled = false;
+    } else {
+      toggleBtn.classList.remove('active');
+      stepperControls.classList.remove('active');
+      environmentViewer?.classList.remove('active');
+
+      // Terminate stepper worker
+      if (stepperWorker) {
+        stepperWorker.terminate();
+        stepperWorker = null;
+      }
+
+      // Clear line highlight
+      currentLineDecoration = editor.deltaDecorations(currentLineDecoration, []);
+    }
+  });
+
+  // Step button
+  stepBtn.addEventListener('click', () => {
+    if (stepperWorker) {
+      stepperWorker.postMessage({ type: 'step' });
+    }
+  });
+
+  // Continue button
+  continueBtn.addEventListener('click', () => {
+    if (stepperWorker) {
+      stepperWorker.postMessage({ type: 'continue' });
+    }
+  });
+
+  // Reset button
+  resetBtn.addEventListener('click', () => {
+    if (stepperWorker) {
+      stepperWorker.terminate();
+    }
+    initializeStepperWorker(editor, monaco);
+  });
+
+  function initializeStepperWorker(editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) {
+    stepperWorker = new Worker(new URL('./stepper-worker.ts', import.meta.url), { type: 'module' });
+
+    stepperWorker.onmessage = (event) => {
+      const { type, payload } = event.data;
+
+      if (type === 'state') {
+        updateStepperState(payload, editor, monaco);
+      } else if (type === 'error') {
+        setSummary('ERROR', 'error');
+        renderPreviewText(payload.message, 'error');
+        stepBtn.disabled = true;
+        continueBtn.disabled = true;
+      }
+    };
+
+    stepperWorker.onerror = (error) => {
+      console.error('Stepper worker error:', error);
+      setSummary('Stepper worker crashed', 'error');
+    };
+
+    // Initialize with current code
+    const code = editor.getValue();
+    stepperWorker.postMessage({ type: 'initialize', payload: { code } });
+  }
+
+  function updateStepperState(state: { statementIndex: number; environment: Record<string, unknown>; output: string[]; finished: boolean; line: number; column: number }, editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) {
+    const { statementIndex, environment, output, finished, line } = state;
+
+    // Update info
+    if (finished) {
+      stepperInfo.textContent = 'Finished';
+      stepBtn.disabled = true;
+      continueBtn.disabled = true;
+    } else {
+      stepperInfo.textContent = `Step ${statementIndex + 1}`;
+      stepBtn.disabled = false;
+      continueBtn.disabled = false;
+    }
+
+    // Update output
+    if (output && output.length > 0) {
+      renderPreviewText(output.join('\n'), 'success');
+      setSummary('Running', 'success');
+    } else {
+      renderPreviewText('No output yet', 'neutral');
+    }
+
+    // Update environment viewer
+    if (environmentContent) {
+      updateEnvironmentViewer(environment, environmentContent);
+    }
+
+    // Highlight current line
+    if (line > 0) {
+      currentLineDecoration = editor.deltaDecorations(currentLineDecoration, [
+        {
+          range: new monaco.Range(line, 1, line, 1),
+          options: {
+            isWholeLine: true,
+            className: 'current-line-highlight',
+            glyphMarginClassName: 'current-line-glyph'
+          }
+        }
+      ]);
+
+      // Scroll to line
+      editor.revealLineInCenter(line);
+    } else {
+      currentLineDecoration = editor.deltaDecorations(currentLineDecoration, []);
+    }
+  }
+
+  function updateEnvironmentViewer(environment: Record<string, unknown>, container: HTMLElement) {
+    if (!environment || Object.keys(environment).length === 0) {
+      container.innerHTML = 'No variables yet.';
+      return;
+    }
+
+    const entries = Object.entries(environment)
+      .filter(([name]) => !name.startsWith('_') && !['print', 'MinHeap', 'MaxHeap', 'MinHeapMap', 'MaxHeapMap', 'Graph'].includes(name))
+      .map(([name, value]) => {
+        const displayValue = formatValue(value);
+        return `<div class="env-var"><span class="env-var-name">${escapeHtml(name)}:</span><span class="env-var-value">${escapeHtml(displayValue)}</span></div>`;
+      });
+
+    if (entries.length === 0) {
+      container.innerHTML = 'No user variables yet.';
+    } else {
+      container.innerHTML = entries.join('');
+    }
+  }
+
+  function formatValue(value: unknown): string {
+    if (value === null) return 'null';
+    if (value === undefined) return 'undefined';
+    if (typeof value === 'string') return `"${value}"`;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) return `[${value.map(formatValue).join(', ')}]`;
+    if (typeof value === 'object') {
+      if (value.toString && value.toString() !== '[object Object]') {
+        return value.toString();
+      }
+      return JSON.stringify(value, null, 2);
+    }
+    return String(value);
+  }
+
+  function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+}
+
 async function boot() {
   if (!window.require) {
     console.error('Monaco loader not available');
@@ -379,6 +567,7 @@ async function boot() {
     diagnosticsWorker = initializeDiagnostics(editor);
     initializeExamplePicker(editor);
     initializeResizer();
+    initializeStepper(editor, monacoApi);
 
     if (diagnosticsWorker) {
       diagnosticsWorker.postMessage({
