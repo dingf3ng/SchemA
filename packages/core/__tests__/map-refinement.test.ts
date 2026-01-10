@@ -1,4 +1,4 @@
-import { run } from '../src/index';
+import { run, runMachine } from '../src/index';
 import { parse } from '../src/transpiler/parser';
 import { typeCheck } from '../src/type-checker/type-checker-main';
 
@@ -16,6 +16,7 @@ describe('Map Type Refinement', () => {
         print(typeof(map))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<string, int>']);
     });
 
@@ -27,6 +28,7 @@ describe('Map Type Refinement', () => {
         print(typeof(map))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<int, string>']);
     });
 
@@ -38,6 +40,7 @@ describe('Map Type Refinement', () => {
         print(typeof(map))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<boolean, float>']);
     });
   });
@@ -51,6 +54,7 @@ describe('Map Type Refinement', () => {
         print(typeof(map))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<string, int | boolean>']);
     });
 
@@ -62,6 +66,7 @@ describe('Map Type Refinement', () => {
         print(typeof(map))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<int | string, boolean>']);
     });
 
@@ -75,6 +80,7 @@ describe('Map Type Refinement', () => {
         print(typeof(map))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<int | string, int | float>']);
     });
   });
@@ -88,6 +94,7 @@ describe('Map Type Refinement', () => {
         print(typeof(set))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Set<int>']);
     });
 
@@ -99,6 +106,7 @@ describe('Map Type Refinement', () => {
         print(typeof(set))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Set<string>']);
     });
 
@@ -111,6 +119,7 @@ describe('Map Type Refinement', () => {
         print(typeof(set))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Set<int | string>']);
     });
 
@@ -123,6 +132,7 @@ describe('Map Type Refinement', () => {
         print(typeof(set))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Set<int | boolean | float>']);
     });
   });
@@ -136,6 +146,7 @@ describe('Map Type Refinement', () => {
         print(typeof(arr))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Array<int>']);
     });
 
@@ -147,6 +158,7 @@ describe('Map Type Refinement', () => {
         print(typeof(arr))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Array<int | string>']);
     });
 
@@ -159,6 +171,7 @@ describe('Map Type Refinement', () => {
         print(typeof(arr))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Array<int | boolean | float>']);
     });
   });
@@ -173,6 +186,7 @@ describe('Map Type Refinement', () => {
         print(typeof(heap))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Heap<int>']);
     });
 
@@ -184,6 +198,7 @@ describe('Map Type Refinement', () => {
         print(typeof(heap))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Heap<float>']);
     });
 
@@ -195,6 +210,7 @@ describe('Map Type Refinement', () => {
         print(typeof(heap))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Heap<int | float>']);
     });
   });
@@ -207,6 +223,7 @@ describe('Map Type Refinement', () => {
         print(typeof(map))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<string, Array<int>>']);
     });
 
@@ -219,6 +236,7 @@ describe('Map Type Refinement', () => {
         print(typeof(outer))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<string, Map<int, boolean>>']);
     });
 
@@ -234,6 +252,7 @@ describe('Map Type Refinement', () => {
         print(typeof(arr))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Array<Map<string, int>>']);
     });
 
@@ -245,6 +264,7 @@ describe('Map Type Refinement', () => {
         print(typeof(map))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<string, Array<int> | int>']);
     });
   });
@@ -449,6 +469,7 @@ describe('Map Type Refinement', () => {
         print(typeof(arr))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Map<string, int>', 'Set<string>', 'Array<boolean>']);
     });
 
@@ -463,6 +484,7 @@ describe('Map Type Refinement', () => {
         print(typeof(map))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual([
         'Map<string, int | boolean | float>',
         'Map<string, int | boolean | float>',

@@ -1074,7 +1074,7 @@ describe('TypeChecker - Comprehensive Tests', () => {
         expect(param.typeAnnotation).not.toBeNull();
       });
     });
-
+    
     it('should ensure all functions have return type annotations after inference', () => {
       const code = `
         do getValue() {

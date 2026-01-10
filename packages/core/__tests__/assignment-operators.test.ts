@@ -1,4 +1,4 @@
-import { run } from '../src/index';
+import { run, runMachine } from '../src/index';
 
 describe('Compound Assignment Operators', () => {
   it('should handle += operator', () => {
@@ -9,6 +9,7 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['3']);
+    expect(runMachine(code)).toEqual(result);
   });
 
   it('should handle -= operator', () => {
@@ -19,6 +20,7 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['3']);
+    expect(runMachine(code)).toEqual(result);
   });
 
   it('should handle *= operator', () => {
@@ -29,6 +31,7 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['6']);
+    expect(runMachine(code)).toEqual(result);
   });
 
   it('should handle /= operator', () => {
@@ -39,6 +42,7 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['3']);
+    expect(runMachine(code)).toEqual(result);
   });
   
   it('should handle %= operator', () => {
@@ -49,6 +53,7 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['1']);
+    expect(runMachine(code)).toEqual(result);
   });
 
   it('should handle <<= operator', () => {
@@ -59,6 +64,7 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['4']);
+    expect(runMachine(code)).toEqual(result);
   });
 
   it('should handle >>= operator', () => {
@@ -69,6 +75,7 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['2']);
+    expect(runMachine(code)).toEqual(result);
   });
 
   it('should handle &&= operator', () => {
@@ -79,6 +86,7 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['false']);
+    expect(runMachine(code)).toEqual(result);
   });
 
   it('should handle ||= operator', () => {
@@ -89,6 +97,7 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['true']);
+    expect(runMachine(code)).toEqual(result);
   });
 
   it('should handle /.= operator', () => {
@@ -99,5 +108,6 @@ describe('Compound Assignment Operators', () => {
     `;
     const result = run(code);
     expect(result).toEqual(['2.5']);
+    expect(runMachine(code)).toEqual(result);
   });
 });

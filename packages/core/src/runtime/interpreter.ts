@@ -11,15 +11,10 @@ import {
   ForStatement,
   ReturnStatement,
   BlockStatement,
-  ExpressionStatement,
   InvariantStatement,
   AssertStatement,
-  TypeAnnotation,
   Parameter,
-  PredicateCheckExpression,
 } from '../transpiler/ast-types';
-import { parsePredicateName } from '../analyzer/analyzer-utils';
-import { typeToString } from '../type-checker/type-checker-utils';
 import {
   SchemaArray,
   SchemaMap,
@@ -33,11 +28,24 @@ import {
   BinaryTree,
   AVLTree,
 } from '../builtins/data-structures';
+import {
+  generateStringRange,
+  getActualRuntimeType,
+  hasWeakTypes,
+  isTruthy,
+  valuesEqual,
+  resolveTypeAnnotation,
+  RuntimeTypedBinder,
+  RuntimeTypeBinderToKey,
+  keyToRuntimeTypeBinder
+} from './runtime-utils';
+import { parsePredicateName } from '../analyzer/analyzer-utils';
+import { typeToString } from '../type-checker/type-checker-utils';
 import { Analyzer } from '../analyzer/analyzer';
 import { InvariantTracker } from '../analyzer/synthesizer';
 import { Type } from '../type-checker/type-checker-utils';
-import { RuntimeTypedBinder, RuntimeTypedBinderToString } from './runtime-utils';
 import { Environment } from './environment';
+import { initializeBuiltins } from './init-builtins';
 
 class ReturnException {
   constructor(public value: RuntimeTypedBinder) { }
@@ -51,8 +59,8 @@ export class Interpreter {
   private trackerStack: InvariantTracker[] = [];
 
   constructor() {
-    this.currentEnv = this.globalEnv;
-    this.initializeBuiltins();
+    this.globalEnv = new Environment();
+    this.currentEnv = initializeBuiltins(this.globalEnv, this.output);
   }
 
   /**
@@ -96,170 +104,11 @@ export class Interpreter {
     return this.evaluateExpression(expr);
   }
 
-
-  private initializeBuiltins(): void {
-    this.globalEnv.define('print', {
-      value: {
-        fn: (...args: RuntimeTypedBinder[]) => {
-          const output = args.map(RuntimeTypedBinderToString).join(' ');
-          this.output.push(output);
-          return { value: undefined, type: { static: { kind: 'void' }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [{ kind: 'poly' }], returnType: { kind: 'void' }, variadic: true }, refinements: [] },
-    });
-
-    this.globalEnv.define('MinHeap', {
-      value: {
-        fn: () => {
-          return { value: new MinHeap<RuntimeTypedBinder>(), type: { static: { kind: 'heap', elementType: { kind: 'weak' } }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'heap', elementType: { kind: 'weak' } } }, refinements: [] },
-    });
-
-    this.globalEnv.define('MaxHeap', {
-      value: {
-        fn: () => {
-          return { value: new MaxHeap<RuntimeTypedBinder>(), type: { static: { kind: 'heap', elementType: { kind: 'weak' } }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'heap', elementType: { kind: 'weak' } } }, refinements: [] },
-    });
-
-    this.globalEnv.define('MinHeapMap', {
-      value: {
-        fn: () => {
-          return { value: new MinHeapMap<RuntimeTypedBinder, RuntimeTypedBinder>(), type: { static: { kind: 'heapmap', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'heapmap', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } } }, refinements: [] },
-    });
-
-    this.globalEnv.define('MaxHeapMap', {
-      value: {
-        fn: () => {
-          return { value: new MaxHeapMap<RuntimeTypedBinder, RuntimeTypedBinder>(), type: { static: { kind: 'heapmap', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'heapmap', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } } }, refinements: [] },
-    });
-
-    this.globalEnv.define('Graph', {
-      value: {
-        fn: (directed?: RuntimeTypedBinder) => {
-          const isDirected =
-            directed && directed.type.static.kind === 'boolean' ? directed.value as boolean : false;
-
-          const keyFn = (node: RuntimeTypedBinder) => {
-            if (node.type.static.kind === 'int' || node.type.static.kind === 'float' || node.type.static.kind === 'string' || node.type.static.kind === 'boolean') {
-              return node.value;
-            }
-            return node;
-          };
-
-          return { value: new Graph<RuntimeTypedBinder>(isDirected, keyFn), type: { static: { kind: 'graph', nodeType: { kind: 'weak' } }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [{ kind: 'boolean' }], returnType: { kind: 'graph', nodeType: { kind: 'weak' } } }, refinements: [] },
-    });
-
-    this.globalEnv.define('Map', {
-      value: {
-        fn: () => {
-          return { value: new SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>(), type: { static: { kind: 'map', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'map', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } } }, refinements: [] },
-    });
-
-    this.globalEnv.define('Set', {
-      value: {
-        fn: () => {
-          return { value: new SchemaSet<RuntimeTypedBinder>(), type: { static: { kind: 'set', elementType: { kind: 'weak' } }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'set', elementType: { kind: 'weak' } } }, refinements: [] },
-    });
-
-    this.globalEnv.define('BinaryTree', {
-      value: {
-        fn: () => {
-          return { value: new BinaryTree<RuntimeTypedBinder>(), type: { static: { kind: 'binarytree', elementType: { kind: 'weak' } }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'binarytree', elementType: { kind: 'weak' } } }, refinements: [] },
-    });
-
-    this.globalEnv.define('AVLTree', {
-      value: {
-        fn: () => {
-          return { value: new AVLTree<RuntimeTypedBinder>(), type: { static: { kind: 'avltree', elementType: { kind: 'weak' } }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [], returnType: { kind: 'avltree', elementType: { kind: 'weak' } } }, refinements: [] },
-    });
-
-    this.globalEnv.define('inf', {
-      value: Infinity,
-      type: { static: { kind: 'intersection', types: [{ kind: 'int' }, { kind: 'float' }] }, refinements: [] },
-    });
-
-    // Utility functions
-    this.globalEnv.define('len', {
-      value: {
-        fn: (str: RuntimeTypedBinder) => {
-          const stringValue = str.value as string;
-          return { value: stringValue.length, type: { static: { kind: 'int' }, refinements: [] } };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [{ kind: 'string' }], returnType: { kind: 'int' } }, refinements: [] },
-    });
-
-    this.globalEnv.define('min', {
-      value: {
-        fn: (...args: RuntimeTypedBinder[]) => {
-          if (args.length === 0) {
-            throw new Error('min() requires at least one argument');
-          }
-          const numbers = args.map(arg => arg.value as number);
-          const minValue = Math.min(...numbers);
-          const hasFloat = args.some(arg => arg.type.static.kind === 'float');
-          return {
-            value: minValue,
-            type: { static: { kind: hasFloat ? 'float' : 'int' }, refinements: [] }
-          };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [{ kind: 'union', types: [{ kind: 'int' }, { kind: 'float' }] }], returnType: { kind: 'union', types: [{ kind: 'int' }, { kind: 'float' }] }, variadic: true }, refinements: [] },
-    });
-
-    this.globalEnv.define('max', {
-      value: {
-        fn: (...args: RuntimeTypedBinder[]) => {
-          if (args.length === 0) {
-            throw new Error('max() requires at least one argument');
-          }
-          const numbers = args.map(arg => arg.value as number);
-          const maxValue = Math.max(...numbers);
-          const hasFloat = args.some(arg => arg.type.static.kind === 'float');
-          return {
-            value: maxValue,
-            type: { static: { kind: hasFloat ? 'float' : 'int' }, refinements: [] }
-          };
-        },
-      },
-      type: { static: { kind: 'function', parameters: [{ kind: 'union', types: [{ kind: 'int' }, { kind: 'float' }] }], returnType: { kind: 'union', types: [{ kind: 'int' }, { kind: 'float' }] }, variadic: true }, refinements: [] },
-    });
-  }
-
   public evaluate(program: Program): string[] {
-    this.output = [];
-
+    this.output.length = 0;
     for (const statement of program.body) {
       this.evaluateStatement(statement);
     }
-
     return this.output;
   }
 
@@ -316,8 +165,8 @@ export class Interpreter {
   }
 
   private evaluateFunctionDeclaration(stmt: FunctionDeclaration): void {
-    const paramTypes = stmt.parameters.map(p => this.resolveTypeAnnotation(p.typeAnnotation));
-    const returnType = this.resolveTypeAnnotation(stmt.returnType);
+    const paramTypes = stmt.parameters.map(p => resolveTypeAnnotation(p.typeAnnotation));
+    const returnType = resolveTypeAnnotation(stmt.returnType);
 
     const funcValue: RuntimeTypedBinder = {
       value: {
@@ -348,14 +197,14 @@ export class Interpreter {
         // If there's a type annotation (either explicit or inferred/refined),
         // use it to override the runtime type, but only if it doesn't contain weak types
         if (declarator.typeAnnotation) {
-          const declaredType = this.resolveTypeAnnotation(declarator.typeAnnotation);
-          if (!this.hasWeakTypes(declaredType)) {
+          const declaredType = resolveTypeAnnotation(declarator.typeAnnotation);
+          if (!hasWeakTypes(declaredType)) {
             value.type.static = declaredType;
           }
         }
       } else {
         // No initializer - create undefined value with type annotation
-        const declaredType = this.resolveTypeAnnotation(declarator.typeAnnotation);
+        const declaredType = resolveTypeAnnotation(declarator.typeAnnotation);
         value = {
           value: undefined,
           type: { static: declaredType, refinements: [] }
@@ -369,109 +218,8 @@ export class Interpreter {
     }
   }
 
-  private hasWeakTypes(type: Type): boolean {
-    if (type.kind === 'weak' || type.kind === 'poly') return true;
-
-    if (type.kind === 'array' || type.kind === 'set' || type.kind === 'heap') {
-      return this.hasWeakTypes(type.elementType);
-    }
-
-    if (type.kind === 'map' || type.kind === 'heapmap') {
-      return this.hasWeakTypes(type.keyType) || this.hasWeakTypes(type.valueType);
-    }
-
-    if (type.kind === 'union' || type.kind === 'intersection') {
-      return type.types.some(t => this.hasWeakTypes(t));
-    }
-
-    if (type.kind === 'tuple') {
-      return type.elementTypes.some(t => this.hasWeakTypes(t));
-    }
-
-    if (type.kind === 'record') {
-      return type.fieldTypes.some(([k, v]) => this.hasWeakTypes(k) || this.hasWeakTypes(v));
-    }
-
-    if (type.kind === 'graph') {
-      return this.hasWeakTypes(type.nodeType);
-    }
-
-    if (type.kind === 'binarytree' || type.kind === 'avltree') {
-      return this.hasWeakTypes(type.elementType);
-    }
-
-    if (type.kind === 'function') {
-      return type.parameters.some(p => this.hasWeakTypes(p)) || this.hasWeakTypes(type.returnType);
-    }
-
-    return false;
-  }
-
   private captureEnvironment(): Environment {
     return this.currentEnv;
-  }
-
-  /**
-   * Helper to resolve TypeAnnotation to Type, note that we should have fully annotated types at this point
-   * @param annotation The TypeAnnotation to resolve
-   * @returns the resolved Type
-   */
-  private resolveTypeAnnotation(annotation: TypeAnnotation | undefined): Type {
-    if (!annotation) {
-      throw new Error('Internal Error: Missing type annotation, it should have been inferred earlier');
-    }
-
-    if (annotation.kind === 'simple') {
-      switch (annotation.name) {
-        case 'int': return { kind: 'int' };
-        case 'float': return { kind: 'float' };
-        case 'string': return { kind: 'string' };
-        case 'boolean': return { kind: 'boolean' };
-        case 'void': return { kind: 'void' };
-        case 'weak': return { kind: 'weak' };
-        case 'poly': return { kind: 'poly' };
-        case 'range': return { kind: 'range' };
-        default: throw new Error(`Unknown simple type annotation: ${annotation.name}`);
-      }
-    } else if (annotation.kind === 'generic') {
-      switch (annotation.name) {
-        case 'Array':
-          return { kind: 'array', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
-        case 'Map':
-          return { kind: 'map', keyType: this.resolveTypeAnnotation(annotation.typeParameters[0]), valueType: this.resolveTypeAnnotation(annotation.typeParameters[1]) };
-        case 'Set':
-          return { kind: 'set', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
-        case 'MinHeap': case 'MaxHeap':
-          return { kind: 'heap', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
-        case 'MinHeapMap': case 'MaxHeapMap':
-          return { kind: 'heapmap', keyType: this.resolveTypeAnnotation(annotation.typeParameters[0]), valueType: this.resolveTypeAnnotation(annotation.typeParameters[1]) };
-        case 'Graph':
-          return { kind: 'graph', nodeType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
-        case 'BinaryTree':
-          return { kind: 'binarytree', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
-        case 'AVLTree':
-          return { kind: 'avltree', elementType: this.resolveTypeAnnotation(annotation.typeParameters[0]) };
-        default: throw new Error(`Unknown generic type annotation: ${annotation.name}`);
-      }
-    } else if (annotation.kind === 'function') {
-      return {
-        kind: 'function',
-        parameters: annotation.parameterTypes ? annotation.parameterTypes.map((p: TypeAnnotation) => this.resolveTypeAnnotation(p)) : [],
-        returnType: this.resolveTypeAnnotation(annotation.returnType)
-      };
-    } else if (annotation.kind === 'union') {
-      return { kind: 'union', types: annotation.types.map((t: TypeAnnotation) => this.resolveTypeAnnotation(t)) };
-    } else if (annotation.kind === 'intersection') {
-      return { kind: 'intersection', types: annotation.types.map((t: TypeAnnotation) => this.resolveTypeAnnotation(t)) };
-    } else if (annotation.kind === 'tuple') {
-      return { kind: 'tuple', elementTypes: annotation.elementTypes.map((t: TypeAnnotation) => this.resolveTypeAnnotation(t)) };
-    } else if (annotation.kind === 'record') {
-      const fieldTypes: [Type, Type][] = annotation.fieldTypes.map(([keyType, valueType]) => {
-        return [this.resolveTypeAnnotation(keyType), this.resolveTypeAnnotation(valueType)];
-      });
-      return { kind: 'record', fieldTypes };
-    }
-    throw new Error('Internal Error: Unknown type annotation kind');
   }
 
   private evaluateAssignmentStatement(stmt: AssignmentStatement): void {
@@ -518,7 +266,7 @@ export class Interpreter {
       }
 
       if (object.type.static.kind === 'map') {
-        const key = this.RuntimeTypeBinderToKey(index);
+        const key = RuntimeTypeBinderToKey(index);
         (object.value as SchemaMap<any, RuntimeTypedBinder>).set(key, value);
         return;
       }
@@ -1048,7 +796,7 @@ export class Interpreter {
                   if (!object.value || !(object.value instanceof SchemaMap)) {
                     throw new Error('Internal: Map value is undefined or invalid');
                   }
-                  const k = this.RuntimeTypeBinderToKey(key);
+                  const k = RuntimeTypeBinderToKey(key);
                   return object.value.get(k) || { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
                 }
               }
@@ -1062,7 +810,7 @@ export class Interpreter {
                   if (!object.value || !(object.value instanceof SchemaMap)) {
                     throw new Error('Internal: Map value is undefined or invalid');
                   }
-                  const k = this.RuntimeTypeBinderToKey(key);
+                  const k = RuntimeTypeBinderToKey(key);
                   object.value.set(k, value);
                   return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
                 }
@@ -1077,7 +825,7 @@ export class Interpreter {
                   if (!object.value || !(object.value instanceof SchemaMap)) {
                     throw new Error('Internal: Map value is undefined or invalid');
                   }
-                  const k = this.RuntimeTypeBinderToKey(key);
+                  const k = RuntimeTypeBinderToKey(key);
                   return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.has(k) };
                 }
               }
@@ -1091,7 +839,7 @@ export class Interpreter {
                   if (!object.value || !(object.value instanceof SchemaMap)) {
                     throw new Error('Internal: Map value is undefined or invalid');
                   }
-                  const k = this.RuntimeTypeBinderToKey(key);
+                  const k = RuntimeTypeBinderToKey(key);
                   object.value.delete(k);
                   return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
                 }
@@ -1108,7 +856,7 @@ export class Interpreter {
                   }
                   const arr = new SchemaArray<RuntimeTypedBinder>();
                   object.value.forEach((_, key) => {
-                    arr.push(this.keyToRuntimeTypeBinder(key));
+                    arr.push(keyToRuntimeTypeBinder(key));
                   });
                   return { type: { static: { kind: 'array', elementType: mapType.keyType }, refinements: [] }, value: arr };
                 }
@@ -1145,7 +893,7 @@ export class Interpreter {
                     // Create a tuple (key, value)
                     const tuple: RuntimeTypedBinder = {
                       type: { static: { kind: 'tuple', elementTypes: [mapType.keyType, mapType.valueType] }, refinements: [] },
-                      value: [this.keyToRuntimeTypeBinder(key), value]
+                      value: [keyToRuntimeTypeBinder(key), value]
                     };
                     arr.push(tuple);
                   });
@@ -1180,7 +928,7 @@ export class Interpreter {
                   if (!object.value || !(object.value instanceof SchemaSet)) {
                     throw new Error('Internal: Set value is undefined or invalid');
                   }
-                  const k = this.RuntimeTypeBinderToKey(item);
+                  const k = RuntimeTypeBinderToKey(item);
                   object.value.add(k);
                   return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
                 }
@@ -1195,7 +943,7 @@ export class Interpreter {
                   if (!object.value || !(object.value instanceof SchemaSet)) {
                     throw new Error('Internal: Set value is undefined or invalid');
                   }
-                  const k = this.RuntimeTypeBinderToKey(item);
+                  const k = RuntimeTypeBinderToKey(item);
                   return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.has(k) };
                 }
               }
@@ -1209,7 +957,7 @@ export class Interpreter {
                   if (!object.value || !(object.value instanceof SchemaSet)) {
                     throw new Error('Internal: Set value is undefined or invalid');
                   }
-                  const k = this.RuntimeTypeBinderToKey(item);
+                  const k = RuntimeTypeBinderToKey(item);
                   object.value.delete(k);
                   return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
                 }
@@ -1226,7 +974,7 @@ export class Interpreter {
                   }
                   const arr = new SchemaArray<RuntimeTypedBinder>();
                   object.value.forEach((item) => {
-                    arr.push(this.keyToRuntimeTypeBinder(item));
+                    arr.push(keyToRuntimeTypeBinder(item));
                   });
                   return { type: { static: { kind: 'array', elementType: setType.elementType }, refinements: [] }, value: arr };
                 }
@@ -1542,7 +1290,7 @@ export class Interpreter {
                   const vertices = object.value.getVertices();
                   const arr = new SchemaArray<RuntimeTypedBinder>();
                   vertices.forEach((v) => {
-                    arr.push(v as RuntimeTypedBinder);
+                    arr.push(v);
                   });
                   return { type: { static: { kind: 'array', elementType: graphType.nodeType }, refinements: [] }, value: arr };
                 }
@@ -1630,26 +1378,11 @@ export class Interpreter {
           }
           // Handle array slicing
           if (index.type.static.kind === 'array' && index.type.static.elementType.kind === 'int') {
-            // Range evaluates to an array of integers [start, start+1, ..., end-1]
-            // But for slicing we want the start and end indices.
-            // However, the RangeExpression evaluation in interpreter returns an array of numbers.
-            // This is inefficient for slicing if we just want start/end.
-            // But given the current implementation of RangeExpression, it returns an array.
-
-            // Wait, RangeExpression in interpreter returns a SchemaArray of integers.
-            // If it's a range like ..3, it returns [0, 1, 2].
-            // If it's 1..4, it returns [1, 2, 3].
-            // If it's 2.., it's an infinite range, which might be handled differently or throw error if not supported.
-
-            // Let's check how RangeExpression is evaluated.
-            // If it returns an array of indices, we can map over them to get elements.
 
             const indices = (index.value as SchemaArray<RuntimeTypedBinder>);
             const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
             const result = new SchemaArray<RuntimeTypedBinder>();
 
-            // Optimization: if indices are contiguous, we could slice, but SchemaArray might not support it directly.
-            // For now, just iterate.
             for (let i = 0; i < indices.length; i++) {
               const idxVal = indices.get(i);
               if (idxVal && idxVal.value !== undefined) {
@@ -1702,8 +1435,8 @@ export class Interpreter {
         }
 
         if (object.type.static.kind === 'map') {
-          const key = this.RuntimeTypeBinderToKey(index);
-          const val = (object.value as SchemaMap<any, RuntimeTypedBinder>).get(key);
+          const key = index;
+          const val = (object.value as SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>).get(key);
           return val || { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
         }
 
@@ -1740,10 +1473,15 @@ export class Interpreter {
         const inclusive = expr.inclusive;
 
         // Handle string range expressions like "aa".."bb", "a".."z"
-        if (expr.start) {
+        if (expr.start && expr.end) {
           const startVal = this.evaluateExpression(expr.start);
-          if (startVal.type.static.kind === 'string') {
-            return this.evaluateStringRange(startVal.value as string, expr.end, inclusive);
+          const endVal = this.evaluateExpression(expr.end);
+          if (startVal.type.static.kind === 'string' && endVal.type.static.kind === 'string') {
+            return generateStringRange(
+              startVal.value as string,
+              endVal.value as string,
+              inclusive
+            );
           }
         }
 
@@ -1789,8 +1527,7 @@ export class Interpreter {
       }
 
       case 'PredicateCheckExpression': {
-        const predicateExpr = expr as PredicateCheckExpression;
-        const subject = this.evaluateExpression(predicateExpr.subject);
+        const subject = this.evaluateExpression(expr.subject);
 
         // Use existing tracker if available (inside a loop), otherwise create a new one
         const tracker = this.trackerStack.length > 0
@@ -1799,17 +1536,17 @@ export class Interpreter {
 
         // Evaluate predicate arguments if any
         let predicateArgs: RuntimeTypedBinder[] | undefined;
-        if (predicateExpr.predicateArgs && predicateExpr.predicateArgs.length > 0) {
-          predicateArgs = predicateExpr.predicateArgs.map(arg => this.evaluateExpression(arg));
+        if (expr.predicateArgs && expr.predicateArgs.length > 0) {
+          predicateArgs = expr.predicateArgs.map(arg => this.evaluateExpression(arg));
         }
 
         // Parse the predicate name into a Predicate object
-        const predicate = parsePredicateName(predicateExpr.predicateName, predicateArgs);
+        const predicate = parsePredicateName(expr.predicateName, predicateArgs);
 
         // Get variable name if subject is an identifier
         let variableName: string | undefined;
-        if (predicateExpr.subject.type === 'Identifier') {
-          variableName = (predicateExpr.subject as any).name;
+        if (expr.subject.type === 'Identifier') {
+          variableName = (expr.subject as any).name;
         }
 
         // Check the predicate against the subject value
@@ -1826,78 +1563,6 @@ export class Interpreter {
       default:
         throw new Error(`Unknown expression type: ${(expr as any).type}`);
     }
-  }
-
-  private evaluateStringRange(start: string, endExpr: Expression | undefined, inclusive: boolean): RuntimeTypedBinder {
-    if (!endExpr) {
-      throw new Error('String ranges must have both start and end');
-    }
-
-    const endVal = this.evaluateExpression(endExpr);
-    if (endVal.type.static.kind !== 'string') {
-      throw new Error('String range end must be a string');
-    }
-
-    const end = endVal.value as string;
-
-    // Generate string range
-    const result: RuntimeTypedBinder[] = [];
-
-    // Simple implementation for same-length strings
-    if (start.length !== end.length) {
-      throw new Error('String range start and end must have the same length');
-    }
-
-    if (start.length === 1) {
-      // Single character range like 'a'..'z'
-      const startCode = start.charCodeAt(0);
-      const endCode = end.charCodeAt(0);
-      const finalCode = inclusive ? endCode : endCode - 1;
-
-      for (let code = startCode; code <= finalCode; code++) {
-        result.push({ type: { static: { kind: 'string' }, refinements: [] }, value: String.fromCharCode(code) });
-      }
-    } else {
-      // Multi-character range like "aa".."bb"
-      const current = start.split('');
-      const endChars = end.split('');
-      const maxIterations = 10000; // Safety limit
-      let iterations = 0;
-
-      while (iterations < maxIterations) {
-        result.push({ type: { static: { kind: 'string' }, refinements: [] }, value: current.join('') });
-
-        if (current.join('') === end) {
-          if (!inclusive) {
-            result.pop(); // Remove the end if not inclusive
-          }
-          break;
-        }
-
-        if (inclusive && current.join('') === end) {
-          break;
-        }
-
-        // Increment the string (rightmost character first)
-        let carry = true;
-        for (let i = current.length - 1; i >= 0 && carry; i--) {
-          const charCode = current[i].charCodeAt(0);
-          if (charCode < endChars[i].charCodeAt(0) || (i > 0 && charCode < 122)) {
-            current[i] = String.fromCharCode(charCode + 1);
-            carry = false;
-          } else if (i > 0) {
-            current[i] = 'a';
-          } else {
-            carry = false;
-            break;
-          }
-        }
-
-        iterations++;
-      }
-    }
-
-    return { type: { static: { kind: 'array', elementType: { kind: 'string' } }, refinements: [] }, value: new SchemaArray(result) };
   }
 
   private isNumeric(type: Type): boolean {
@@ -1917,17 +1582,17 @@ export class Interpreter {
       let left: RuntimeTypedBinder;
       left = this.evaluateExpression(expr.left);
       if (expr.operator === '&&') {
-        if (!this.isTruthy(left)) {
+        if (!isTruthy(left)) {
           return { type: { static: { kind: 'boolean' }, refinements: [] }, value: false };
         }
       } else { // expr.operator === '||'
-        if (this.isTruthy(left)) {
+        if (isTruthy(left)) {
           return { type: { static: { kind: 'boolean' }, refinements: [] }, value: true };
         }
       }
       let right: RuntimeTypedBinder;
       right = this.evaluateExpression(expr.right);
-      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: this.isTruthy(right) };
+      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: isTruthy(right) };
     }
 
     // For all other operators, evaluate both operands
@@ -1963,8 +1628,8 @@ export class Interpreter {
     }
 
     // Resolve union types to actual runtime types based on values
-    const leftType = this.getActualRuntimeType(left);
-    const rightType = this.getActualRuntimeType(right);
+    const leftType = getActualRuntimeType(left);
+    const rightType = getActualRuntimeType(right);
 
     // Arithmetic: +, -, *, % (work on int and float)
     if (expr.operator === '+') {
@@ -2093,11 +1758,11 @@ export class Interpreter {
 
     // Equality operators
     if (expr.operator === '==') {
-      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: this.valuesEqual(left, right) };
+      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: valuesEqual(left, right) };
     }
 
     if (expr.operator === '!=') {
-      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: !this.valuesEqual(left, right) };
+      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: !valuesEqual(left, right) };
     }
 
     throw new Error(`Unknown binary operator: ${expr.operator}`);
@@ -2169,103 +1834,4 @@ export class Interpreter {
     throw new Error('Not a function');
   }
 
-  private valuesEqual(left: RuntimeTypedBinder, right: RuntimeTypedBinder): boolean {
-    if (left.type.static.kind !== right.type.static.kind) return false;
-
-    if (left.type.static.kind === 'int' && right.type.static.kind === 'int') {
-      return left.value === right.value;
-    }
-
-    if (left.type.static.kind === 'float' && right.type.static.kind === 'float') {
-      return left.value === right.value;
-    }
-
-    if (left.type.static.kind === 'string' && right.type.static.kind === 'string') {
-      return left.value === right.value;
-    }
-
-    if (left.type.static.kind === 'boolean' && right.type.static.kind === 'boolean') {
-      return left.value === right.value;
-    }
-
-    if (left.type.static.kind === 'void' && right.type.static.kind === 'void') {
-      return true;
-    }
-
-    return false;
-  }
-
-  private isTruthy(value: RuntimeTypedBinder): boolean {
-    const actualType = this.getActualRuntimeType(value);
-    if (actualType === 'boolean') {
-      return value.value as boolean;
-    }
-    // In many languages, non-boolean values can be truthy/falsy
-    // For now, only booleans are considered for truthiness
-    throw new Error(`Cannot evaluate truthiness of type ${value.type.static.kind} (actual: ${actualType})`);
-  }
-
-  private RuntimeTypeBinderToKey(value: RuntimeTypedBinder): any {
-    if (value.type.static.kind === 'int' || value.type.static.kind === 'float') return value.value;
-    if (value.type.static.kind === 'string') return value.value;
-    if (value.type.static.kind === 'boolean') return value.value;
-    return value;
-  }
-
-  private keyToRuntimeTypeBinder(key: any): RuntimeTypedBinder {
-    if (typeof key === 'number') {
-      return Number.isInteger(key)
-        ? { type: { static: { kind: 'int' }, refinements: [] }, value: key }
-        : { type: { static: { kind: 'float' }, refinements: [] }, value: key };
-    }
-    if (typeof key === 'string') {
-      return { type: { static: { kind: 'string' }, refinements: [] }, value: key };
-    }
-    if (typeof key === 'boolean') {
-      return { type: { static: { kind: 'boolean' }, refinements: [] }, value: key };
-    }
-    // If it's already a RuntimeTypedBinder, return it as-is
-    return key;
-  }
-
-  /**
-   * Get the actual runtime type from a RuntimeTypedBinder, resolving unions based on the actual value
-   */
-  private getActualRuntimeType(binder: RuntimeTypedBinder): string {
-    const type = binder.type.static;
-
-    // If it's not a union, return the type kind directly
-    if (type.kind !== 'union' && type.kind !== 'intersection') {
-      return type.kind;
-    }
-
-    // For unions, determine the actual type from the runtime value
-    const value = binder.value;
-    if (typeof value === 'number') {
-      return Number.isInteger(value) ? 'int' : 'float';
-    }
-    if (typeof value === 'string') {
-      return 'string';
-    }
-    if (typeof value === 'boolean') {
-      return 'boolean';
-    }
-    if (value === undefined || value === null) {
-      return 'void';
-    }
-
-    // For complex types, return the type kind as-is
-    return type.kind;
-  }
-}
-
-export function interpret(program: Program): string[] {
-  const interpreter = new Interpreter();
-  return interpreter.evaluate(program);
-}
-
-export function interpretWithFinalEnv(program: Program): { output: string[]; env: Environment } {
-  const interpreter = new Interpreter();
-  const output = interpreter.evaluate(program);
-  return { output, env: interpreter.getEnvironment() };
 }

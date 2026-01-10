@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { run } from '../src/index';
+import { run, runMachine } from '../src/index';
 
 // Path to examples directory
 const EXAMPLES_DIR = path.resolve(__dirname, '../../../examples');
@@ -10,6 +10,12 @@ function runSchemaFile(filename: string): string[] {
   const filepath = path.join(EXAMPLES_DIR, filename);
   const code = fs.readFileSync(filepath, 'utf-8');
   return run(code);
+}
+
+function runSchemaFileWithMachine(filename: string): string[] {
+  const filepath = path.join(EXAMPLES_DIR, filename);
+  const code = fs.readFileSync(filepath, 'utf-8');
+  return runMachine(code);
 }
 
 // Specific assertions for certain files
@@ -67,7 +73,8 @@ describe('SchemA Examples', () => {
       it(`should run ${file} successfully`, () => {
         try {
           const output = runSchemaFile(file);
-          
+          const machineOutput = runSchemaFileWithMachine(file);
+          expect(machineOutput).toEqual(output);
           // Run specific assertions if they exist
           if (specificTests[file]) {
             specificTests[file](output);

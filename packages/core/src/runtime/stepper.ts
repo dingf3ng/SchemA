@@ -66,7 +66,7 @@ export class Stepper {
     evaluatedArgs: RuntimeTypedBinder[]; // Still needed for main call stepInto?? No, we rewrite main call too.
     pendingArgIndex: number; // Maybe deprecated logic?
     steppedIntoCurrentArg: boolean; // Just tracking if we are waiting for return
-    callStackLengthAtCreation: number; 
+    callStackLengthAtCreation: number;
     lastReturnValue?: RuntimeTypedBinder; // Returned value from last step-in
   }> = [];
 
@@ -104,13 +104,13 @@ export class Stepper {
       // Determine priorities based on nesting
       // If we are in a function, we only care about loops/branches created *within* that function
       const topFrame = this.callStack.length > 0 ? this.callStack[this.callStack.length - 1] : null;
-      
-      const effectiveLoopStackSize = topFrame 
-        ? this.loopStack.length - topFrame.initialLoopStackLength 
+
+      const effectiveLoopStackSize = topFrame
+        ? this.loopStack.length - topFrame.initialLoopStackLength
         : this.loopStack.length;
-        
-      const effectiveBranchStackSize = topFrame 
-        ? this.branchStack.length - topFrame.initialBranchStackLength 
+
+      const effectiveBranchStackSize = topFrame
+        ? this.branchStack.length - topFrame.initialBranchStackLength
         : this.branchStack.length;
 
       // If we're inside a loop (within the current context), step through the loop body
@@ -189,17 +189,17 @@ export class Stepper {
     if (topFrame.initialBranchStackLength !== undefined) {
       this.branchStack.length = topFrame.initialBranchStackLength;
     }
-    
+
     // Capture return value for pending calls
     if (this.pendingCalls.length > 0) {
-         const pending = this.pendingCalls[this.pendingCalls.length - 1];
-         // We assume the return corresponds to the function we just stepped out of
-         // which matches the pending call's expectation
-         pending.lastReturnValue = error.value;
-         pending.steppedIntoCurrentArg = true; // Mark as returned
-         
-         // We do NOT advance context here, because we want to resume stepPendingCall logic
-         return this.getCurrentState();
+      const pending = this.pendingCalls[this.pendingCalls.length - 1];
+      // We assume the return corresponds to the function we just stepped out of
+      // which matches the pending call's expectation
+      pending.lastReturnValue = error.value;
+      pending.steppedIntoCurrentArg = true; // Mark as returned
+
+      // We do NOT advance context here, because we want to resume stepPendingCall logic
+      return this.getCurrentState();
     }
 
     // Advance the execution of the caller
@@ -259,12 +259,12 @@ export class Stepper {
 
     // Check if we are already inside this branch (processing it)
     if (this.branchStack.length > 0) {
-        const topBranch = this.branchStack[this.branchStack.length - 1];
-        if (topBranch.ifStatement === statement) {
-             return this.stepInBranch();
-        } else {
-             // Debug why mismatch
-        }
+      const topBranch = this.branchStack[this.branchStack.length - 1];
+      if (topBranch.ifStatement === statement) {
+        return this.stepInBranch();
+      } else {
+        // Debug why mismatch
+      }
     }
 
     // Check if this is a loop statement
@@ -339,11 +339,6 @@ export class Stepper {
       branchStatements = [branchStatement];
     }
 
-    // DEBUG
-    if (process.env.DEBUG_STEPPER) {
-      console.log(`enterBranch: ifStmt line=${statement.line}, branchType=${branchStatement.type}, numStatements=${branchStatements.length}`);
-    }
-
     // Push branch frame
     this.branchStack.push({
       ifStatement: statement,
@@ -361,20 +356,10 @@ export class Stepper {
   private stepInBranch(): StepState {
     const topBranch = this.branchStack[this.branchStack.length - 1];
 
-    // DEBUG
-    if (process.env.DEBUG_STEPPER) {
-      console.log(`stepInBranch START: branchIndex=${topBranch.branchIndex}/${topBranch.branchStatements.length}`);
-    }
-
     // Check if we've finished executing all statements in this branch
     if (topBranch.branchIndex >= topBranch.branchStatements.length) {
       // Pop the branch frame
       this.branchStack.pop();
-
-      // DEBUG
-      if (process.env.DEBUG_STEPPER) {
-        console.log(`stepInBranch: branch complete, popping`);
-      }
 
       // Advance the parent context
       this.advanceCurrentContext();
@@ -436,7 +421,7 @@ export class Stepper {
    */
   private stepPendingCall(): StepState {
     const pending = this.pendingCalls[this.pendingCalls.length - 1];
-    
+
     // If we're deeper in the call stack than when this pending call was created,
     // that means we're still inside a nested function. Let it execute first.
     if (this.callStack.length > pending.callStackLengthAtCreation) {
@@ -457,7 +442,7 @@ export class Stepper {
       // 3. Find the call we just executed in the working statement
       // Since we rewrite the tree, the "deepest" user call should be the one we just ran
       const callToReplace = this.findDeepestUserDefinedCall(pending.workingStatement);
-      
+
       if (callToReplace) {
         // 4. Replace the call with an Identifier referencing the temp variable
         const replaced = this.replaceNodeInTree(pending.workingStatement, callToReplace, {
@@ -506,19 +491,19 @@ export class Stepper {
 
   private replaceNodeInTree(root: any, target: any, replacement: any): boolean {
     if (root === target) return false;
-    
+
     // Safety check for null/undefined
     if (!root || typeof root !== 'object') return false;
 
     for (const key in root) {
       if (Object.prototype.hasOwnProperty.call(root, key)) {
         const val = root[key];
-        
+
         if (val === target) {
           root[key] = replacement;
           return true;
         }
-        
+
         if (Array.isArray(val)) {
           for (let i = 0; i < val.length; i++) {
             if (val[i] === target) {
@@ -542,36 +527,36 @@ export class Stepper {
    */
   private findDeepestUserDefinedCall(root: Expression | Statement): CallExpression | null {
     if ((root as any).type === 'ExpressionStatement') {
-       return this.findDeepestUserDefinedCall((root as any).expression);
+      return this.findDeepestUserDefinedCall((root as any).expression);
     }
     if ((root as any).type === 'VariableDeclaration') {
-       // declarations array
-       for (const decl of (root as any).declarations) {
-         if (decl.initializer) {
-           const found = this.findDeepestUserDefinedCall(decl.initializer);
-           if (found) return found;
-         }
-       }
-       return null;
+      // declarations array
+      for (const decl of (root as any).declarations) {
+        if (decl.initializer) {
+          const found = this.findDeepestUserDefinedCall(decl.initializer);
+          if (found) return found;
+        }
+      }
+      return null;
     }
     if ((root as any).type === 'AssignmentStatement') {
-       return this.findDeepestUserDefinedCall((root as any).value);
+      return this.findDeepestUserDefinedCall((root as any).value);
     }
     if ((root as any).type === 'ReturnStatement') {
-       if ((root as any).value) {
-          return this.findDeepestUserDefinedCall((root as any).value);
-       }
-       return null;
+      if ((root as any).value) {
+        return this.findDeepestUserDefinedCall((root as any).value);
+      }
+      return null;
     }
     if ((root as any).type === 'IfStatement') {
-       // IfStatements should be handled by enterBranch/stepInBranch, not as nested calls
-       // Only check the condition for user-defined calls, not the branches
-       return this.findDeepestUserDefinedCall((root as any).condition);
+      // IfStatements should be handled by enterBranch/stepInBranch, not as nested calls
+      // Only check the condition for user-defined calls, not the branches
+      return this.findDeepestUserDefinedCall((root as any).condition);
     }
     if ((root as any).type === 'BlockStatement') {
-       // BlockStatements should not be treated as containing calls themselves
-       // The stepper will iterate through their statements
-       return null;
+      // BlockStatements should not be treated as containing calls themselves
+      // The stepper will iterate through their statements
+      return null;
     }
     // Only handle simple statements where calls can appear as part of execution
     // Block, loops etc should have been handled by stepper entering them.
@@ -604,15 +589,15 @@ export class Stepper {
     if (expr.type === 'UnaryExpression') {
       return this.findDeepestUserDefinedCall((expr as any).operand);
     }
-    
+
     // Array literals, Object literals, Index expressions etc.
     if (expr.type === 'ArrayLiteral') {
-        for (const el of (expr as any).elements) {
-            const deep = this.findDeepestUserDefinedCall(el);
-            if (deep) return deep;
-        }
+      for (const el of (expr as any).elements) {
+        const deep = this.findDeepestUserDefinedCall(el);
+        if (deep) return deep;
+      }
     }
-    
+
     // Fallback for other expressions
     return null;
   }
@@ -622,13 +607,13 @@ export class Stepper {
    */
   private advanceCurrentContext(): void {
     const topFrame = this.callStack.length > 0 ? this.callStack[this.callStack.length - 1] : null;
-    
-    const effectiveLoopStackSize = topFrame 
-      ? this.loopStack.length - topFrame.initialLoopStackLength 
+
+    const effectiveLoopStackSize = topFrame
+      ? this.loopStack.length - topFrame.initialLoopStackLength
       : this.loopStack.length;
-      
-    const effectiveBranchStackSize = topFrame 
-      ? this.branchStack.length - topFrame.initialBranchStackLength 
+
+    const effectiveBranchStackSize = topFrame
+      ? this.branchStack.length - topFrame.initialBranchStackLength
       : this.branchStack.length;
 
     if (effectiveLoopStackSize > 0) {
@@ -657,33 +642,33 @@ export class Stepper {
     // Check if any call is user-defined
     // We check all calls because even if outer is not user-defined, argument might be
     const hasUserCalls = allCalls.some(call => {
-       // Check if call itself is user defined
-       if (this.isUserDefinedFunction(call)) return true;
-       // Check args ?? No, findAllCallExpressions is recursive, so it found all args too.
-       return false;
+      // Check if call itself is user defined
+      if (this.isUserDefinedFunction(call)) return true;
+      // Check args ?? No, findAllCallExpressions is recursive, so it found all args too.
+      return false;
     });
 
     if (!hasUserCalls) return false;
 
     // Clone the statement to create a working copy where we can replace calls with values
     const workingStatement = this.clone(statement);
-    
+
     // Find the deepest user-defined call in the working statement
     const nestedCall = this.findDeepestUserDefinedCall(workingStatement);
 
     if (nestedCall) {
-        this.pendingCalls.push({
-            originalStatement: statement,
-            workingStatement,
-            evaluatedArgs: [], // Deprecated
-            pendingArgIndex: 0, // Deprecated
-            steppedIntoCurrentArg: true, // We are about to step in
-            callStackLengthAtCreation: this.callStack.length,
-            // isExecutingMainCall deprecated
-        });
+      this.pendingCalls.push({
+        originalStatement: statement,
+        workingStatement,
+        evaluatedArgs: [], // Deprecated
+        pendingArgIndex: 0, // Deprecated
+        steppedIntoCurrentArg: true, // We are about to step in
+        callStackLengthAtCreation: this.callStack.length,
+        // isExecutingMainCall deprecated
+      });
 
-        this.stepIntoUserFunction(nestedCall);
-        return true;
+      this.stepIntoUserFunction(nestedCall);
+      return true;
     }
 
     return false;
@@ -844,8 +829,8 @@ export class Stepper {
    */
   private isLoopStatement(statement: Statement): boolean {
     return statement.type === 'WhileStatement' ||
-           statement.type === 'UntilStatement' ||
-           statement.type === 'ForStatement';
+      statement.type === 'UntilStatement' ||
+      statement.type === 'ForStatement';
   }
 
   /**
@@ -854,8 +839,8 @@ export class Stepper {
   private enterLoop(statement: Statement): StepState {
 
     if (statement.type !== 'WhileStatement' &&
-        statement.type !== 'UntilStatement' &&
-        statement.type !== 'ForStatement') {
+      statement.type !== 'UntilStatement' &&
+      statement.type !== 'ForStatement') {
       throw new Error('Internal Error: enterLoop called with non-loop statement');
     }
 
@@ -1036,8 +1021,8 @@ export class Stepper {
         // Fall through to normal stack processing below
         // This allows executing the nested function body visibly
       }
-    } 
-    
+    }
+
     // Check main stacks - prioritize deepest/most local context
     // We only care about loops/branches created *within* the current function context
     const topFrame = this.callStack.length > 0 ? this.callStack[this.callStack.length - 1] : null;
@@ -1048,40 +1033,40 @@ export class Stepper {
     const handledByPending = this.pendingCalls.length > 0 && !(this.pendingCalls[this.pendingCalls.length - 1].callStackLengthAtCreation < this.callStack.length);
 
     if (!handledByPending) {
-        // Priority: branch > loop > function > top-level
-        // Branches are most deeply nested, so check them first
-        if (effectiveBranchStackSize > 0) {
+      // Priority: branch > loop > function > top-level
+      // Branches are most deeply nested, so check them first
+      if (effectiveBranchStackSize > 0) {
         // We're inside a branch (if-else)
         const topBranch = this.branchStack[this.branchStack.length - 1];
         statement = topBranch.branchIndex < topBranch.branchStatements.length
-            ? topBranch.branchStatements[topBranch.branchIndex]
-            : topBranch.ifStatement;
+          ? topBranch.branchStatements[topBranch.branchIndex]
+          : topBranch.ifStatement;
         line = statement?.line || 0;
         column = statement?.column || 0;
-        } else if (effectiveLoopStackSize > 0) {
+      } else if (effectiveLoopStackSize > 0) {
         // We're inside a loop (but not in a branch within the loop)
         const topLoop = this.loopStack[this.loopStack.length - 1];
         statement = topLoop.bodyIndex < topLoop.bodyStatements.length
-            ? topLoop.bodyStatements[topLoop.bodyIndex]
-            : topLoop.loopStatement;
+          ? topLoop.bodyStatements[topLoop.bodyIndex]
+          : topLoop.loopStatement;
         line = statement?.line || 0;
         column = statement?.column || 0;
-        } else if (this.callStack.length > 0) {
+      } else if (this.callStack.length > 0) {
         // We're inside a function call
         const topFrame = this.callStack[this.callStack.length - 1];
         statement = topFrame.statementIndex < topFrame.statements.length
-            ? topFrame.statements[topFrame.statementIndex]
-            : null;
+          ? topFrame.statements[topFrame.statementIndex]
+          : null;
         line = statement?.line || topFrame.callSite.line;
         column = statement?.column || topFrame.callSite.column;
-        } else {
+      } else {
         // We're at the top level
         statement = this.currentStatementIndex < this.program.body.length
-            ? this.program.body[this.currentStatementIndex]
-            : null;
+          ? this.program.body[this.currentStatementIndex]
+          : null;
         line = statement?.line || 0;
         column = statement?.column || 0;
-        }
+      }
     }
 
     const isFinished = this.finished || (

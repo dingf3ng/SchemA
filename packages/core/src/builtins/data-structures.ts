@@ -179,12 +179,13 @@ export class MinHeap<T> {
   private data: T[] = [];
   private compareFn: (a: T, b: T) => number;
 
-  constructor(compareFn?: (a: T, b: T) => number) {
+  constructor() {
     this.compareFn =
-      compareFn ||
       ((a: any, b: any) => {
-        if (a < b) return -1;
-        if (a > b) return 1;
+        const aVal = a.value !== undefined ? a.value : a;
+        const bVal = b.value !== undefined ? b.value : b;
+        if (aVal < bVal) return -1;
+        if (aVal > bVal) return 1;
         return 0;
       });
   }
@@ -286,12 +287,13 @@ export class MaxHeap<T> {
   private data: T[] = [];
   private compareFn: (a: T, b: T) => number;
 
-  constructor(compareFn?: (a: T, b: T) => number) {
+  constructor() {
     this.compareFn =
-      compareFn ||
       ((a: any, b: any) => {
-        if (a > b) return -1;
-        if (a < b) return 1;
+        const aVal = a.value !== undefined ? a.value : a;
+        const bVal = b.value !== undefined ? b.value : b;
+        if (aVal > bVal) return -1;
+        if (aVal < bVal) return 1;
         return 0;
       });
   }

@@ -4,11 +4,11 @@ import { infer } from "./type-inferer";
 import { refine } from "./type-refiner";
 import { Type } from "./type-checker-utils";
 
-export type FunEnv = Map<string, { parameters: Type[]; returnType: Type; variadic?: boolean } >;
+export type FunEnv = Map<string, { parameters: Type[]; returnType: Type; variadic?: boolean }>;
 
 export type TypeEnv = Map<string, Type>;
 
-export function initializeBuiltins(): [ FunEnv, TypeEnv ] {
+export function initializeBuiltins(): [FunEnv, TypeEnv] {
   // Built-in functions
   let functionEnv: FunEnv = new Map();
   let typeEnv: TypeEnv = new Map();
@@ -87,7 +87,7 @@ export function typeCheck(program: Program): void {
 
 /**
  * For testing: typecheck and return the TypeChecker instance, for inspection
- * @param program 
+ * @param program
  * @returns 
  */
 export function typecheckAndReturn(program: Program): TypeChecker {

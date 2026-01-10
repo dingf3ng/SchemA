@@ -1,10 +1,10 @@
-import { run } from '../src/index';
+import { run, runMachine } from '../src/index';
 import { parse } from '../src/transpiler/parser';
 import { typeCheck } from '../src/type-checker/type-checker-main';
 
 function check(code: string) {
   const ast = parse(code);
-  
+
   typeCheck(ast);
 }
 
@@ -18,7 +18,7 @@ print(typeof(ak)) // given no type annotation, should widen to Array<int | strin
 print(ak)
       `;
       const output = run(code);
-      console.log('Index assignment output:', output);
+      expect(runMachine(code)).toEqual(output);
       // Should show the actual array with widened type
       expect(output.length).toBe(2);
       expect(output[0]).not.toBe('Array<int>');
@@ -33,7 +33,7 @@ print(typeof(ak)) // given no type annotation, should widen to Array<int | strin
 print(ak)
       `;
       const output = run(code);
-      console.log('Push method output:', output);
+      expect(runMachine(code)).toEqual(output);
       // Should show the actual array with widened type
       expect(output.length).toBe(2);
       expect(output[0]).not.toBe('Array<int>');
@@ -51,9 +51,9 @@ print(typeof(ak))
       // This should not throw an error
       expect(() => run(code)).not.toThrow();
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).not.toBe('Array<int>');
       expect(output[1]).not.toBe('Array<int>');
-      console.log('User example output:', output);
     });
 
     it('should widen array from string to string | boolean', () => {
@@ -63,6 +63,7 @@ arr[1] = true
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('string');
       expect(output[0]).toContain('boolean');
     });
@@ -74,8 +75,10 @@ arr.push(42)
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('boolean');
       expect(output[0]).toContain('int');
+      expect(runMachine(code)).toEqual(output);
     });
 
     it('should widen array to include float', () => {
@@ -85,8 +88,10 @@ arr.push(3.14)
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('int');
       expect(output[0]).toContain('float');
+      expect(runMachine(code)).toEqual(output);
     });
   });
 
@@ -100,6 +105,7 @@ m.set("b", "value")
 print(typeof(m))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Map<string, int | string>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -114,6 +120,7 @@ m.set("key", "value")
 print(typeof(m))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Map<int | string, string>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -128,6 +135,7 @@ m.set("key", true)
 print(typeof(m))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Map<int | string, int | boolean>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -146,6 +154,7 @@ m.set("d", true)
 print(typeof(m))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Map<string, int | float | boolean>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('float');
@@ -166,6 +175,7 @@ s.add("hello")
 print(typeof(s))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Set<int | string>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -182,6 +192,7 @@ s.add(3.14)
 print(typeof(s))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Set<int | boolean | float>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('boolean');
@@ -201,6 +212,7 @@ s.add(42)
 print(typeof(s))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Set<string | boolean | int>');
       expect(output[1]).toContain('string');
       expect(output[1]).toContain('boolean');
@@ -219,6 +231,7 @@ h.push(3.14)
 print(typeof(h))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Heap<int | float>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('float');
@@ -233,6 +246,7 @@ h.push(2.71)
 print(typeof(h))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output); expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Heap<int | float>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('float');
@@ -249,6 +263,7 @@ arr.push([true, false])
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Array<Array<int> | Array<boolean>>');
       expect(output[1]).toContain('Array<int>');
       expect(output[1]).toContain('Array<boolean>');
@@ -263,6 +278,7 @@ m.set("flags", [true, false])
 print(typeof(m))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Map<string, Array<int> | Array<boolean>>');
       expect(output[1]).toContain('Array<int>');
       expect(output[1]).toContain('Array<boolean>');
@@ -281,6 +297,7 @@ arr.push(m2)
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Array<Map<string, int> | Map<string, boolean>>');
       expect(output[1]).toContain('Map<string, int>');
       expect(output[1]).toContain('Map<string, boolean>');
@@ -295,6 +312,7 @@ m.set("arr", [1, 2, 3])
 print(typeof(m))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Map<string, int | Array<int>>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('Array<int>');
@@ -488,6 +506,7 @@ print(typeof(m))
 print(typeof(s))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('int');
       expect(output[0]).toContain('string');
       expect(output[1]).toContain('int');
@@ -523,6 +542,7 @@ print(typeof(m))
 print(typeof(h))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       // Initial types
       expect(output[0]).toBe('Array<int | boolean | float>');
       expect(output[1]).toContain('Map<');
@@ -548,6 +568,7 @@ arr[0] = "string"
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Array<int | string>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -564,6 +585,7 @@ arr[2] = "hello"
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('int');
       expect(output[0]).toContain('boolean');
       expect(output[1]).toContain('int');
@@ -584,6 +606,7 @@ arr[1] = "string"
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Array<int | string>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -596,6 +619,7 @@ arr[1] = 42
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('boolean');
       expect(output[0]).toContain('int');
     });
@@ -607,6 +631,7 @@ arr[2] = 3.14
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('string');
       expect(output[0]).toContain('float');
     });
@@ -622,6 +647,7 @@ arr[4] = 3.14
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('int');
       expect(output[0]).toContain('string');
       expect(output[1]).toContain('int');
@@ -641,6 +667,7 @@ arr[0] = ["a", "b"]
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Array<Array<int> | Array<string>>');
       expect(output[1]).toContain('Array<int>');
       expect(output[1]).toContain('Array<string>');
@@ -658,6 +685,7 @@ arr[3] = 3.14
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Array<int | string | boolean | float>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -677,6 +705,7 @@ arr[10] = "far"
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('int');
       expect(output[0]).toContain('string');
     });
@@ -692,6 +721,7 @@ m.set("key2", "value")
 print(typeof(m))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Map<string, int | string>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -708,6 +738,7 @@ m.set(true, "third")
 print(typeof(m))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Map<int | string | boolean, string>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -729,6 +760,7 @@ s.add(true)
 print(typeof(s))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Set<int | string | boolean>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('string');
@@ -748,6 +780,7 @@ s.add(3.14)
 print(typeof(s))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Set<int | float>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('float');
@@ -765,6 +798,7 @@ h.push(2.71)
 print(typeof(h))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Heap<int | float>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('float');
@@ -779,6 +813,7 @@ h.push(3.14)
 print(typeof(h))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toBe('Heap<int | float>');
       expect(output[1]).toContain('int');
       expect(output[1]).toContain('float');
@@ -795,6 +830,7 @@ arr[4] = 3.14
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('int');
       expect(output[0]).toContain('string');
       expect(output[0]).toContain('boolean');
@@ -824,6 +860,7 @@ print(typeof(m))
 print(typeof(s))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('int');
       expect(output[0]).toContain('string');
       expect(output[1]).toContain('Map');
@@ -850,6 +887,7 @@ arr.push("string")
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[1]).toBe('Array<int | string>');
       expect(output[2]).toContain('int');
       expect(output[2]).toContain('string');
@@ -865,6 +903,7 @@ m.set("key2", true)
 print(typeof(m))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[1]).toBe('Map<string, int | boolean>');
       expect(output[2]).toContain('int');
       expect(output[2]).toContain('boolean');
@@ -879,6 +918,7 @@ arr.push("hello")
 print(typeof(arr))
       `;
       const output = run(code);
+      expect(runMachine(code)).toEqual(output);
       expect(output[0]).toContain('int');
       expect(output[0]).toContain('boolean');
       expect(output[0]).toContain('float');

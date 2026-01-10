@@ -102,8 +102,8 @@ export class HeapMap<K, V> {
 export class MinHeapMap<K, V> extends HeapMap<K, V> {
   constructor() {
     super((a: any, b: any) => {
-      if (a < b) return -1;
-      if (a > b) return 1;
+      if (a > b) return -1;
+      if (a < b) return 1;
       return 0;
     });
   }
@@ -116,8 +116,8 @@ export class MinHeapMap<K, V> extends HeapMap<K, V> {
 export class MaxHeapMap<K, V> extends HeapMap<K, V> {
   constructor() {
     super((a: any, b: any) => {
-      if (a > b) return -1;
-      if (a < b) return 1;
+      if (a < b) return -1;
+      if (a > b) return 1;
       return 0;
     });
   }

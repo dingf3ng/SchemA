@@ -1,4 +1,4 @@
-import { run } from '../src/index';
+import { run, runMachine } from '../src/index';
 
 describe('Turnstile Operator (|-)', () => {
   describe('Basic Predicate Checks', () => {
@@ -9,6 +9,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_sorted)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -19,6 +20,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_sorted)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['false']);
     });
 
@@ -29,6 +31,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_sorted_asc)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -39,6 +42,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_sorted_desc)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -49,6 +53,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_non_empty)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -59,6 +64,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_non_empty)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['false']);
     });
 
@@ -69,6 +75,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_unique)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -79,6 +86,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_unique)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['false']);
     });
   });
@@ -91,6 +99,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_positive)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -101,6 +110,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_positive)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['false']);
     });
 
@@ -111,6 +121,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_positive)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']); // non-strict: >= 0
     });
 
@@ -121,6 +132,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_even)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -131,6 +143,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_odd)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -141,6 +154,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_divisible)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -151,6 +165,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_divisible)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['false']);
     });
   });
@@ -165,6 +180,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_non_empty)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -176,6 +192,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_non_empty)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
   });
@@ -191,6 +208,7 @@ describe('Turnstile Operator (|-)', () => {
         }
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['Array is sorted']);
     });
 
@@ -205,6 +223,7 @@ describe('Turnstile Operator (|-)', () => {
         print(sorted_array |- @sorted("desc"))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true']);
     });
 
@@ -218,6 +237,7 @@ describe('Turnstile Operator (|-)', () => {
         print(is_invalid)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['true', 'false']);
     });
 
@@ -229,6 +249,7 @@ describe('Turnstile Operator (|-)', () => {
         print("Assertion passed")
       `;
         const output = run(code);
+        expect(output).toEqual(runMachine(code));
         expect(output).toEqual(['Assertion passed']);
       });
 
@@ -254,6 +275,7 @@ describe('Turnstile Operator (|-)', () => {
         print("All even!")
       `;
         const output = run(code);
+        expect(output).toEqual(runMachine(code));
         expect(output).toEqual(['All even!']);
       });
     });
@@ -269,6 +291,7 @@ describe('Turnstile Operator (|-)', () => {
         print(in_range)
       `;
         const output = run(code);
+        expect(output).toEqual(runMachine(code));
         expect(output).toEqual(['true']);
       });
     });

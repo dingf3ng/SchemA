@@ -1,4 +1,4 @@
-import { run } from '../src/index';
+import { run, runMachine } from '../src/index';
 
 describe('Polymorphic Types', () => {
   describe('Tuples', () => {
@@ -11,6 +11,7 @@ describe('Polymorphic Types', () => {
         print(entries)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       // Tuples should be displayed as (key, value)
       expect(output.some(line => line.includes('(x, 10)'))).toBe(true);
       expect(output.some(line => line.includes('(y, 20)'))).toBe(true);
@@ -28,6 +29,7 @@ describe('Polymorphic Types', () => {
         }
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output.some(line => line.includes('key -> value'))).toBe(true);
     });
   });
@@ -45,6 +47,7 @@ describe('Polymorphic Types', () => {
         }
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output.some(line => line.includes('to: 2 weight: 100'))).toBe(true);
     });
 
@@ -60,6 +63,7 @@ describe('Polymorphic Types', () => {
         }
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output.some(line => line.includes('from: 1 to: 2 weight: 50'))).toBe(true);
     });
 
@@ -75,6 +79,7 @@ describe('Polymorphic Types', () => {
         }
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output.some(line => line.includes('to: B weight: 10'))).toBe(true);
     });
 
@@ -90,6 +95,7 @@ describe('Polymorphic Types', () => {
         }
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       // Record toString should show { to: 2, weight: 99 }
       expect(output.some(line => line.includes('to:') && line.includes('weight:'))).toBe(true);
     });
@@ -106,6 +112,7 @@ describe('Polymorphic Types', () => {
         print(vertices)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output.some(line => line.includes('100') && line.includes('200'))).toBe(true);
     });
 
@@ -121,6 +128,7 @@ describe('Polymorphic Types', () => {
         }
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output.some(line => line.includes('Alice -> Bob'))).toBe(true);
     });
   });
@@ -135,6 +143,7 @@ describe('Polymorphic Types', () => {
         print(keys)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output.some(line => line.includes('a') && line.includes('b'))).toBe(true);
     });
 
@@ -147,6 +156,7 @@ describe('Polymorphic Types', () => {
         print(values)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output.some(line => line.includes('10') && line.includes('20'))).toBe(true);
     });
   });

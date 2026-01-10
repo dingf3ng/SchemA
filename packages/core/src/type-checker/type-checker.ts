@@ -632,6 +632,13 @@ export class TypeChecker {
               returnType: { kind: 'void' },
             };
           }
+          if (expr.property.name === 'has') {
+            return {
+              kind: 'function',
+              parameters: [objectType.keyType],
+              returnType: { kind: 'boolean' },
+            };
+          }
           if (expr.property.name === 'keys') {
             return {
               kind: 'function',
@@ -873,7 +880,7 @@ export class TypeChecker {
         }
 
         throw new Error(
-          `Type checking: property ${expr.property.name} does not exist on type ${typeToString(objectType)}, at ${expr.line}, ${expr.column}`
+          `Type checking: property "${expr.property.name}" does not exist on type ${typeToString(objectType)}, at ${expr.line}, ${expr.column}`
         );
       }
 

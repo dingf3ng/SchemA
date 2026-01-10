@@ -8,8 +8,9 @@ export class Environment {
     this.parent = parent;
   }
 
-  define(name: string, value: RuntimeTypedBinder): void {
+  define(name: string, value: RuntimeTypedBinder): Environment {
     this.bindings.set(name, value);
+    return this;
   }
 
   get(name: string): RuntimeTypedBinder {
@@ -22,14 +23,13 @@ export class Environment {
     throw new Error(`Undefined variable: ${name}`);
   }
 
-  set(name: string, value: RuntimeTypedBinder): void {
+  set(name: string, value: RuntimeTypedBinder): Environment {
     if (this.bindings.has(name)) {
       this.bindings.set(name, value);
-      return;
+      return this;
     }
     if (this.parent) {
-      this.parent.set(name, value);
-      return;
+      return this.parent.set(name, value);
     }
     throw new Error(`Cannot assign to undeclared variable: ${name}`);
   }
@@ -61,7 +61,7 @@ export class Environment {
     // Walk up the environment chain
     let currentEnv: Environment | null = this;
     while (currentEnv) {
-      const envBindings = (currentEnv as any).bindings;
+      const envBindings = currentEnv.bindings;
       if (envBindings instanceof Map) {
         for (const [name, binding] of envBindings.entries()) {
           if (!bindings.has(name)) {
@@ -73,6 +73,14 @@ export class Environment {
     }
 
     return bindings;
+  }
+
+  /**
+   * Create a new environment that is a child of the current one
+   * @returns an environment that extending the current one by one more level
+   */
+  nextLevel(): Environment {
+    return new Environment(this);
   }
 
   private collectAllBindings(result: Map<string, RuntimeTypedBinder>): void {

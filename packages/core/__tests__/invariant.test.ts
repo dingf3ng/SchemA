@@ -1,4 +1,4 @@
-import { run } from '../src/index';
+import { run, runMachine } from '../src/index';
 
 describe('@invariant Functionality', () => {
   describe('Basic Invariant Checking', () => {
@@ -12,6 +12,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['passed']);
     });
 
@@ -77,6 +78,7 @@ describe('@invariant Functionality', () => {
         print("passed")
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['passed']);
     });
 
@@ -103,6 +105,7 @@ describe('@invariant Functionality', () => {
         print("passed")
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['passed']);
     });
 
@@ -116,6 +119,7 @@ describe('@invariant Functionality', () => {
         print(sum)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['10']);
     });
 
@@ -130,6 +134,7 @@ describe('@invariant Functionality', () => {
         print("passed")
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['passed']);
     });
   });
@@ -151,6 +156,7 @@ describe('@invariant Functionality', () => {
         print(test())
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['5']);
     });
 
@@ -168,6 +174,7 @@ describe('@invariant Functionality', () => {
         print(j)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['15']);
     });
   });
@@ -184,6 +191,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['passed']);
     });
 
@@ -198,6 +206,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['passed']);
     });
 
@@ -211,6 +220,7 @@ describe('@invariant Functionality', () => {
         print(visited.size())
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['5']);
     });
 
@@ -258,6 +268,7 @@ describe('@invariant Functionality', () => {
         print(binarySearch(arr, 4))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['2', '-1']);
     });
   });
@@ -293,6 +304,7 @@ describe('@invariant Functionality', () => {
         print(bfs(g, 0))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['1']);
     });
   });
@@ -342,6 +354,7 @@ describe('@invariant Functionality', () => {
         print(result)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['2']);
     });
 
@@ -385,6 +398,7 @@ describe('@invariant Functionality', () => {
         print(pos)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['3']);
     });
 
@@ -405,6 +419,7 @@ describe('@invariant Functionality', () => {
         print(result)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['150']);
     });
 
@@ -455,6 +470,7 @@ describe('@invariant Functionality', () => {
         print(result)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['1']);
     });
 
@@ -508,6 +524,7 @@ describe('@invariant Functionality', () => {
         print(categorize(75))
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['small', 'medium', 'large']);
     });
 
@@ -531,6 +548,7 @@ describe('@invariant Functionality', () => {
         print(val)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['80']);
     });
 
@@ -580,6 +598,7 @@ describe('@invariant Functionality', () => {
         print(result)
       `;
       const output = run(code);
+      expect(output).toEqual(runMachine(code));
       expect(output).toEqual(['4']);
     });
 
