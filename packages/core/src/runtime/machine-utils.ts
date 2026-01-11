@@ -1,4 +1,10 @@
-import { Expression, Statement, TypeAnnotation, InvariantStatement, AssertStatement } from "../transpiler/ast-types";
+import {
+  Expression,
+  Statement,
+  TypeAnnotation,
+  InvariantStatement,
+  AssertStatement
+} from "../transpiler/ast-types";
 import { Environment } from "./environment";
 import { RuntimeTypedBinder } from "./runtime-utils";
 
@@ -79,6 +85,8 @@ export interface WhileCont extends BaseContinuation {
   kind: 'while';
   condition: Expression;
   body: Statement;
+  iteration?: number;
+  invariants?: InvariantStatement[];
 }
 
 /**
@@ -88,6 +96,8 @@ export interface WhileCondCont extends BaseContinuation {
   kind: 'while-cond';
   condition: Expression;
   body: Statement;
+  iteration?: number;
+  invariants?: InvariantStatement[];
 }
 
 /**
@@ -97,6 +107,8 @@ export interface UntilCont extends BaseContinuation {
   kind: 'until';
   condition: Expression;
   body: Statement;
+  iteration?: number;
+  invariants?: InvariantStatement[];
 }
 
 /**
@@ -106,6 +118,8 @@ export interface UntilCondCont extends BaseContinuation {
   kind: 'until-cond';
   condition: Expression;
   body: Statement;
+  iteration?: number;
+  invariants?: InvariantStatement[];
 }
 
 /**
@@ -116,6 +130,7 @@ export interface ForInitCont extends BaseContinuation {
   variable: string;
   body: Statement;
   savedEnv: Environment;
+  invariants?: InvariantStatement[];
 }
 
 /**
@@ -127,6 +142,8 @@ export interface ForNextCont extends BaseContinuation {
   iterator: IterableIterator<RuntimeTypedBinder>;
   body: Statement;
   savedEnv: Environment;
+  iteration: number;
+  invariants: InvariantStatement[];
 }
 
 /**
@@ -355,12 +372,9 @@ export type Focus =
   | { kind: 'value'; value: RuntimeTypedBinder }
   | { kind: 'done' };
 
-/**
- * Return exception for control flow
- */
-export class ReturnException {
-  constructor(public value: RuntimeTypedBinder) { }
-}
+// ReturnException is now exported from evaluator.ts
+// Re-export it here for backwards compatibility
+export { ReturnException } from './evaluator';
 
 /**
  * Machine state snapshot for stepping

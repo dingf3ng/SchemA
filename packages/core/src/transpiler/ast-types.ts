@@ -226,14 +226,11 @@ export type TypeAnnotation =
     SimpleTypeAnnotation
   | GenericTypeAnnotation
   | FunctionTypeAnnotation
-  | UnionTypeAnnotation
-  | IntersectionTypeAnnotation
   | TupleTypeAnnotation
   | RecordTypeAnnotation;
 
 export interface BaseTypeAnnotation extends ASTNode {
   type: 'TypeAnnotation';
-  isInferred?: boolean;
 }
 
 export interface SimpleTypeAnnotation extends BaseTypeAnnotation {
@@ -254,16 +251,6 @@ export interface FunctionTypeAnnotation extends BaseTypeAnnotation {
   returnType: TypeAnnotation;
 }
 
-export interface UnionTypeAnnotation extends BaseTypeAnnotation {
-  kind: 'union';
-  types: TypeAnnotation[];
-}
-
-export interface IntersectionTypeAnnotation extends BaseTypeAnnotation {
-  kind: 'intersection';
-  types: TypeAnnotation[];
-}
-
 export interface TupleTypeAnnotation extends BaseTypeAnnotation {
   kind: 'tuple';
   elementTypes: TypeAnnotation[];
@@ -271,7 +258,7 @@ export interface TupleTypeAnnotation extends BaseTypeAnnotation {
 
 export interface RecordTypeAnnotation extends BaseTypeAnnotation {
   kind: 'record';
-  fieldTypes: [TypeAnnotation, TypeAnnotation][];
+  fieldTypes: [string, TypeAnnotation][]; // { "set": Set<int>, "map": Map<string, int> }
 }
 
 export type Statement =

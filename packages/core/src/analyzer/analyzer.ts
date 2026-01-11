@@ -3,7 +3,7 @@ import {
   InvariantStatement,
   AssertStatement,
 } from '../transpiler/ast-types';
-import { RuntimeTypedBinder, RuntimeTypedBinderToString } from '../runtime/runtime-utils';
+import { RuntimeTypedBinder, runtimeTypedBinderToString } from '../runtime/runtime-utils';
 import { Environment } from '../runtime/environment';
 
 /**
@@ -53,8 +53,7 @@ export class Analyzer {
     stmt: InvariantStatement,
     evaluateExpression: (expr: Expression) => RuntimeTypedBinder,
     environment: Environment,
-    context: 'loop' | 'function',
-    iterationInfo?: { iteration: number }
+    context: { kind: 'loop', iteration: number } | { kind: 'function'},
   ): void {
     const conditionResult = evaluateExpression(stmt.condition);
 
@@ -75,8 +74,8 @@ export class Analyzer {
       }
 
       // Add iteration info for loop invariants
-      if (context === 'loop' && iterationInfo) {
-        message += ` (at iteration ${iterationInfo.iteration})`;
+      if (context.kind === 'loop') {
+        message += ` (at iteration ${context.iteration})`;
       }
 
       // Include current state in error message
@@ -100,7 +99,7 @@ export class Analyzer {
         continue;
       }
 
-      const valueStr = RuntimeTypedBinderToString(binding);
+      const valueStr = runtimeTypedBinderToString(binding);
       bindings.push(`  ${name} = ${valueStr}`);
     }
 

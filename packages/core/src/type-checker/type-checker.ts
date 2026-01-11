@@ -1,4 +1,5 @@
 import { Program, Statement, Expression } from '../transpiler/ast-types';
+import { synthMemberExpression } from './member-utils';
 import { FunEnv, TypeEnv } from './type-checker-main';
 import { resolve, Type, typesEqual, typeToString } from './type-checker-utils';
 
@@ -6,10 +7,10 @@ export class TypeChecker {
   // Environments
 
   // Maps variable names to their types
-  private typeEnv: TypeEnv = new Map();
+  private typeEnv: TypeEnv;
 
   // Maps function names to their parameter types and return type
-  private functionEnv: FunEnv = new Map();
+  private functionEnv: FunEnv;
 
   // Current function being checked (for return type validation)
   private currentFunction: string | null = null;
@@ -247,28 +248,12 @@ export class TypeChecker {
 
   private isWeak(type: Type): boolean {
     if (type.kind === 'weak') return true;
-    if (type.kind === 'union') {
-      return type.types.some(t => this.isWeak(t));
-    }
     return false;
   }
 
   private getNumericKind(type: Type): 'int' | 'float' | null {
     if (type.kind === 'int') return 'int';
     if (type.kind === 'float') return 'float';
-    if (type.kind === 'intersection') {
-      const kinds = type.types.map(t => this.getNumericKind(t)).filter(k => k !== null);
-      if (kinds.length === 0) return null;
-      if (kinds.includes('int')) return 'int';
-      if (kinds.includes('float')) return 'float';
-      return null;
-    }
-    if (type.kind === 'union') {
-      const kinds = type.types.map(t => this.getNumericKind(t));
-      if (kinds.some(k => k === null)) return null;
-      if (kinds.includes('float')) return 'float';
-      return 'int';
-    }
     return null;
   }
 
@@ -316,7 +301,7 @@ export class TypeChecker {
       case 'BooleanLiteral':
         return { kind: 'boolean' };
 
-      case 'ArrayLiteral':
+      case 'ArrayLiteral': {
         if (expr.elements.length === 0) {
           return { kind: 'array', elementType: { kind: 'poly' } };
         }
@@ -329,12 +314,63 @@ export class TypeChecker {
 
         if (allSame) {
           return { kind: 'array', elementType: firstType };
+        } else {
+          throw new Error(
+            `Type checking: array elements must be of the same type. At ${expr.line}, ${expr.column}`
+          );
+        }
+      }
+
+      case 'MapLiteral': {
+        if (expr.entries.length === 0) {
+          return {
+            kind: 'map',
+            keyType: { kind: 'weak' },
+            valueType: { kind: 'weak' },
+          };
+        }
+        const keyTypes = expr.entries.map((e) => this.synthExpression(e.key));
+        const valueTypes = expr.entries.map((e) => this.synthExpression(e.value));
+        const firstKeyType = keyTypes[0];
+        const firstValueType = valueTypes[0];
+        const allKeysSame = keyTypes.every(
+          (t) => typesEqual(t, firstKeyType, this.typeEqualityCache) &&
+            typesEqual(firstKeyType, t, this.typeEqualityCache));
+        const allValuesSame = valueTypes.every(
+          (t) => typesEqual(t, firstValueType, this.typeEqualityCache) &&
+            typesEqual(firstValueType, t, this.typeEqualityCache));
+
+        if (allKeysSame && allValuesSame) {
+          return {
+            kind: 'map',
+            keyType: firstKeyType,
+            valueType: firstValueType,
+          };
+        } else {
+          throw new Error(
+            `Type checking: map keys and values must be of the same type. At ${expr.line}, ${expr.column}`
+          );
+        }
+      }
+      case 'SetLiteral': {
+        if (expr.elements.length === 0) {
+          return { kind: 'set', elementType: { kind: 'weak' } };
         }
 
-        return {
-          kind: 'array',
-          elementType: { kind: 'union', types: elementTypes },
-        };
+        const elementTypes = expr.elements.map((e) => this.synthExpression(e));
+        const firstType = elementTypes[0];
+        const allSame = elementTypes.every(
+          (t) => typesEqual(t, firstType, this.typeEqualityCache) &&
+            typesEqual(firstType, t, this.typeEqualityCache));
+
+        if (allSame) {
+          return { kind: 'set', elementType: firstType };
+        } else {
+          throw new Error(
+            `Type checking: set elements must be of the same type. At ${expr.line}, ${expr.column}`
+          );
+        }
+      }
 
       case 'Identifier': {
         // Underscore cannot be used as a value
@@ -479,11 +515,6 @@ export class TypeChecker {
           return { kind: 'boolean' };
         }
 
-        // If operands are unions and we haven't matched a specific rule, allow it as weak (runtime check)
-        if (leftType.kind === 'union' || rightType.kind === 'union') {
-          return { kind: 'weak' };
-        }
-
         throw new Error(
           `Type checking: invalid binary operation, ${typeToString(leftType)} ${expr.operator} ${typeToString(rightType)}, at ${expr.line}, ${expr.column}`
         );
@@ -581,307 +612,7 @@ export class TypeChecker {
 
       case 'MemberExpression': {
         const objectType = this.synthExpression(expr.object);
-        // Handle built-in data structure methods
-        // Arrays, Maps, Sets, Heaps, HeapMaps, BinaryTrees, AVLTrees, Graphs
-
-        // Array methods
-        if (objectType.kind === 'array') {
-          if (expr.property.name === 'length') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'int' },
-            };
-          }
-          if (expr.property.name === 'push') {
-            return {
-              kind: 'function',
-              parameters: [objectType.elementType],
-              returnType: { kind: 'void' },
-            };
-          }
-          if (expr.property.name === 'pop') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: objectType.elementType,
-            };
-          }
-        }
-
-        // Map methods
-        if (objectType.kind === 'map') {
-          if (expr.property.name === 'size') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'int' },
-            };
-          }
-          if (expr.property.name === 'get') {
-            return {
-              kind: 'function',
-              parameters: [objectType.keyType],
-              returnType: objectType.valueType,
-            };
-          }
-          if (expr.property.name === 'set') {
-            return {
-              kind: 'function',
-              parameters: [objectType.keyType, objectType.valueType],
-              returnType: { kind: 'void' },
-            };
-          }
-          if (expr.property.name === 'has') {
-            return {
-              kind: 'function',
-              parameters: [objectType.keyType],
-              returnType: { kind: 'boolean' },
-            };
-          }
-          if (expr.property.name === 'keys') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'array', elementType: objectType.keyType },
-            };
-          }
-          if (expr.property.name === 'values') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'array', elementType: objectType.valueType },
-            };
-          }
-          if (expr.property.name === 'entries') {
-            // Returns Array<(keyType, valueType)>
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: {
-                kind: 'array',
-                elementType: {
-                  kind: 'tuple',
-                  elementTypes: [objectType.keyType, objectType.valueType],
-                },
-              },
-            };
-          }
-        }
-
-        if (objectType.kind === 'set') {
-          if (expr.property.name === 'size') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'int' },
-            };
-          }
-          if (expr.property.name === 'add') {
-            return {
-              kind: 'function',
-              parameters: [objectType.elementType],
-              returnType: { kind: 'void' },
-            };
-          }
-          if (expr.property.name === 'has') {
-            return {
-              kind: 'function',
-              parameters: [objectType.elementType],
-              returnType: { kind: 'boolean' },
-            };
-          }
-          if (expr.property.name === 'delete') {
-            return {
-              kind: 'function',
-              parameters: [objectType.elementType],
-              returnType: { kind: 'void' },
-            };
-          }
-        }
-
-        if (objectType.kind === 'heap') {
-          if (expr.property.name === 'push') {
-            return {
-              kind: 'function',
-              parameters: [objectType.elementType],
-              returnType: { kind: 'void' },
-            };
-          }
-          if (expr.property.name === 'pop') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: objectType.elementType,
-            };
-          }
-          if (expr.property.name === 'peek') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: objectType.elementType,
-            };
-          }
-          if (expr.property.name === 'size') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'int' }
-            };
-          }
-        }
-
-        if (objectType.kind === 'heapmap') {
-          if (expr.property.name === 'push') {
-            return {
-              kind: 'function',
-              parameters: [objectType.keyType, objectType.valueType],
-              returnType: { kind: 'void' },
-            };
-          }
-          if (expr.property.name === 'pop') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: objectType.keyType,
-            };
-          }
-          if (expr.property.name === 'peek') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: objectType.keyType,
-            };
-          }
-          if (expr.property.name === 'size') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'int' }
-            };
-          }
-        }
-
-        if (objectType.kind === 'binarytree' || objectType.kind === 'avltree') {
-          if (expr.property.name === 'insert') {
-            return {
-              kind: 'function',
-              parameters: [objectType.elementType],
-              returnType: { kind: 'void' },
-            };
-          }
-          if (expr.property.name === 'search') {
-            return {
-              kind: 'function',
-              parameters: [objectType.elementType],
-              returnType: { kind: 'boolean' },
-            };
-          }
-          if (expr.property.name === 'getHeight') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'int' },
-            };
-          }
-        }
-
-        if (objectType.kind === 'graph') {
-          if (expr.property.name === 'addVertex') {
-            return {
-              kind: 'function',
-              parameters: [objectType.nodeType],
-              returnType: { kind: 'void' },
-            };
-          }
-          if (expr.property.name === 'addEdge') {
-            return {
-              kind: 'function',
-              parameters: [objectType.nodeType, objectType.nodeType, { kind: 'int' }],
-              returnType: { kind: 'void' },
-            };
-          }
-          if (expr.property.name === 'getNeighbors') {
-            // Returns Array<{ to: nodeType, weight: int }>
-            const edgeRecordType: Type = {
-              kind: 'record',
-              fieldTypes: [
-                [{ kind: 'string' }, objectType.nodeType],
-                [{ kind: 'string' }, { kind: 'int' }],
-              ],
-            };
-            return {
-              kind: 'function',
-              parameters: [objectType.nodeType],
-              returnType: {
-                kind: 'array',
-                elementType: edgeRecordType,
-              },
-            };
-          }
-          if (expr.property.name === 'hasVertex') {
-            return {
-              kind: 'function',
-              parameters: [objectType.nodeType],
-              returnType: { kind: 'boolean' },
-            };
-          }
-          if (expr.property.name === 'hasEdge') {
-            return {
-              kind: 'function',
-              parameters: [objectType.nodeType, objectType.nodeType],
-              returnType: { kind: 'boolean' },
-            };
-          }
-          if (expr.property.name === 'size') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'int' },
-            };
-          }
-          if (expr.property.name === 'isDirected') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'boolean' },
-            };
-          }
-          if (expr.property.name === 'getEdges') {
-            // Returns Array<{ from: nodeType, to: nodeType, weight: int }>
-            const edgeWithFromRecordType: Type = {
-              kind: 'record',
-              fieldTypes: [
-                [{ kind: 'string' }, objectType.nodeType],
-                [{ kind: 'string' }, objectType.nodeType],
-                [{ kind: 'string' }, { kind: 'int' }],
-              ],
-            };
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: {
-                kind: 'array',
-                elementType: edgeWithFromRecordType,
-              },
-            };
-          }
-          if (expr.property.name === 'getVertices') {
-            return {
-              kind: 'function',
-              parameters: [],
-              returnType: { kind: 'array', elementType: objectType.nodeType },
-            };
-          }
-        }
-
-        if (objectType.kind === 'weak') {
-          return { kind: 'weak' };
-        }
-
-        throw new Error(
-          `Type checking: property "${expr.property.name}" does not exist on type ${typeToString(objectType)}, at ${expr.line}, ${expr.column}`
-        );
+        return synthMemberExpression(expr, objectType);
       }
 
       case 'IndexExpression': {
@@ -891,24 +622,21 @@ export class TypeChecker {
         if (objectType.kind === 'array') {
           if (indexType.kind === 'int') {
             return objectType.elementType;
-          }
-          // Support array slicing with ranges
-          if (indexType.kind === 'array' && indexType.elementType.kind === 'int') {
+          } else if (indexType.kind === 'array' && indexType.elementType.kind === 'int') {
             // Range expression returns array<int>, so this covers ranges
             return objectType; // Slicing returns an array of the same type
-          }
-          // Support array slicing with infinite ranges
-          if (indexType.kind === 'range') {
+          } else if (indexType.kind === 'range') {
             return objectType;
+          } else {
+            throw new Error(
+              `Type checking: cannot index array with type "${typeToString(indexType)}"}, at ${expr.line}, ${expr.column}`,
+            );
           }
-        }
-
-        if (objectType.kind === 'map') {
+        } else if (objectType.kind === 'map') {
+          // Check that index type matches map key type
           this.checkExpression(expr.index, objectType.keyType);
           return objectType.valueType;
-        }
-
-        if (objectType.kind === 'tuple') {
+        } else if (objectType.kind === 'tuple') {
           // Tuples are indexed by integers
           if (indexType.kind !== 'int') {
             throw new Error(
@@ -920,52 +648,50 @@ export class TypeChecker {
               const idx = expr.index.value;
               if (idx >= 0 && idx < objectType.elementTypes.length) {
                 return objectType.elementTypes[idx];
+              } else {
+                throw new Error(
+                  `Type checking: tuple index ${idx} out of bounds (length: ${objectType.elementTypes.length}), at ${expr.line}, ${expr.column}`,
+                );
+              }
+            } else {
+              return { kind: 'dynamic' }
+            }
+          }
+
+        } else if (objectType.kind === 'record') {
+          // Records can be indexed by strings corresponding to field names
+          if (indexType.kind !== 'string') {
+            throw new Error(
+              `Type checking: cannot index record with non-string type ${typeToString(indexType)}, at ${expr.line}, ${expr.column}`,
+            );
+          } else {
+            // For literal string indices, return the specific field type
+            if (expr.index.type === 'StringLiteral') {
+              const fieldName = expr.index.value;
+              for (const [name, fieldType] of objectType.fieldTypes) {
+                if (name === fieldName) {
+                  return fieldType;
+                }
               }
               throw new Error(
-                `Type checking: tuple index ${idx} out of bounds (length: ${objectType.elementTypes.length}), at ${expr.line}, ${expr.column}`,
+                `Type checking: record has no field named "${fieldName}", at ${expr.line}, ${expr.column}`,
               );
+            } else {
+              return { kind: 'dynamic' }
             }
           }
-        }
-
-        if (objectType.kind === 'record') {
-          // Check that the index type matches the record's key type
-          let indexKeyType: Type | undefined = objectType.fieldTypes[0]?.[0];
-          if (typesEqual(indexType, indexKeyType ? indexKeyType! : { kind: 'poly' }, this.typeEqualityCache)) {
-            // Return a union of all possible value types since we don't track actual field names
-            if (objectType.fieldTypes.length === 1) {
-              return objectType.fieldTypes[0][1];
-            }
-            // Create a union of all value types
-            const valueTypes = objectType.fieldTypes.map(([_, valueType]) => valueType);
-            // Deduplicate if all types are the same
-            const allSame = valueTypes.every(t => typesEqual(t, valueTypes[0], this.typeEqualityCache));
-            if (allSame) {
-              return valueTypes[0];
-            }
-            return {
-              kind: 'union',
-              types: valueTypes
-            };
-          }
+        } else {
           throw new Error(
-            `Type checking: cannot index record with key type ${typeToString(indexKeyType!)} using index type ${typeToString(indexType)}, at ${expr.line}, ${expr.column}`,
+            `Type checking: cannot index type ${typeToString(objectType)}, at ${expr.line}, ${expr.column}`,
           );
         }
-
-        if (objectType.kind === 'weak') {
-          return { kind: 'weak' };
-        }
-
-        throw new Error(
-          `Type checking: cannot index type ${typeToString(objectType)} with ${typeToString(indexType)}, at ${expr.line}, ${expr.column}`,
-        );
       }
-
       default:
-        throw new Error(`Type checking: unknown expression type ${(expr as any).type}, at ${expr.line}, ${expr.column}`);
+        const _exhaustiveCheck: never = expr;
+        throw new Error(`Type checking: unknown expression type ${expr}`);
     }
   }
+
 }
 
 export function check(refined: { typeEnv: TypeEnv; functionEnv: FunEnv }, program: Program): void {

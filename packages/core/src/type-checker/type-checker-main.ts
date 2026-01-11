@@ -68,8 +68,47 @@ export function initializeBuiltins(): [FunEnv, TypeEnv] {
     returnType: { kind: 'avltree', elementType: { kind: 'weak' } },
   });
 
-  typeEnv.set('inf', { kind: 'intersection', types: [{ kind: 'int' }, { kind: 'float' }] });
+  functionEnv.set('int_min', {
+    parameters: [{ kind: 'int' }],
+    returnType: { kind: 'int' },
+    variadic: true,
+  });
 
+  functionEnv.set('int_max', {
+    parameters: [{ kind: 'int' }],
+    returnType: { kind: 'int' },
+    variadic: true,
+  });
+
+  functionEnv.set('float_min', {
+    parameters: [{ kind: 'float' }],
+    returnType: { kind: 'float' },
+    variadic: true,
+  });
+  
+  functionEnv.set('float_max', {
+    parameters: [{ kind: 'float' }],
+    returnType: { kind: 'float' },
+    variadic: true,
+  });
+
+  functionEnv.set('len', {
+    parameters: [{ kind: 'string' }],
+    returnType: { kind: 'int' },
+  });
+
+  functionEnv.set('int_abs', {
+    parameters: [{ kind: 'int' }],
+    returnType: { kind: 'int' },
+  });
+
+  functionEnv.set('float_abs', {
+    parameters: [{ kind: 'float' }],
+    returnType: { kind: 'float' },
+  });
+
+  typeEnv.set('inf', { kind: 'int' });
+  
   return [functionEnv, typeEnv];
 }
 

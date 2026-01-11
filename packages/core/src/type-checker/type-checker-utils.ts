@@ -2,7 +2,8 @@ import { TypeAnnotation } from "../transpiler/ast-types";
 
 export type Type =
   | { kind: 'weak' } // weak polymorphic type, like in ocaml
-  | { kind: 'poly' } // real polymorphic type, only for empty arrays, maps, sets, heaps, etc.
+  | { kind: 'poly' } // real polymorphic type, only for print
+  | { kind: 'dynamic' } // dynamic type, for accessing tuples/records due to heterogeneous types
   | { kind: 'int' }
   | { kind: 'float' }
   | { kind: 'string' }
@@ -18,10 +19,8 @@ export type Type =
   | { kind: 'avltree'; elementType: Type }
   | { kind: 'graph'; nodeType: Type }
   | { kind: 'range' }
-  | { kind: 'record'; fieldTypes: [Type, Type][] }
+  | { kind: 'record'; fieldTypes: [string, Type][] } // { keyName: Type }
   | { kind: 'tuple'; elementTypes: Type[] }
-  | { kind: 'union'; types: Type[] }
-  | { kind: 'intersection'; types: Type[] }
   | {
     kind: 'function';
     parameters: Type[];
@@ -47,6 +46,8 @@ export function typeToString(type: Type): string {
       return 'void';
     case 'predicate':
       return 'Predicate';
+    case 'dynamic':
+      return 'dynamic';
     case 'range':
       return 'Range';
     case 'array':
@@ -66,17 +67,10 @@ export function typeToString(type: Type): string {
     case 'graph':
       return `Graph<${typeToString(type.nodeType)}>`;
     case 'record': {
-      const fields = type.fieldTypes
-        .map(([name, fieldType]) => `${name}: ${typeToString(fieldType)}`)
-        .join(', ');
-      return `{ ${fields} }`;
+      return `{ ${type.fieldTypes.map(([key, value]) => `${key}: ${typeToString(value)}`).join(', ')} }`;
     }
     case 'tuple':
       return `(${type.elementTypes.map((t) => typeToString(t)).join(', ')})`;
-    case 'union':
-      return type.types.map((t) => typeToString(t)).join(' | ');
-    case 'intersection':
-      return type.types.map((t) => typeToString(t)).join(' & ');
     case 'function':
       return `(${type.parameters.map((p) => typeToString(p)).join(', ')}) -> ${typeToString(type.returnType)}`;
   }
@@ -105,30 +99,6 @@ function typesEqualUncached(t1: Type, t2: Type, typeEqualityCache: Map<string, b
   // Handle weak and poly types (wildcards) - they match anything
   if (t1.kind === 'weak' || t1.kind === 'poly' || t2.kind === 'weak' || t2.kind === 'poly') {
     return true;
-  }
-
-  // Handle Union Types (LHS split)
-  // t1 <= t2 if t1 is a union and ALL members of t1 are assignable to t2
-  if (t1.kind === 'union') {
-    return t1.types.every(t => typesEqual(t, t2, typeEqualityCache));
-  }
-
-  // Handle Intersection Types (RHS split)
-  // t1 <= t2 if t2 is an intersection and t1 is assignable to ALL members of t2
-  if (t2.kind === 'intersection') {
-    return t2.types.every(t => typesEqual(t1, t, typeEqualityCache));
-  }
-
-  // Handle Union Types (RHS match)
-  // t1 <= t2 if t2 is a union and t1 is assignable to SOME member of t2
-  if (t2.kind === 'union') {
-    return t2.types.some(t => typesEqual(t1, t, typeEqualityCache));
-  }
-
-  // Handle Intersection Types (LHS match)
-  // t1 <= t2 if t1 is an intersection and SOME member of t1 is assignable to t2
-  if (t1.kind === 'intersection') {
-    return t1.types.some(t => typesEqual(t, t2, typeEqualityCache));
   }
 
   if (t1.kind !== t2.kind) {
@@ -297,22 +267,6 @@ export function typeToAnnotation(type: Type, line: number, column: number): Type
         line,
         column
       };
-    case 'union':
-      return {
-        type: 'TypeAnnotation',
-        kind: 'union',
-        types: type.types.map(t => typeToAnnotation(t, line, column)),
-        line,
-        column
-      };
-    case 'intersection':
-      return {
-        type: 'TypeAnnotation',
-        kind: 'intersection',
-        types: type.types.map(t => typeToAnnotation(t, line, column)),
-        line,
-        column
-      };
     case 'function':
       return {
         type: 'TypeAnnotation',
@@ -335,10 +289,7 @@ export function typeToAnnotation(type: Type, line: number, column: number): Type
       return {
         type: 'TypeAnnotation',
         kind: 'record',
-        fieldTypes: type.fieldTypes.map(([keyType, valueType]) => [
-          typeToAnnotation(keyType, line, column),
-          typeToAnnotation(valueType, line, column)
-        ]),
+        fieldTypes: type.fieldTypes.map(([key, value]) => [key, typeToAnnotation(value, line, column)]),
         line,
         column
       };
@@ -435,18 +386,6 @@ export function resolve(annotation: TypeAnnotation): Type {
       }
       throw new Error(`Type checking: unknown generic type ${annotation.name}`);
 
-    case 'union':
-      return {
-        kind: 'union',
-        types: annotation.types.map((t) => resolve(t)),
-      };
-
-    case 'intersection':
-      return {
-        kind: 'intersection',
-        types: annotation.types.map((t) => resolve(t)),
-      };
-
     case 'function':
       return {
         kind: 'function',
@@ -457,16 +396,16 @@ export function resolve(annotation: TypeAnnotation): Type {
     case 'tuple':
       return {
         kind: 'tuple',
-        elementTypes: annotation.elementTypes!.map((t) => resolve(t)),
+        elementTypes: annotation.elementTypes.map((t) => resolve(t)),
       };
 
     case 'record':
       return {
         kind: 'record',
-        fieldTypes: annotation.fieldTypes!.map(([keyType, valueType]) => [
-          resolve(keyType),
-          resolve(valueType),
-        ]),
+        fieldTypes: annotation.fieldTypes.map(([key, value]) => [key, resolve(value)]),
       };
+    default:
+      const _exhaustiveCheck: never = annotation;
+      throw new Error(`Type checking: unknown type annotation kind ${annotation}`);
   }
 }

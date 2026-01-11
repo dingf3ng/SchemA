@@ -45,15 +45,7 @@ parameter
     ;
 
 typeAnnotation
-    : unionType
-    ;
-
-unionType
-    : intersectionType ('|' intersectionType)*
-    ;
-
-intersectionType
-    : primaryType ('&' primaryType)*
+    : primaryType
     ;
 
 primaryType

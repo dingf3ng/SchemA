@@ -92,6 +92,8 @@ describe('@invariant Functionality', () => {
       `;
       expect(() => run(code)).toThrow(/i exceeded limit/);
       expect(() => run(code)).toThrow(/iteration 9/);
+      expect(() => runMachine(code)).toThrow(/i exceeded limit/);
+      expect(() => runMachine(code)).toThrow(/iteration 9/);
     });
 
     it('should check invariant in while loop', () => {
@@ -233,6 +235,83 @@ describe('@invariant Functionality', () => {
         }
       `;
       expect(() => run(code)).toThrow(/visited set too large/);
+      expect(() => runMachine(code)).toThrow(/visited set too large/);
+    });
+
+    it('should support user-defined functions in invariants', () => {
+      const code = `
+        do add(a, b) {
+          return a + b
+        }
+
+        do test() {
+          let x = 5
+          @invariant(add(1, 2) < 4)
+          @invariant(add(x, 1) == 6)
+          print("passed")
+        }
+        test()
+      `;
+      const output = run(code);
+      expect(output).toEqual(runMachine(code));
+      expect(output).toEqual(['passed']);
+    });
+
+    it('should detect invariant violation with user-defined function', () => {
+      const code = `
+        do multiply(a, b) {
+          return a * b
+        }
+
+        do test() {
+          let x = 10
+          @invariant(multiply(x, 2) < 15, "product too large")
+          print("passed")
+        }
+        test()
+      `;
+      expect(() => run(code)).toThrow(/product too large/);
+      expect(() => runMachine(code)).toThrow(/product too large/);
+    });
+
+    it('should support complex user-defined functions in loop invariants', () => {
+      const code = `
+        do isValid(value, limit) {
+          if value < 0 {
+            return false
+          }
+          if value >= limit {
+            return false
+          }
+          return true
+        }
+
+        let sum = 0
+        for i in 0..5 {
+          @invariant(isValid(sum, 20))
+          sum = sum + i
+        }
+        print(sum)
+      `;
+      const output = run(code);
+      expect(output).toEqual(runMachine(code));
+      expect(output).toEqual(['10']);
+    });
+
+    it('should detect loop invariant violation with complex user-defined function', () => {
+      const code = `
+        do checkBounds(value, min, max) {
+          return value >= min && value <= max
+        }
+
+        let count = 0
+        for i in 0..10 {
+          @invariant(checkBounds(count, 0, 5), "count out of bounds")
+          count = count + 1
+        }
+      `;
+      expect(() => run(code)).toThrow(/count out of bounds/);
+      expect(() => runMachine(code)).toThrow(/count out of bounds/);
     });
   });
 
@@ -319,6 +398,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       expect(() => run(code)).toThrow(/Type mismatch.*expected boolean/);
+      expect(() => runMachine(code)).toThrow(/Type mismatch.*expected boolean/);
     });
 
     it('should reject non-string invariant messages', () => {
@@ -330,6 +410,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       expect(() => run(code)).toThrow(/Type mismatch.*expected string/);
+      expect(() => runMachine(code)).toThrow(/Type mismatch.*expected string/);
     });
   });
 
@@ -376,6 +457,7 @@ describe('@invariant Functionality', () => {
         search([1, 2, 3, 4, 5], 5)
       `;
       expect(() => run(code)).toThrow(/index should not exceed 3/);
+      expect(() => runMachine(code)).toThrow(/index should not exceed 3/);
     });
 
     it('should check invariant in for loop with early return', () => {
@@ -495,6 +577,7 @@ describe('@invariant Functionality', () => {
         search2D(mat, 5)
       `;
       expect(() => run(code)).toThrow(/exceeded max operations/);
+      expect(() => runMachine(code)).toThrow(/exceeded max operations/);
     });
 
     it('should maintain invariant with multiple early returns in different branches', () => {
@@ -571,6 +654,7 @@ describe('@invariant Functionality', () => {
         dangerousSearch(45)
       `;
       expect(() => run(code)).toThrow(/count exceeded safe limit/);
+      expect(() => runMachine(code)).toThrow(/count exceeded safe limit/);
     });
 
     it('should verify complex state invariants before early return', () => {
@@ -623,6 +707,7 @@ describe('@invariant Functionality', () => {
         invalidProcess([40, 50, 30])
       `;
       expect(() => run(code)).toThrow(/sum exceeded maximum/);
+      expect(() => runMachine(code)).toThrow(/sum exceeded maximum/);
     });
   });
 
@@ -645,6 +730,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       expect(() => run(code)).toThrow(/sum exceeded at start/);
+      expect(() => runMachine(code)).toThrow(/sum exceeded at start/);
     });
 
     it('should work the same when @invariant is in the middle of loop body', () => {
@@ -665,6 +751,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       expect(() => run(code)).toThrow(/sum exceeded in middle/);
+      expect(() => runMachine(code)).toThrow(/sum exceeded in middle/);
     });
 
     it('should work the same when @invariant is at the end of loop body', () => {
@@ -684,6 +771,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       expect(() => run(code)).toThrow(/sum exceeded at end/);
+      expect(() => runMachine(code)).toThrow(/sum exceeded at end/);
     });
 
     it('should work the same when @invariant is before the modifying statement', () => {
@@ -700,6 +788,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       expect(() => run(code)).toThrow(/i exceeded before modification/);
+      expect(() => runMachine(code)).toThrow(/i exceeded before modification/);
     });
 
     it('should work the same when @invariant is after the modifying statement', () => {
@@ -716,6 +805,7 @@ describe('@invariant Functionality', () => {
         test()
       `;
       expect(() => run(code)).toThrow(/i exceeded after modification/);
+      expect(() => runMachine(code)).toThrow(/i exceeded after modification/);
     });
 
     it('should check invariant at iteration start regardless of position', () => {
@@ -735,6 +825,7 @@ describe('@invariant Functionality', () => {
       `;
       // Should fail at iteration 4 start (i=3), before i=i+1 executes
       expect(() => run(code)).toThrow(/exceeded at iteration start check/);
+      expect(() => runMachine(code)).toThrow(/exceeded at iteration start check/);
     });
 
     it('should check invariant at iteration end regardless of position', () => {
@@ -754,6 +845,7 @@ describe('@invariant Functionality', () => {
       `;
       // Should fail at iteration 3 end (after i becomes 4)
       expect(() => run(code)).toThrow(/exceeded at iteration end check/);
+      expect(() => runMachine(code)).toThrow(/exceeded at iteration end check/);
     });
 
     it('should check multiple invariants at same checkpoints regardless of position', () => {
@@ -777,6 +869,7 @@ describe('@invariant Functionality', () => {
       // Both invariants checked at start and end of each iteration
       // y limit will fail first at iteration 5 end (y=10)
       expect(() => run(code)).toThrow(/y limit/);
+      expect(() => runMachine(code)).toThrow(/y limit/);
     });
 
     it('should check invariant before early return regardless of invariant position before return', () => {
@@ -798,6 +891,7 @@ describe('@invariant Functionality', () => {
       `;
       // Should fail when i=7, before early return at i=8
       expect(() => run(code)).toThrow(/searched too far/);
+      expect(() => runMachine(code)).toThrow(/searched too far/);
     });
 
     it('should check invariant before early return regardless of invariant position after return', () => {
@@ -819,6 +913,7 @@ describe('@invariant Functionality', () => {
       `;
       // Should still fail when i=7, even though @invariant is after return
       expect(() => run(code)).toThrow(/searched too far/);
+      expect(() => runMachine(code)).toThrow(/searched too far/);
     });
 
     it('should verify all three check points work with position-independent invariants', () => {
@@ -842,6 +937,7 @@ describe('@invariant Functionality', () => {
       // Iteration 1: start (x=1✓), end (x=2✓)
       // Iteration 2: start (x=2✓), end (x=3✗) <- fails here
       expect(() => run(code)).toThrow(/x must not exceed 2/);
+      expect(() => runMachine(code)).toThrow(/x must not exceed 2/);
     });
 
     it('should demonstrate position-independence with concrete example', () => {
@@ -878,6 +974,7 @@ describe('@invariant Functionality', () => {
       // Both should fail at the same logical point (iteration 2 end, when count=3)
       for (const tc of testCases) {
         expect(() => run(tc.code)).toThrow(/Invariant violated/);
+        expect(() => runMachine(tc.code)).toThrow(/Invariant violated/);
       }
     });
   });

@@ -1,5 +1,12 @@
 import { Type } from '../type-checker/type-checker-utils';
-import { BlockStatement, Parameter, TypeAnnotation } from '../transpiler/ast-types';
+import {
+  BlockStatement,
+  Expression,
+  InvariantStatement,
+  Parameter,
+  Statement,
+  TypeAnnotation
+} from '../transpiler/ast-types';
 import {
   SchemaArray,
   SchemaMap,
@@ -15,12 +22,19 @@ import {
 } from '../builtins/data-structures';
 import { Environment } from './environment';
 import { Predicate } from '../analyzer/analyzer-utils';
+import { Analyzer } from '../analyzer/analyzer';
 
 export type RuntimeType =
   { static: Type, refinements: Predicate[] }
 
+export class Sole {
+  
+}
+
+export type sole = Sole;
+
 export type RuntimeTypedBinder =
-  | { value: undefined; type: RuntimeType } // void type
+  | { value: sole; type: RuntimeType } // void type
   | { value: number; type: RuntimeType }
   | { value: string; type: RuntimeType }
   | { value: boolean; type: RuntimeType }
@@ -59,7 +73,7 @@ export type RuntimeTypedBinder =
     type: RuntimeType;
   }; // builtin function type
 
-export function RuntimeTypedBinderToString(binder: RuntimeTypedBinder): string {
+export function runtimeTypedBinderToString(binder: RuntimeTypedBinder): string {
   const { value, type } = binder;
   switch (type.static.kind) {
     case 'void':
@@ -78,33 +92,30 @@ export function RuntimeTypedBinderToString(binder: RuntimeTypedBinder): string {
     case 'avltree':
     case 'graph':
     case 'range':
-      return value !== null && value !== undefined ? value.toString() : 'undefined'
+    case 'dynamic':
+      return value.toString()
     case 'predicate': {
       const predicateValue = value as { predicateName: string; predicateArgs: RuntimeTypedBinder[] };
       const argsStr = predicateValue.predicateArgs
-        .map((arg) => RuntimeTypedBinderToString(arg))
+        .map((arg) => runtimeTypedBinderToString(arg))
         .join(', ');
       return `${predicateValue.predicateName}(${argsStr})`;
     }
     case 'tuple': {
       const values = value as RuntimeTypedBinder[];
-      return `(${values.map((v) => RuntimeTypedBinderToString(v)).join(', ')})`;
+      return `(${values.map((v) => runtimeTypedBinderToString(v)).join(', ')})`;
     }
     case 'record': {
       const values = value as Map<RuntimeTypedBinder, RuntimeTypedBinder>;
       const fields = Array.from(values.entries())
         .map(([k, v]) => {
-          return `${RuntimeTypedBinderToString(k)}: ${RuntimeTypedBinderToString(v)}`;
+          return `${runtimeTypedBinderToString(k)}: ${runtimeTypedBinderToString(v)}`;
         })
         .join(', ');
       return `{ ${fields} }`;
     }
     case 'function':
       return '<function>';
-    case 'union':
-      return value!.toString();
-    case 'intersection':
-      return value!.toString();
     case 'weak':
       return value!.toString();
     default:
@@ -161,19 +172,13 @@ export function resolveTypeAnnotation(annotation: TypeAnnotation | undefined): T
       parameters: annotation.parameterTypes ? annotation.parameterTypes.map((p: TypeAnnotation) => resolveTypeAnnotation(p)) : [],
       returnType: resolveTypeAnnotation(annotation.returnType)
     };
-  } else if (annotation.kind === 'union') {
-    return { kind: 'union', types: annotation.types.map((t: TypeAnnotation) => resolveTypeAnnotation(t)) };
-  } else if (annotation.kind === 'intersection') {
-    return { kind: 'intersection', types: annotation.types.map((t: TypeAnnotation) => resolveTypeAnnotation(t)) };
   } else if (annotation.kind === 'tuple') {
     return { kind: 'tuple', elementTypes: annotation.elementTypes.map((t: TypeAnnotation) => resolveTypeAnnotation(t)) };
   } else if (annotation.kind === 'record') {
-    const fieldTypes: [Type, Type][] = annotation.fieldTypes.map(([keyType, valueType]) => {
-      return [resolveTypeAnnotation(keyType), resolveTypeAnnotation(valueType)];
-    });
-    return { kind: 'record', fieldTypes };
+    return { kind: 'record', fieldTypes: annotation.fieldTypes.map(([name, typeAnn]) => [name, resolveTypeAnnotation(typeAnn)]) };
+  } else {
+    throw new Error('Internal Error: Unknown type annotation kind');
   }
-  throw new Error('Internal Error: Unknown type annotation kind');
 }
 
 export function isTruthy(value: RuntimeTypedBinder): boolean {
@@ -192,12 +197,11 @@ export function isTruthy(value: RuntimeTypedBinder): boolean {
 export function getActualRuntimeType(binder: RuntimeTypedBinder): string {
   const type = binder.type.static;
 
-  // If it's not a union, return the type kind directly
-  if (type.kind !== 'union' && type.kind !== 'intersection') {
+  // If it's not a intersection, or dynamic type, return the type kind directly
+  if (type.kind !== 'dynamic') {
     return type.kind;
   }
 
-  // For unions, determine the actual type from the runtime value
   const value = binder.value;
   if (typeof value === 'number') {
     return Number.isInteger(value) ? 'int' : 'float';
@@ -273,47 +277,45 @@ export function generateStringRange(start: string, end: string, inclusive: boole
 }
 
 
-export function hasWeakTypes(type: Type): boolean {
-  if (type.kind === 'weak') return true;
+export function hasDynamicTypes(type: Type): boolean {
+  if (type.kind === 'dynamic') {
+    return true;
+  }
 
   if (type.kind === 'array' || type.kind === 'set' || type.kind === 'heap') {
-    return hasWeakTypes(type.elementType);
+    return hasDynamicTypes(type.elementType);
   }
 
   if (type.kind === 'map' || type.kind === 'heapmap') {
-    return hasWeakTypes(type.keyType) || hasWeakTypes(type.valueType);
-  }
-
-  if (type.kind === 'union' || type.kind === 'intersection') {
-    return type.types.some(t => hasWeakTypes(t));
+    return hasDynamicTypes(type.keyType) || hasDynamicTypes(type.valueType);
   }
 
   if (type.kind === 'tuple') {
-    return type.elementTypes.some(t => hasWeakTypes(t));
+    return type.elementTypes.some(t => hasDynamicTypes(t));
   }
 
   if (type.kind === 'record') {
-    return type.fieldTypes.some(([k, v]) => hasWeakTypes(k) || hasWeakTypes(v));
+    return type.fieldTypes.some(([_, fieldType]) => hasDynamicTypes(fieldType));
   }
 
   if (type.kind === 'graph') {
-    return hasWeakTypes(type.nodeType);
+    return hasDynamicTypes(type.nodeType);
   }
 
   if (type.kind === 'binarytree' || type.kind === 'avltree') {
-    return hasWeakTypes(type.elementType);
+    return hasDynamicTypes(type.elementType);
   }
 
   if (type.kind === 'function') {
-    return type.parameters.some(p => hasWeakTypes(p)) || hasWeakTypes(type.returnType);
+    return type.parameters.some(p => hasDynamicTypes(p)) || hasDynamicTypes(type.returnType);
   }
 
   return false;
 }
 
 export function valuesEqual(left: RuntimeTypedBinder, right: RuntimeTypedBinder): boolean {
-  const leftType = left.type.static.kind;
-  const rightType = right.type.static.kind;
+  const leftType = getActualRuntimeType(left);
+  const rightType = getActualRuntimeType(right);
 
   if (leftType !== rightType) return false;
 
@@ -326,14 +328,21 @@ export function valuesEqual(left: RuntimeTypedBinder, right: RuntimeTypedBinder)
   throw new Error(`Equality not supported for type: "${leftType}" and "${rightType}"`);
 }
 
-export function RuntimeTypeBinderToKey(value: RuntimeTypedBinder): any {
+export function runtimeTypedBinderToKey(value: RuntimeTypedBinder): any {
+  // For weak/union/intersection/dynamic types, resolve to actual type first
+  const actualType = getActualRuntimeType(value);
+  if (actualType === 'int' || actualType === 'float') return value.value;
+  if (actualType === 'string') return value.value;
+  if (actualType === 'boolean') return value.value;
+
+  // Fallback: try to check static type as well
   if (value.type.static.kind === 'int' || value.type.static.kind === 'float') return value.value;
   if (value.type.static.kind === 'string') return value.value;
   if (value.type.static.kind === 'boolean') return value.value;
   return value;
 }
 
-export function keyToRuntimeTypeBinder(key: any): RuntimeTypedBinder {
+export function keyToRuntimeTypedBinder(key: any): RuntimeTypedBinder {
   if (typeof key === 'number') {
     return Number.isInteger(key)
       ? { type: { static: { kind: 'int' }, refinements: [] }, value: key }
@@ -347,4 +356,39 @@ export function keyToRuntimeTypeBinder(key: any): RuntimeTypedBinder {
   }
   // If it's already a RuntimeTypedBinder, return it as-is
   return key;
+}
+
+/**
+   * Extract all invariant statements from a statement (typically a loop body)
+   */
+export function extractInvariants(stmt: Statement): InvariantStatement[] {
+  const invariants: InvariantStatement[] = [];
+
+  const extract = (s: Statement): void => {
+    if (s.type === 'InvariantStatement') {
+      invariants.push(s);
+    } else if (s.type === 'BlockStatement') {
+      for (const child of s.statements) {
+        extract(child);
+      }
+    }
+    // Don't recurse into nested loops or functions
+  };
+
+  extract(stmt);
+  return invariants;
+}
+
+/**
+ * Check all loop invariants at a given iteration
+ */
+export function checkLoopInvariants(invariants: InvariantStatement[], iteration: number, analyzer: Analyzer, currentEnv: Environment, evaluateExpr: (expr: Expression) => RuntimeTypedBinder): void {
+  for (const invariant of invariants) {
+    analyzer.checkInvariant(
+      invariant,
+      evaluateExpr,
+      currentEnv,
+      { kind: 'loop', iteration },
+    );
+  }
 }

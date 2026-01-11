@@ -270,7 +270,7 @@ class TypeRefiner {
 
           if (varType && varType.kind === 'array' && isInferred) {
             // Widen array element type if it's an inferred array
-            this.refineTypeFromExpression(varType.elementType, stmt.value, true);
+            this.refineTypeFromExpression(varType.elementType, stmt.value);
             this.updateVariableAnnotation(varName, varType);
           }
         }
@@ -350,33 +350,33 @@ class TypeRefiner {
 
       if (varType.kind === 'map') {
         if (methodName === 'set' && args.length === 2) {
-          this.refineTypeFromExpression(varType.keyType, args[0], isInferred);
-          this.refineTypeFromExpression(varType.valueType, args[1], isInferred);
+          this.refineTypeFromExpression(varType.keyType, args[0]);
+          this.refineTypeFromExpression(varType.valueType, args[1]);
 
           this.refineExpressionFromType(args[0], varType.keyType);
           this.refineExpressionFromType(args[1], varType.valueType);
         }
         if (methodName === 'get' && args.length === 1) {
-          this.refineTypeFromExpression(varType.keyType, args[0], isInferred);
+          this.refineTypeFromExpression(varType.keyType, args[0]);
           this.refineExpressionFromType(args[0], varType.keyType);
         }
       }
       else if (varType.kind === 'set') {
         if ((methodName === 'add' || methodName === 'has') && args.length === 1) {
-          this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
+          this.refineTypeFromExpression(varType.elementType, args[0]);
           this.refineExpressionFromType(args[0], varType.elementType);
         }
       }
       else if (varType.kind === 'heap') {
         if (methodName === 'push' && args.length === 1) {
-          this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
+          this.refineTypeFromExpression(varType.elementType, args[0]);
           this.refineExpressionFromType(args[0], varType.elementType);
         }
       }
       else if (varType.kind === 'heapmap') {
         if (methodName === 'push' && args.length === 2) {
-          this.refineTypeFromExpression(varType.keyType, args[0], isInferred);
-          this.refineTypeFromExpression(varType.valueType, args[1], isInferred);
+          this.refineTypeFromExpression(varType.keyType, args[0]);
+          this.refineTypeFromExpression(varType.valueType, args[1]);
 
           this.refineExpressionFromType(args[0], varType.keyType);
           this.refineExpressionFromType(args[1], varType.valueType);
@@ -384,7 +384,7 @@ class TypeRefiner {
       }
       else if (varType.kind === 'array') {
         if (methodName === 'push' && args.length === 1) {
-          this.refineTypeFromExpression(varType.elementType, args[0], isInferred);
+          this.refineTypeFromExpression(varType.elementType, args[0]);
           this.refineExpressionFromType(args[0], varType.elementType);
         }
       }
@@ -590,7 +590,7 @@ class TypeRefiner {
   }
 
   private hasWeakTypes(type: Type): boolean {
-    if (type.kind === 'weak' || type.kind === 'poly') {
+    if (type.kind === 'weak') {
       return true;
     }
     if (type.kind === 'array') {
@@ -604,9 +604,6 @@ class TypeRefiner {
     }
     if (type.kind === 'heapmap') {
       return this.hasWeakTypes(type.keyType) || this.hasWeakTypes(type.valueType);
-    }
-    if (type.kind === 'union' || type.kind === 'intersection') {
-      return type.types.some(t => this.hasWeakTypes(t));
     }
     if (type.kind === 'tuple') {
       return type.elementTypes.some(t => this.hasWeakTypes(t));
@@ -675,42 +672,13 @@ class TypeRefiner {
     }
   }
 
-  private refineTypeFromExpression(targetType: Type, expr: Expression, allowBroadening: boolean = false): void {
+  private refineTypeFromExpression(targetType: Type, expr: Expression): void {
     const exprType = this.analyzeExpressionType(expr, this.typeEnv);
 
     if (targetType.kind === 'weak' || targetType.kind === 'poly') {
       if (exprType.kind !== 'weak' && exprType.kind !== 'poly') {
         Object.assign(targetType, exprType);
         this.refinementChanged = true;
-      }
-    } else if (allowBroadening) {
-      if (!typesEqual(exprType, targetType, this.typeEqualityCache) && exprType.kind !== 'weak' && exprType.kind !== 'poly') {
-        // Broaden to union
-        const oldType = JSON.parse(JSON.stringify(targetType));
-
-        // If already union, add to it
-        if (targetType.kind === 'union') {
-          // Check if type already exists in union
-          const exists = targetType.types.some(t => typesEqual(t, exprType, this.typeEqualityCache));
-          if (!exists) {
-            targetType.types.push(exprType);
-            this.refinementChanged = true;
-          }
-        } else {
-          // Convert to union
-          const newUnion: Type = {
-            kind: 'union',
-            types: [oldType, exprType]
-          };
-
-          // Clear targetType
-          for (const key in targetType) {
-            delete (targetType as any)[key];
-          }
-
-          Object.assign(targetType, newUnion);
-          this.refinementChanged = true;
-        }
       }
     }
   }
@@ -758,14 +726,7 @@ class TypeRefiner {
               returnType = stmtReturnType;
             } else if (!typesEqual(returnType, stmtReturnType, this.typeEqualityCache)) {
               // Multiple return types - create union
-              if (returnType.kind === 'union') {
-                returnType.types.push(stmtReturnType);
-              } else {
-                returnType = {
-                  kind: 'union',
-                  types: [returnType, stmtReturnType]
-                };
-              }
+              throw new Error('Multiple return types detected in function body.');
             }
           }
         }
@@ -778,10 +739,7 @@ class TypeRefiner {
           if (typesEqual(thenType, elseType, this.typeEqualityCache)) {
             return thenType;
           }
-          return {
-            kind: 'union',
-            types: [thenType, elseType]
-          };
+          throw new Error('Conflicting return types in if-else branches.');
         }
         return thenType || elseType;
 
@@ -813,15 +771,7 @@ class TypeRefiner {
             if (!constraints.returnType) {
               constraints.returnType = returnType;
             } else if (!typesEqual(constraints.returnType, returnType, this.typeEqualityCache)) {
-              // Multiple return types - create a union
-              if (constraints.returnType.kind === 'union') {
-                constraints.returnType.types.push(returnType);
-              } else {
-                constraints.returnType = {
-                  kind: 'union',
-                  types: [constraints.returnType, returnType],
-                };
-              }
+              throw Error("Conflicting return types detected in function body.");
             }
           }
           break;
@@ -920,7 +870,7 @@ class TypeRefiner {
         if (allSame) {
           return { kind: 'array', elementType: firstType };
         }
-        return { kind: 'array', elementType: { kind: 'union', types: elementTypes } };
+        throw new Error('Array literal has elements of differing types.');
 
       case 'BinaryExpression': {
         const leftType = this.analyzeExpressionType(expr.left, paramTypes);
@@ -977,8 +927,8 @@ class TypeRefiner {
                 elementType: {
                   kind: 'record',
                   fieldTypes: [
-                    [{ kind: 'string' }, objectType.nodeType],
-                    [{ kind: 'string' }, { kind: 'int' }]
+                    ['to', objectType.nodeType],
+                    ['weight', { kind: 'int' }]
                   ]
                 }
               };
@@ -1046,7 +996,7 @@ class TypeRefiner {
         if (objectType.kind === 'record') {
           const valueTypes = objectType.fieldTypes.map(pair => pair[1]);
           if (valueTypes.length === 1) return valueTypes[0];
-          return { kind: 'union', types: valueTypes };
+          throw new Error('Record has fields of differing types.');
         }
         return { kind: 'weak' };
       }
@@ -1195,11 +1145,12 @@ class TypeRefiner {
 }
 
 export function refine(
-  inferred : { typeEnv: TypeEnv; functionEnv: FunEnv; functionDeclEnv: Map<string, any>; },
+  inferred: { typeEnv: TypeEnv; functionEnv: FunEnv; functionDeclEnv: Map<string, any>; },
   program: Program
 ): { typeEnv: TypeEnv; functionEnv: FunEnv } {
   const refiner = new TypeRefiner(
-    { typeEnv: inferred.typeEnv,
+    {
+      typeEnv: inferred.typeEnv,
       functionEnv: inferred.functionEnv,
       functionDeclEnv: inferred.functionDeclEnv
     });

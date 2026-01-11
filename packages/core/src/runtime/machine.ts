@@ -23,49 +23,61 @@ import {
   SchemaArray,
   SchemaMap,
   SchemaSet,
-  MinHeap,
-  MaxHeap,
-  MinHeapMap,
-  MaxHeapMap,
-  Graph,
   LazyRange,
-  BinaryTree,
 } from '../builtins/data-structures';
 import { Environment } from './environment';
 import {
+  checkLoopInvariants,
+  extractInvariants,
   generateStringRange,
   getActualRuntimeType,
-  hasWeakTypes,
+  hasDynamicTypes,
   isTruthy,
-  keyToRuntimeTypeBinder,
+  keyToRuntimeTypedBinder,
   resolveTypeAnnotation,
-  RuntimeTypeBinderToKey,
+  runtimeTypedBinderToKey,
   RuntimeTypedBinder,
-  RuntimeTypedBinderToString,
-  valuesEqual
+  runtimeTypedBinderToString,
+  Sole,
 } from './runtime-utils';
-import { Type, typeToString } from '../type-checker/type-checker-utils';
-import { Continuation, Focus, MachineState, ReturnException } from './machine-utils';
-import { parsePredicateName } from '../analyzer/analyzer-utils';
+import { Continuation, Focus, MachineState } from './machine-utils';
 import { InvariantTracker } from '../analyzer/synthesizer';
 import { initializeBuiltins } from './init-builtins';
+import { Analyzer } from '../analyzer/analyzer';
+import { Evaluator, EvaluatorContext, ReturnException } from './evaluator';
 
 
 // ============================================================================
 // Machine Implementation
 // ============================================================================
 
-export class Machine {
+export class Machine implements EvaluatorContext {
   private focus: Focus = { kind: 'done' };
   private currentEnv: Environment;
   private globalEnv: Environment;
+  private analyzer: Analyzer = new Analyzer();
   private kontinuation: Continuation[] = [];
   private output: string[] = [];
   private trackerStack: InvariantTracker[] = [];
+  private evaluator: Evaluator;
 
   constructor() {
     this.globalEnv = new Environment();
     this.currentEnv = initializeBuiltins(this.globalEnv, this.output);
+    this.evaluator = new Evaluator(this);
+  }
+
+  // EvaluatorContext implementation
+  getCurrentEnv(): Environment {
+    return this.currentEnv;
+  }
+
+  setCurrentEnv(env: Environment): void {
+    this.currentEnv = env;
+  }
+
+  getTrackerStack(): InvariantTracker[] {
+    return this.trackerStack;
   }
 
   /**
@@ -345,7 +357,7 @@ export class Machine {
     switch (stmt.type) {
       case 'FunctionDeclaration':
         this.evaluateFunctionDeclaration(stmt);
-        this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+        this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         break;
 
       case 'VariableDeclaration': {
@@ -366,7 +378,7 @@ export class Machine {
         } else {
           // No initializer - bind undefined
           const declaredType = resolveTypeAnnotation(decl.typeAnnotation);
-          const value: RuntimeTypedBinder = { value: undefined, type: { static: declaredType, refinements: [] } };
+          const value: RuntimeTypedBinder = { value: new Sole(), type: { static: declaredType, refinements: [] } };
           if (decl.name !== '_') {
             this.currentEnv.define(decl.name, value);
           }
@@ -378,7 +390,7 @@ export class Machine {
               stmt: { ...stmt, declarations: remaining }
             };
           } else {
-            this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+            this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
           }
         }
         break;
@@ -401,20 +413,26 @@ export class Machine {
       }
 
       case 'WhileStatement': {
+        const invariants = extractInvariants(stmt.body);
         this.kontinuation.push({
           kind: 'while-cond',
           condition: stmt.condition,
-          body: stmt.body
+          body: stmt.body,
+          iteration: 0,
+          invariants
         });
         this.focus = { kind: 'expr', expr: stmt.condition };
         break;
       }
 
       case 'UntilStatement': {
+        const invariants = extractInvariants(stmt.body);
         this.kontinuation.push({
           kind: 'until-cond',
           condition: stmt.condition,
-          body: stmt.body
+          body: stmt.body,
+          iteration: 0,
+          invariants
         });
         this.focus = { kind: 'expr', expr: stmt.condition };
         break;
@@ -422,11 +440,13 @@ export class Machine {
 
       case 'ForStatement': {
         // First evaluate the iterable
+        const invariants = extractInvariants(stmt.body);
         this.kontinuation.push({
           kind: 'for-init',
           variable: stmt.variable,
           body: stmt.body,
-          savedEnv: this.currentEnv
+          savedEnv: this.currentEnv,
+          invariants
         });
         this.focus = { kind: 'expr', expr: stmt.iterable };
         break;
@@ -437,7 +457,7 @@ export class Machine {
           this.kontinuation.push({ kind: 'return' });
           this.focus = { kind: 'expr', expr: stmt.value };
         } else {
-          throw new ReturnException({ value: undefined, type: { static: { kind: 'void' }, refinements: [] } });
+          throw new ReturnException({ value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } });
         }
         break;
       }
@@ -448,7 +468,7 @@ export class Machine {
 
         if (stmt.statements.length === 0) {
           this.currentEnv = savedEnv;
-          this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+          this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         } else {
           if (stmt.statements.length > 1) {
             this.kontinuation.push({
@@ -545,7 +565,7 @@ export class Machine {
           let finalValue = value;
           if (kont.typeAnnotation) {
             const declaredType = resolveTypeAnnotation(kont.typeAnnotation);
-            if (!hasWeakTypes(declaredType)) {
+            if (!hasDynamicTypes(declaredType)) {
               finalValue = { ...value, type: { ...value.type, static: declaredType } };
             }
           }
@@ -564,7 +584,7 @@ export class Machine {
             this.focus = { kind: 'expr', expr: next.initializer };
           }
         } else {
-          this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+          this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         }
         break;
       }
@@ -576,7 +596,7 @@ export class Machine {
             throw new Error('Cannot assign to underscore (_)');
           }
           this.currentEnv.set(target.name, value);
-          this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+          this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         } else if (target.type === 'MemberExpression') {
           this.kontinuation.push({
             kind: 'assign-index-final',
@@ -624,16 +644,18 @@ export class Machine {
         const valueToAssign = (kont as any).valueToAssign;
         const obj = kont.object;
         const idx = value;
+        const idxActualType = getActualRuntimeType(idx);
 
-        if (obj.type.static.kind === 'array' && idx.type.static.kind === 'int') {
+        if ((obj.type.static.kind === 'array' || obj.value instanceof SchemaArray) &&
+            (idx.type.static.kind === 'int' || idxActualType === 'int')) {
           (obj.value as SchemaArray<RuntimeTypedBinder>).set(idx.value as number, valueToAssign);
-        } else if (obj.type.static.kind === 'map') {
-          const key = RuntimeTypeBinderToKey(idx);
+        } else if (obj.type.static.kind === 'map' || obj.value instanceof SchemaMap) {
+          const key = runtimeTypedBinderToKey(idx);
           (obj.value as SchemaMap<any, RuntimeTypedBinder>).set(key, valueToAssign);
         } else {
           throw new Error('Invalid assignment target');
         }
-        this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+        this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         break;
       }
 
@@ -646,7 +668,7 @@ export class Machine {
         } else if (kont.elseBranch) {
           this.focus = { kind: 'stmt', stmt: kont.elseBranch };
         } else {
-          this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+          this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         }
         break;
       }
@@ -656,25 +678,61 @@ export class Machine {
           throw new Error('While condition must be boolean');
         }
         if (value.value as boolean) {
+          const iteration = kont.iteration || 0;
+          const invariants = kont.invariants || [];
+
+          // Push tracker on first iteration
+          if (iteration === 0 && invariants.length > 0) {
+            const tracker = new InvariantTracker();
+            this.trackerStack.push(tracker);
+          }
+
+          // Check invariants before iteration (using Evaluator)
+          if (invariants.length > 0) {
+            checkLoopInvariants(invariants, iteration, this.analyzer, this.currentEnv, (expr) => this.evaluator.evaluateExpression(expr));
+          }
+
           // Push continuation for next iteration check
           this.kontinuation.push({
             kind: 'while',
             condition: kont.condition,
-            body: kont.body
+            body: kont.body,
+            iteration,
+            invariants
           });
           this.focus = { kind: 'stmt', stmt: kont.body };
         } else {
-          this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+          // Loop is done, pop tracker if we have invariants
+          if (kont.invariants && kont.invariants.length > 0) {
+            this.trackerStack.pop();
+          }
+          this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         }
         break;
       }
 
       case 'while': {
+        const iteration = kont.iteration || 0;
+        const invariants = kont.invariants || [];
+
+        // Check invariants after body (using Evaluator)
+        if (invariants.length > 0) {
+          checkLoopInvariants(invariants, iteration, this.analyzer, this.currentEnv, (expr) => this.evaluator.evaluateExpression(expr));
+        }
+
+        // Record state for invariant synthesis
+        if (this.trackerStack.length > 0) {
+          const tracker = this.trackerStack[this.trackerStack.length - 1];
+          tracker.recordState(this.currentEnv, iteration);
+        }
+
         // After body, check condition again
         this.kontinuation.push({
           kind: 'while-cond',
           condition: kont.condition,
-          body: kont.body
+          body: kont.body,
+          iteration: iteration + 1,
+          invariants
         });
         this.focus = { kind: 'expr', expr: kont.condition };
         break;
@@ -685,25 +743,61 @@ export class Machine {
           throw new Error('Until condition must be boolean');
         }
         if (!(value.value as boolean)) {
+          const iteration = kont.iteration || 0;
+          const invariants = kont.invariants || [];
+
+          // Push tracker on first iteration
+          if (iteration === 0 && invariants.length > 0) {
+            const tracker = new InvariantTracker();
+            this.trackerStack.push(tracker);
+          }
+
+          // Check invariants before iteration (using Evaluator)
+          if (invariants.length > 0) {
+            checkLoopInvariants(invariants, iteration, this.analyzer, this.currentEnv, (expr) => this.evaluator.evaluateExpression(expr));
+          }
+
           // Push continuation for next iteration check
           this.kontinuation.push({
             kind: 'until',
             condition: kont.condition,
-            body: kont.body
+            body: kont.body,
+            iteration,
+            invariants
           });
           this.focus = { kind: 'stmt', stmt: kont.body };
         } else {
-          this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+          // Loop is done, pop tracker if we have invariants
+          if (kont.invariants && kont.invariants.length > 0) {
+            this.trackerStack.pop();
+          }
+          this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         }
         break;
       }
 
       case 'until': {
+        const iteration = kont.iteration || 0;
+        const invariants = kont.invariants || [];
+
+        // Check invariants after body (using Evaluator)
+        if (invariants.length > 0) {
+          checkLoopInvariants(invariants, iteration, this.analyzer, this.currentEnv, (expr) => this.evaluator.evaluateExpression(expr));
+        }
+
+        // Record state for invariant synthesis
+        if (this.trackerStack.length > 0) {
+          const tracker = this.trackerStack[this.trackerStack.length - 1];
+          tracker.recordState(this.currentEnv, iteration);
+        }
+
         // After body, check condition again
         this.kontinuation.push({
           kind: 'until-cond',
           condition: kont.condition,
-          body: kont.body
+          body: kont.body,
+          iteration: iteration + 1,
+          invariants
         });
         this.focus = { kind: 'expr', expr: kont.condition };
         break;
@@ -719,22 +813,46 @@ export class Machine {
           if (kont.variable !== '_') {
             this.currentEnv.define(kont.variable, next.value);
           }
+
+          // Push tracker for this loop
+          const tracker = new InvariantTracker();
+          this.trackerStack.push(tracker);
+
+          // Check invariants before first iteration (using Evaluator)
+          const invariants = kont.invariants || [];
+          if (invariants.length > 0) {
+            checkLoopInvariants(invariants, 0, this.analyzer, this.currentEnv, (expr) => this.evaluator.evaluateExpression(expr));
+          }
+
           // Push continuation for next iteration
           this.kontinuation.push({
             kind: 'for-next',
             variable: kont.variable,
             iterator,
             body: kont.body,
-            savedEnv: kont.savedEnv
+            savedEnv: kont.savedEnv,
+            iteration: 0,
+            invariants
           });
           this.focus = { kind: 'stmt', stmt: kont.body };
         } else {
-          this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+          this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         }
         break;
       }
 
       case 'for-next': {
+        // Check invariants after iteration (using Evaluator)
+        if (kont.invariants.length > 0) {
+          checkLoopInvariants(kont.invariants, kont.iteration, this.analyzer, this.currentEnv, (expr) => this.evaluator.evaluateExpression(expr));
+        }
+
+        // Record state for invariant synthesis
+        const tracker = this.trackerStack[this.trackerStack.length - 1];
+        if (tracker) {
+          tracker.recordState(this.currentEnv, kont.iteration);
+        }
+
         // Value is body result (void), continue iteration
         const iterator = kont.iterator;
         const next = iterator.next();
@@ -744,19 +862,32 @@ export class Machine {
           if (kont.variable !== '_') {
             this.currentEnv.define(kont.variable, next.value);
           }
+
+          const nextIteration = kont.iteration + 1;
+
+          // Check invariants before iteration (using Evaluator)
+          if (kont.invariants.length > 0) {
+            checkLoopInvariants(kont.invariants, nextIteration, this.analyzer, this.currentEnv, (expr) => this.evaluator.evaluateExpression(expr));
+          }
+
           // Push continuation for next iteration
           this.kontinuation.push({
             kind: 'for-next',
             variable: kont.variable,
             iterator,
             body: kont.body,
-            savedEnv: kont.savedEnv
+            savedEnv: kont.savedEnv,
+            iteration: nextIteration,
+            invariants: kont.invariants
           });
           this.focus = { kind: 'stmt', stmt: kont.body };
         } else {
+          // Loop is done, pop tracker
+          this.trackerStack.pop();
+
           // Restore environment
           this.currentEnv = kont.savedEnv;
-          this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+          this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         }
         break;
       }
@@ -778,7 +909,7 @@ export class Machine {
       }
 
       case 'binop-right': {
-        const result = this.applyBinaryOp(kont.operator, kont.left, value, kont.line, kont.column);
+        const result = this.evaluator.applyBinaryOp(kont.operator, kont.left, value, kont.line, kont.column);
         this.focus = { kind: 'value', value: result };
         break;
       }
@@ -830,6 +961,7 @@ export class Machine {
           }
           this.focus = { kind: 'value', value: { value: !(value.value as boolean), type: { static: { kind: 'boolean' }, refinements: [] } } };
         } else if (kont.operator === 'typeof') {
+          const { typeToString } = require('../type-checker/type-checker-utils');
           const typeStr = typeToString(value.type.static);
           this.focus = { kind: 'value', value: { value: typeStr, type: { static: { kind: 'string' }, refinements: [] } } };
         } else {
@@ -887,7 +1019,7 @@ export class Machine {
       }
 
       case 'member': {
-        const result = this.evaluateMember(value, kont.property);
+        const result = this.evaluator.evaluateMember(value, kont.property);
         this.focus = { kind: 'value', value: result };
         break;
       }
@@ -899,7 +1031,7 @@ export class Machine {
       }
 
       case 'index-idx': {
-        const result = this.evaluateIndex(kont.object, value);
+        const result = this.evaluator.evaluateIndex(kont.object, value);
         this.focus = { kind: 'value', value: result };
         break;
       }
@@ -978,7 +1110,7 @@ export class Machine {
 
       case 'expr-stmt': {
         // Discard expression result
-        this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+        this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         break;
       }
 
@@ -1005,7 +1137,7 @@ export class Machine {
           throw new Error(`${message}\nCurrent state:\n${state}`);
         }
 
-        this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+        this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         break;
       }
 
@@ -1033,7 +1165,7 @@ export class Machine {
           throw new Error(`${message}\nCurrent state:\n${state}`);
         }
 
-        this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+        this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         break;
       }
 
@@ -1067,6 +1199,7 @@ export class Machine {
       case 'predicate-check': {
         // Value is the evaluated subject
         const subject = value;
+        const { parsePredicateName } = require('../analyzer/analyzer-utils');
 
         // Use existing tracker if available (inside a loop), otherwise create a new one
         const tracker = this.trackerStack.length > 0
@@ -1102,6 +1235,28 @@ export class Machine {
     // Unwind continuation stack until we find a call-apply
     while (this.kontinuation.length > 0) {
       const kont = this.kontinuation.pop()!;
+
+      // Check invariants before exiting loops on early return (using Evaluator)
+      if (kont.kind === 'for-next') {
+        if (kont.invariants.length > 0) {
+          checkLoopInvariants(kont.invariants, kont.iteration, this.analyzer, this.currentEnv, (expr) => this.evaluator.evaluateExpression(expr));
+        }
+        // Pop tracker when exiting loop
+        if (this.trackerStack.length > 0) {
+          this.trackerStack.pop();
+        }
+      } else if (kont.kind === 'while' || kont.kind === 'until') {
+        const invariants = kont.invariants || [];
+        const iteration = kont.iteration || 0;
+        if (invariants.length > 0) {
+          checkLoopInvariants(invariants, iteration, this.analyzer, this.currentEnv, (expr) => this.evaluator.evaluateExpression(expr));
+          // Pop tracker when exiting loop
+          if (this.trackerStack.length > 0) {
+            this.trackerStack.pop();
+          }
+        }
+      }
+
       if (kont.kind === 'call-apply') {
         this.currentEnv = kont.savedEnv;
         this.focus = { kind: 'value', value };
@@ -1131,7 +1286,7 @@ export class Machine {
         continue;
       }
 
-      const valueStr = RuntimeTypedBinderToString(binding);
+      const valueStr = runtimeTypedBinderToString(binding);
       bindings.push(`  ${name} = ${valueStr}`);
     }
 
@@ -1183,7 +1338,7 @@ export class Machine {
         this.focus = { kind: 'stmt', stmt: body.statements[0] };
       } else {
         // Empty function body - return void
-        this.focus = { kind: 'value', value: { value: undefined, type: { static: { kind: 'void' }, refinements: [] } } };
+        this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
       }
 
       // Return null to indicate focus was already set
@@ -1191,708 +1346,6 @@ export class Machine {
     }
 
     throw new Error('Not a function');
-  }
-
-  private evaluateMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {
-    if (object.type.static.kind === 'array') {
-      if (propertyName === 'length') {
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
-          value: {
-            fn: () => ({ type: { static: { kind: 'int' }, refinements: [] }, value: (object.value as SchemaArray<any>).length })
-          }
-        };
-      }
-      if (propertyName === 'push') {
-        return {
-          type: { static: { kind: 'function', parameters: [object.type.static.elementType], returnType: { kind: 'void' } }, refinements: [] },
-          value: {
-            fn: (item: RuntimeTypedBinder) => {
-              (object.value as SchemaArray<RuntimeTypedBinder>).push(item);
-              return { value: undefined, type: { static: { kind: 'void' }, refinements: [] } };
-            }
-          }
-        };
-      }
-      if (propertyName === 'pop') {
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: object.type.static.elementType }, refinements: [] },
-          value: {
-            fn: () => {
-              const popped = (object.value as SchemaArray<RuntimeTypedBinder>).pop();
-              if (!popped) throw new Error('Cannot pop from empty array');
-              return popped;
-            }
-          }
-        };
-      }
-    }
-
-    if (object.type.static.kind === 'map') {
-      return this.evaluateMapMember(object, propertyName);
-    }
-
-    if (object.type.static.kind === 'set') {
-      return this.evaluateSetMember(object, propertyName);
-    }
-
-    if (object.type.static.kind === 'heap') {
-      return this.evaluateHeapMember(object, propertyName);
-    }
-
-    if (object.type.static.kind === 'heapmap') {
-      return this.evaluateHeapMapMember(object, propertyName);
-    }
-
-    if (object.type.static.kind === 'graph') {
-      return this.evaluateGraphMember(object, propertyName);
-    }
-
-    if (object.type.static.kind === 'binarytree' || object.type.static.kind === 'avltree') {
-      return this.evaluateBinaryTreeMember(object, propertyName);
-    }
-
-    throw new Error(`Property ${propertyName} does not exist on type ${object.type.static.kind}`);
-  }
-
-  private evaluateMapMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {
-    const mapType = object.type.static as { kind: 'map'; keyType: Type; valueType: Type };
-    const map = object.value as SchemaMap<any, RuntimeTypedBinder>;
-
-    switch (propertyName) {
-      case 'size':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
-          value: { fn: () => ({ type: { static: { kind: 'int' }, refinements: [] }, value: map.size }) }
-        };
-      case 'get':
-        return {
-          type: { static: { kind: 'function', parameters: [mapType.keyType], returnType: mapType.valueType }, refinements: [] },
-          value: {
-            fn: (key: RuntimeTypedBinder) => {
-              const k = RuntimeTypeBinderToKey(key);
-              return map.get(k) || { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-            }
-          }
-        };
-      case 'set':
-        return {
-          type: { static: { kind: 'function', parameters: [mapType.keyType, mapType.valueType], returnType: { kind: 'void' } }, refinements: [] },
-          value: {
-            fn: (key: RuntimeTypedBinder, value: RuntimeTypedBinder) => {
-              const k = RuntimeTypeBinderToKey(key);
-              map.set(k, value);
-              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-            }
-          }
-        };
-      case 'has':
-        return {
-          type: { static: { kind: 'function', parameters: [mapType.keyType], returnType: { kind: 'boolean' } }, refinements: [] },
-          value: {
-            fn: (key: RuntimeTypedBinder) => {
-              const k = RuntimeTypeBinderToKey(key);
-              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: map.has(k) };
-            }
-          }
-        };
-      case 'keys':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: mapType.keyType } }, refinements: [] },
-          value: {
-            fn: () => {
-              const arr = new SchemaArray<RuntimeTypedBinder>();
-              map.forEach((_, key) => arr.push(keyToRuntimeTypeBinder(key)));
-              return { type: { static: { kind: 'array', elementType: mapType.keyType }, refinements: [] }, value: arr };
-            }
-          }
-        };
-      case 'values':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: mapType.valueType } }, refinements: [] },
-          value: {
-            fn: () => {
-              const arr = new SchemaArray<RuntimeTypedBinder>();
-              map.forEach((value) => arr.push(value));
-              return { type: { static: { kind: 'array', elementType: mapType.valueType }, refinements: [] }, value: arr };
-            }
-          }
-        };
-      case 'entries':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: { kind: 'tuple', elementTypes: [mapType.keyType, mapType.valueType] } } }, refinements: [] },
-          value: {
-            fn: () => {
-              const arr = new SchemaArray<RuntimeTypedBinder>();
-              map.forEach((value, key) => {
-                const tuple: RuntimeTypedBinder[] = [
-                  keyToRuntimeTypeBinder(key),
-                  value
-                ];
-                arr.push({ type: { static: { kind: 'tuple', elementTypes: [mapType.keyType, mapType.valueType] }, refinements: [] }, value: tuple });
-              });
-              return { type: { static: { kind: 'array', elementType: { kind: 'tuple', elementTypes: [mapType.keyType, mapType.valueType] } }, refinements: [] }, value: arr };
-            }
-          }
-        };
-      default:
-        throw new Error(`Property ${propertyName} does not exist on Map`);
-    }
-  }
-
-  private evaluateSetMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {
-    const setType = object.type.static as { kind: 'set'; elementType: Type };
-    const set = object.value as SchemaSet<any>;
-
-    switch (propertyName) {
-      case 'size':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
-          value: { fn: () => ({ type: { static: { kind: 'int' }, refinements: [] }, value: set.size }) }
-        };
-      case 'add':
-        return {
-          type: { static: { kind: 'function', parameters: [setType.elementType], returnType: { kind: 'void' } }, refinements: [] },
-          value: {
-            fn: (item: RuntimeTypedBinder) => {
-              const k = RuntimeTypeBinderToKey(item);
-              set.add(k);
-              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-            }
-          }
-        };
-      case 'has':
-        return {
-          type: { static: { kind: 'function', parameters: [setType.elementType], returnType: { kind: 'boolean' } }, refinements: [] },
-          value: {
-            fn: (item: RuntimeTypedBinder) => {
-              const k = RuntimeTypeBinderToKey(item);
-              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: set.has(k) };
-            }
-          }
-        };
-      case 'delete':
-        return {
-          type: { static: { kind: 'function', parameters: [setType.elementType], returnType: { kind: 'void' } }, refinements: [] },
-          value: {
-            fn: (item: RuntimeTypedBinder) => {
-              const k = RuntimeTypeBinderToKey(item);
-              set.delete(k);
-              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-            }
-          }
-        };
-      case 'values':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: setType.elementType } }, refinements: [] },
-          value: {
-            fn: () => {
-              const arr = new SchemaArray<RuntimeTypedBinder>();
-              set.forEach((item) => arr.push(keyToRuntimeTypeBinder(item)));
-              return { type: { static: { kind: 'array', elementType: setType.elementType }, refinements: [] }, value: arr };
-            }
-          }
-        };
-      default:
-        throw new Error(`Property ${propertyName} does not exist on Set`);
-    }
-  }
-
-  private evaluateHeapMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {
-    const heapType = object.type.static as { kind: 'heap'; elementType: Type };
-    const heap = object.value as MinHeap<RuntimeTypedBinder> | MaxHeap<RuntimeTypedBinder>;
-
-    switch (propertyName) {
-      case 'size':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
-          value: { fn: () => ({ type: { static: { kind: 'int' }, refinements: [] }, value: heap.size }) }
-        };
-      case 'push':
-        return {
-          type: { static: { kind: 'function', parameters: [heapType.elementType], returnType: { kind: 'void' } }, refinements: [] },
-          value: {
-            fn: (item: RuntimeTypedBinder) => {
-              heap.push(item);
-              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-            }
-          }
-        };
-      case 'pop':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: heapType.elementType }, refinements: [] },
-          value: {
-            fn: () => {
-              const val = heap.pop();
-              if (!val) throw new Error('Cannot pop from empty heap');
-              return val;
-            }
-          }
-        };
-      case 'peek':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: heapType.elementType }, refinements: [] },
-          value: {
-            fn: () => {
-              const val = heap.peek();
-              if (!val) throw new Error('Cannot peek empty heap');
-              return val;
-            }
-          }
-        };
-      default:
-        throw new Error(`Property ${propertyName} does not exist on Heap`);
-    }
-  }
-
-  private evaluateHeapMapMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {
-    const heapmapType = object.type.static as { kind: 'heapmap'; keyType: Type; valueType: Type };
-    const heapmap = object.value as MinHeapMap<RuntimeTypedBinder, RuntimeTypedBinder> | MaxHeapMap<RuntimeTypedBinder, RuntimeTypedBinder>;
-
-    switch (propertyName) {
-      case 'size':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
-          value: { fn: () => ({ type: { static: { kind: 'int' }, refinements: [] }, value: heapmap.size }) }
-        };
-      case 'push':
-        return {
-          type: { static: { kind: 'function', parameters: [heapmapType.keyType, heapmapType.valueType], returnType: { kind: 'void' } }, refinements: [] },
-          value: {
-            fn: (key: RuntimeTypedBinder, value: RuntimeTypedBinder) => {
-              heapmap.push(key, value);
-              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-            }
-          }
-        };
-      case 'pop':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: heapmapType.keyType }, refinements: [] },
-          value: {
-            fn: () => {
-              const val = heapmap.pop();
-              if (!val) throw new Error('Cannot pop from empty heapmap');
-              return val;
-            }
-          }
-        };
-      case 'peek':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: heapmapType.keyType }, refinements: [] },
-          value: {
-            fn: () => {
-              const val = heapmap.peek();
-              if (!val) throw new Error('Cannot peek empty heapmap');
-              return val;
-            }
-          }
-        };
-      default:
-        throw new Error(`Property ${propertyName} does not exist on HeapMap`);
-    }
-  }
-
-  private evaluateGraphMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {
-    const graphType = object.type.static as { kind: 'graph'; nodeType: Type };
-    const graph = object.value as Graph<RuntimeTypedBinder>;
-
-    switch (propertyName) {
-      case 'addVertex':
-        return {
-          type: {
-            static: {
-              kind: 'function',
-              parameters: [graphType.nodeType],
-              returnType: { kind: 'void' }
-            },
-            refinements: []
-          },
-          value: {
-            fn: (vertex: RuntimeTypedBinder) => {
-              graph.addVertex(vertex);
-              return {
-                type: {
-                  static: { kind: 'void' },
-                  refinements: []
-                },
-                value: undefined
-              };
-            }
-          }
-        };
-      case 'addEdge':
-        return {
-          type: { static: { kind: 'function', parameters: [graphType.nodeType, graphType.nodeType, { kind: 'int' }], returnType: { kind: 'void' } }, refinements: [] },
-          value: {
-            fn: (from: RuntimeTypedBinder, to: RuntimeTypedBinder, weight?: RuntimeTypedBinder) => {
-              const w = weight && (weight.type.static.kind === 'int' || weight.type.static.kind === 'float') ? weight.value as number : 1;
-              graph.addEdge(from, to, w);
-              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-            }
-          }
-        };
-      case 'hasVertex':
-        return {
-          type: { static: { kind: 'function', parameters: [graphType.nodeType], returnType: { kind: 'boolean' } }, refinements: [] },
-          value: {
-            fn: (vertex: RuntimeTypedBinder) => {
-              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: graph.hasVertex(vertex) };
-            }
-          }
-        };
-      case 'getVertices':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: graphType.nodeType } }, refinements: [] },
-          value: {
-            fn: () => {
-              const vertices = graph.getVertices();
-              const arr = new SchemaArray<RuntimeTypedBinder>();
-              vertices.forEach(v => arr.push(v));
-              return { type: { static: { kind: 'array', elementType: graphType.nodeType }, refinements: [] }, value: arr };
-            }
-          }
-        };
-      case 'getEdges':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: { kind: 'tuple', elementTypes: [graphType.nodeType, graphType.nodeType, { kind: 'float' }] } } }, refinements: [] },
-          value: {
-            fn: () => {
-              const edges = graph.getEdges();
-              const arr = new SchemaArray<RuntimeTypedBinder>();
-              edges.forEach((edge) => {
-                // Create a record { from: nodeType, to: nodeType, weight: int }
-                const record: RuntimeTypedBinder = {
-                  type: { static: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] }, refinements: [] },
-                  value: new Map<RuntimeTypedBinder, RuntimeTypedBinder>([
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'from' }, edge.from as RuntimeTypedBinder],
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'to' }, edge.to as RuntimeTypedBinder],
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'weight' }, { type: { static: { kind: 'int' }, refinements: [] }, value: edge.weight }],
-                  ])
-                };
-                arr.push(record);
-              });
-              return { type: { static: { kind: 'array', elementType: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] } }, refinements: [] }, value: arr };
-            }
-          }
-        };
-      case 'getNeighbors':
-        return {
-          type: { static: { kind: 'function', parameters: [graphType.nodeType], returnType: { kind: 'array', elementType: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] } } }, refinements: [] },
-          value: {
-            fn: (vertex: RuntimeTypedBinder) => {
-              if (!object.value || !(object.value instanceof Graph)) {
-                throw new Error('Internal: Graph value is undefined or invalid');
-              }
-              const neighbors = object.value.getNeighbors(vertex);
-              const arr = new SchemaArray<RuntimeTypedBinder>();
-              neighbors.forEach((edge) => {
-                // Create a record { to: nodeType, weight: int }
-                const record: RuntimeTypedBinder = {
-                  type: { static: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] }, refinements: [] },
-                  value: new Map<RuntimeTypedBinder, RuntimeTypedBinder>([
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'to' }, edge.to as RuntimeTypedBinder],
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'weight' }, { type: { static: { kind: 'int' }, refinements: [] }, value: edge.weight }],
-                  ])
-                };
-                arr.push(record);
-              });
-              return { type: { static: { kind: 'array', elementType: { kind: 'record', fieldTypes: [[{ kind: 'string' }, graphType.nodeType], [{ kind: 'string' }, { kind: 'int' }]] } }, refinements: [] }, value: arr };
-            }
-          }
-        };
-      case 'size':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
-          value: { fn: () => ({ type: { static: { kind: 'int' }, refinements: [] }, value: graph.getVertices().length }) }
-        };
-      case 'isDirected':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'boolean' } }, refinements: [] },
-          value: { fn: () => ({ type: { static: { kind: 'boolean' }, refinements: [] }, value: graph.isDirected() }) }
-        };
-      default:
-        throw new Error(`Property "${propertyName}" does not exist on Graph`);
-    }
-  }
-
-  private evaluateBinaryTreeMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {
-    const tree = object.value as BinaryTree<RuntimeTypedBinder>;
-    const treeType = object.type.static as { kind: 'binarytree' | 'avltree'; elementType: Type };
-
-    switch (propertyName) {
-      case 'insert':
-        return {
-          type: { static: { kind: 'function', parameters: [treeType.elementType], returnType: { kind: 'void' } }, refinements: [] },
-          value: {
-            fn: (value: RuntimeTypedBinder) => {
-              tree.insert(value);
-              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-            }
-          }
-        };
-      case 'search':
-        return {
-          type: { static: { kind: 'function', parameters: [treeType.elementType], returnType: { kind: 'boolean' } }, refinements: [] },
-          value: {
-            fn: (value: RuntimeTypedBinder) => {
-              const result = tree.search(value);
-              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: result };
-            }
-          }
-        };
-      case 'getHeight':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
-          value: {
-            fn: () => {
-              const height = tree.getHeight();
-              return { type: { static: { kind: 'int' }, refinements: [] }, value: height };
-            }
-          }
-        };
-      case 'preOrderTraversal':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
-          value: {
-            fn: () => {
-              const values = tree.preOrderTraversal();
-              return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: new SchemaArray(values) };
-            }
-          }
-        };
-      case 'inOrderTraversal':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
-          value: {
-            fn: () => {
-              const values = tree.inOrderTraversal();
-              return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: new SchemaArray(values) };
-            }
-          }
-        };
-      case 'postOrderTraversal':
-        return {
-          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
-          value: {
-            fn: () => {
-              const values = tree.postOrderTraversal();
-              return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: new SchemaArray(values) };
-            }
-          }
-        };
-      default:
-        throw new Error(`Property "${propertyName}" does not exist on BinaryTree/AVLTree`);
-    }
-  }
-
-  private evaluateIndex(object: RuntimeTypedBinder, index: RuntimeTypedBinder): RuntimeTypedBinder {
-    if (object.type.static.kind === 'array') {
-      if (index.type.static.kind === 'int') {
-        const val = (object.value as SchemaArray<RuntimeTypedBinder>).get(index.value as number);
-        return val || { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-      }
-      // Handle array slicing
-      if (index.type.static.kind === 'array' && index.type.static.elementType.kind === 'int') {
-
-        const indices = (index.value as SchemaArray<RuntimeTypedBinder>);
-        const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
-        const result = new SchemaArray<RuntimeTypedBinder>();
-
-        for (let i = 0; i < indices.length; i++) {
-          const idxVal = indices.get(i);
-          if (idxVal && idxVal.value !== undefined) {
-            const idx = idxVal.value as number;
-            if (idx >= 0 && idx < sourceArray.length) {
-              const val = sourceArray.get(idx);
-              if (val) result.push(val);
-            }
-          }
-        }
-
-        return {
-          type: object.type,
-          value: result
-        };
-      }
-      if (index.type.static.kind === 'range') {
-        const range = index.value as LazyRange;
-        const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
-        const result = new SchemaArray<RuntimeTypedBinder>();
-
-        const start = range.getStart;
-        let end = range.getEnd;
-        const inclusive = range.isInclusive;
-
-        // If end is undefined (infinite), slice until the end of the array
-        if (end === undefined) {
-          end = sourceArray.length;
-        } else {
-          if (inclusive) {
-            end = end + 1;
-          }
-        }
-
-        const actualStart = Math.max(0, Math.min(start, sourceArray.length));
-        const actualEnd = Math.max(0, Math.min(end, sourceArray.length));
-
-        for (let i = actualStart; i < actualEnd; i++) {
-          const val = sourceArray.get(i);
-          if (val) result.push(val);
-        }
-
-        return {
-          type: object.type,
-          value: result
-        };
-      }
-    }
-
-    if (object.type.static.kind === 'map') {
-      const key = index;
-      const val = (object.value as SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>).get(key);
-      return val || { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
-    }
-
-    if (object.type.static.kind === 'tuple') {
-      if (index.type.static.kind === 'int') {
-        const idx = index.value as number;
-        const tupleValue = object.value as RuntimeTypedBinder[];
-        if (idx >= 0 && idx < tupleValue.length) {
-          return tupleValue[idx];
-        }
-        throw new Error(`Tuple index ${idx} out of bounds`);
-      }
-      throw new Error('Tuple indices must be integers');
-    }
-
-    if (object.type.static.kind === 'record') {
-      if (index.type.static.kind === 'string') {
-        const recordValue = object.value as Map<RuntimeTypedBinder, RuntimeTypedBinder>;
-        // Find the field by matching string value in keys
-        for (const [key, value] of recordValue.entries()) {
-          if (key.type.static.kind === 'string' && key.value === index.value) {
-            return value;
-          }
-        }
-        throw new Error(`Record does not have field '${index.value}'`);
-      }
-      throw new Error('Record indices must be strings');
-    }
-
-    throw new Error('Invalid index expression');
-  }
-
-  private applyBinaryOp(op: string, left: RuntimeTypedBinder, right: RuntimeTypedBinder, _line: number, _column: number): RuntimeTypedBinder {
-    const leftType = getActualRuntimeType(left);
-    const rightType = getActualRuntimeType(right);
-
-    switch (op) {
-      case '+':
-        if (leftType === 'int' && rightType === 'int') {
-          return { value: (left.value as number) + (right.value as number), type: { static: { kind: 'int' }, refinements: [] } };
-        }
-        if ((leftType === 'int' || leftType === 'float') && (rightType === 'int' || rightType === 'float')) {
-          return { value: (left.value as number) + (right.value as number), type: { static: { kind: 'float' }, refinements: [] } };
-        }
-        if (leftType === 'string' && rightType === 'string') {
-          return { value: (left.value as string) + (right.value as string), type: { static: { kind: 'string' }, refinements: [] } };
-        }
-        throw new Error(`Cannot add ${leftType} and ${rightType}`);
-
-      case '-':
-        if (leftType === 'int' && rightType === 'int') {
-          return { value: (left.value as number) - (right.value as number), type: { static: { kind: 'int' }, refinements: [] } };
-        }
-        if ((leftType === 'int' || leftType === 'float') && (rightType === 'int' || rightType === 'float')) {
-          return { value: (left.value as number) - (right.value as number), type: { static: { kind: 'float' }, refinements: [] } };
-        }
-        throw new Error(`Cannot subtract ${rightType} from ${leftType}`);
-
-      case '*':
-        if (leftType === 'int' && rightType === 'int') {
-          return { value: (left.value as number) * (right.value as number), type: { static: { kind: 'int' }, refinements: [] } };
-        }
-        if ((leftType === 'int' || leftType === 'float') && (rightType === 'int' || rightType === 'float')) {
-          return { value: (left.value as number) * (right.value as number), type: { static: { kind: 'float' }, refinements: [] } };
-        }
-        throw new Error(`Cannot multiply ${leftType} and ${rightType}`);
-
-      case '/':
-        if (leftType === 'int' && rightType === 'int') {
-          return { value: Math.floor((left.value as number) / (right.value as number)), type: { static: { kind: 'int' }, refinements: [] } };
-        }
-        throw new Error('Integer division requires both operands to be int');
-
-      case '/.':
-        if ((leftType === 'int' || leftType === 'float') && (rightType === 'int' || rightType === 'float')) {
-          return { value: (left.value as number) / (right.value as number), type: { static: { kind: 'float' }, refinements: [] } };
-        }
-        throw new Error('Float division requires numeric operands');
-
-      case '%':
-        if (leftType === 'int' && rightType === 'int') {
-          return { value: (left.value as number) % (right.value as number), type: { static: { kind: 'int' }, refinements: [] } };
-        }
-        if ((leftType === 'int' || leftType === 'float') && (rightType === 'int' || rightType === 'float')) {
-          return { value: (left.value as number) % (right.value as number), type: { static: { kind: 'float' }, refinements: [] } };
-        }
-        throw new Error('Modulo requires numeric operands');
-
-      case '<<':
-        if (leftType === 'int' && rightType === 'int') {
-          return { value: (left.value as number) << (right.value as number), type: { static: { kind: 'int' }, refinements: [] } };
-        }
-        throw new Error('Left shift requires both operands to be int');
-
-      case '>>':
-        if (leftType === 'int' && rightType === 'int') {
-          return { value: (left.value as number) >> (right.value as number), type: { static: { kind: 'int' }, refinements: [] } };
-        }
-        throw new Error('Right shift requires both operands to be int');
-
-      case '<':
-        if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
-          return { value: (left.value as number) < (right.value as number), type: { static: { kind: 'boolean' }, refinements: [] } };
-        }
-        throw new Error(`Cannot compare ${leftType} < ${rightType}`);
-
-      case '<=':
-        if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
-          return { value: (left.value as number) <= (right.value as number), type: { static: { kind: 'boolean' }, refinements: [] } };
-        }
-        throw new Error(`Cannot compare ${leftType} <= ${rightType}`);
-
-      case '>':
-        if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
-          return { value: (left.value as number) > (right.value as number), type: { static: { kind: 'boolean' }, refinements: [] } };
-        }
-        throw new Error(`Cannot compare ${leftType} > ${rightType}`);
-
-      case '>=':
-        if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
-          return { value: (left.value as number) >= (right.value as number), type: { static: { kind: 'boolean' }, refinements: [] } };
-        }
-        throw new Error(`Cannot compare ${leftType} >= ${rightType}`);
-
-      case '==':
-        return { value: valuesEqual(left, right), type: { static: { kind: 'boolean' }, refinements: [] } };
-
-      case '!=':
-        return { value: !valuesEqual(left, right), type: { static: { kind: 'boolean' }, refinements: [] } };
-
-      case '&&':
-        return { value: isTruthy(left) && isTruthy(right), type: { static: { kind: 'boolean' }, refinements: [] } };
-
-      case '||':
-        return { value: isTruthy(left) || isTruthy(right), type: { static: { kind: 'boolean' }, refinements: [] } };
-
-      default:
-        throw new Error(`Unknown binary operator: ${op}`);
-    }
   }
 
   private getIterator(iterable: RuntimeTypedBinder): IterableIterator<RuntimeTypedBinder> {
@@ -1911,14 +1364,14 @@ export class Machine {
           if (index < arr.length) {
             return { value: arr.get(index++)!, done: false };
           }
-          return { value: undefined as any, done: true };
+          return { value: undefined, done: true };
         }
       };
     }
     if (isSet) {
       const set = iterable.value as SchemaSet<any>;
       const values: RuntimeTypedBinder[] = [];
-      set.forEach(v => values.push(keyToRuntimeTypeBinder(v)));
+      set.forEach(v => values.push(keyToRuntimeTypedBinder(v)));
       let index = 0;
       return {
         [Symbol.iterator]() { return this; },
@@ -1926,7 +1379,7 @@ export class Machine {
           if (index < values.length) {
             return { value: values[index++], done: false };
           }
-          return { value: undefined as any, done: true };
+          return { value: undefined, done: true };
         }
       };
     }
@@ -1940,7 +1393,7 @@ export class Machine {
           if (!result.done) {
             return { value: { value: result.value, type: { static: { kind: 'int' }, refinements: [] } }, done: false };
           }
-          return { value: undefined as any, done: true };
+          return { value: undefined, done: true };
         }
       };
     }
