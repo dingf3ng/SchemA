@@ -45,6 +45,8 @@ import { InvariantTracker } from '../analyzer/synthesizer';
 import { initializeBuiltins } from './init-builtins';
 import { Analyzer } from '../analyzer/analyzer';
 import { Evaluator, EvaluatorContext, ReturnException } from './evaluator';
+import { parsePredicateName } from '../analyzer/analyzer-utils';
+import { typeToString } from '../type-checker/type-checker-utils';
 
 
 // ============================================================================
@@ -961,7 +963,6 @@ export class Machine implements EvaluatorContext {
           }
           this.focus = { kind: 'value', value: { value: !(value.value as boolean), type: { static: { kind: 'boolean' }, refinements: [] } } };
         } else if (kont.operator === 'typeof') {
-          const { typeToString } = require('../type-checker/type-checker-utils');
           const typeStr = typeToString(value.type.static);
           this.focus = { kind: 'value', value: { value: typeStr, type: { static: { kind: 'string' }, refinements: [] } } };
         } else {
@@ -1199,7 +1200,6 @@ export class Machine implements EvaluatorContext {
       case 'predicate-check': {
         // Value is the evaluated subject
         const subject = value;
-        const { parsePredicateName } = require('../analyzer/analyzer-utils');
 
         // Use existing tracker if available (inside a loop), otherwise create a new one
         const tracker = this.trackerStack.length > 0
