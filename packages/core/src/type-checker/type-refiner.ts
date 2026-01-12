@@ -1,6 +1,8 @@
-import { Program, Statement, Expression, MemberExpression } from '../transpiler/ast-types';
+import { Program, Statement, Expression, MemberExpression, StringLiteral } from '../transpiler/ast-types';
+import { synthMemberExpression } from './member-utils';
 import { FunEnv, TypeEnv } from './type-checker-main';
 import { resolve, Type, typesEqual, typeToAnnotation } from './type-checker-utils';
+import { synthExpression, TypeSynthContext} from './expression-synth-utils';
 
 /**
  * TypeRefiner is responsible for refining weak polymorphic types into more precise types.
@@ -92,7 +94,7 @@ class TypeRefiner {
             param.typeAnnotation.kind === 'simple' &&
             param.typeAnnotation.name === 'weak') {
             const constrainedType = constraints.parameters.get(param.name);
-            if (constrainedType && constrainedType.kind !== 'weak' && constrainedType.kind !== 'poly') {
+            if (constrainedType && constrainedType.kind !== 'weak' && constrainedType.kind !== 'dynamic') {
               param.typeAnnotation = typeToAnnotation(constrainedType, param.typeAnnotation.line, param.typeAnnotation.column);
               paramChanged = true;
               this.refinementChanged = true;
@@ -134,16 +136,17 @@ class TypeRefiner {
           // Re-analyze return type with current typeEnv (which has refined types)
           const returnType = this.analyzeReturnType(stmt.body);
           if (returnType) {
-            // Refine if completely weak/poly
-            if (funcInfo.returnType.kind === 'weak' || funcInfo.returnType.kind === 'poly') {
-              if (returnType.kind !== 'weak' && returnType.kind !== 'poly') {
+            // Only refine 'weak' types (polymorphic types), not 'dynamic' types
+            // 'dynamic' represents statically unresolvable types and should not be refined
+            if (funcInfo.returnType.kind === 'weak') {
+              if (returnType.kind !== 'weak' && returnType.kind !== 'dynamic') {
                 Object.assign(funcInfo.returnType, returnType);
                 stmt.returnType = typeToAnnotation(returnType, stmt.line, stmt.column);
                 this.refinementChanged = true;
               }
             }
-            // Or refine nested weak types
-            else if (this.hasWeakTypes(funcInfo.returnType) && !this.hasWeakTypes(returnType)) {
+            // Or refine nested weak types (but not if the return type is dynamic)
+            else if (funcInfo.returnType.kind !== 'dynamic' && this.hasWeakTypes(funcInfo.returnType) && !this.hasWeakTypes(returnType)) {
               this.refineNestedTypes(funcInfo.returnType, returnType);
               stmt.returnType = typeToAnnotation(funcInfo.returnType, stmt.line, stmt.column);
               this.refinementChanged = true;
@@ -174,15 +177,16 @@ class TypeRefiner {
           const initializerType = this.analyzeExpressionType(declarator.initializer, this.typeEnv);
           const varType = this.typeEnv.get(declarator.name);
 
-          if (varType && initializerType.kind !== 'weak' && initializerType.kind !== 'poly') {
-            // Refine if completely weak/poly
-            if (varType.kind === 'weak' || varType.kind === 'poly') {
+          if (varType && initializerType.kind !== 'weak' && initializerType.kind !== 'dynamic') {
+            // Only refine 'weak' types (polymorphic types), not 'dynamic' types
+            // 'dynamic' represents statically unresolvable types and should not be refined
+            if (varType.kind === 'weak') {
               Object.assign(varType, initializerType);
               this.updateVariableAnnotation(declarator.name, varType);
               this.refinementChanged = true;
             }
-            // Or refine nested weak types in complex types
-            else if (this.hasWeakTypes(varType) && !this.hasWeakTypes(initializerType)) {
+            // Or refine nested weak types in complex types (dynamic types remain unchanged)
+            else if (varType.kind !== 'dynamic' && this.hasWeakTypes(varType) && !this.hasWeakTypes(initializerType)) {
               this.refineNestedTypes(varType, initializerType);
               this.updateVariableAnnotation(declarator.name, varType);
               this.refinementChanged = true;
@@ -218,9 +222,13 @@ class TypeRefiner {
 
         // We need to infer loop variable type from iterable
         const iterableType = this.analyzeExpressionType(stmt.iterable, this.typeEnv);
-        let loopVarType: Type = { kind: 'weak' };
+        // Default to dynamic - type cannot be statically determined
+        let loopVarType: Type = { kind: 'dynamic' };
 
-        if (iterableType.kind === 'array' || iterableType.kind === 'set') {
+        if (iterableType.kind === 'weak') {
+          // Weak polymorphic iterable - loop variable is also weak (can be refined)
+          loopVarType = { kind: 'weak' };
+        } else if (iterableType.kind === 'array' || iterableType.kind === 'set') {
           loopVarType = iterableType.elementType;
         } else if (iterableType.kind === 'map' || iterableType.kind === 'heapmap') {
           loopVarType = iterableType.keyType;
@@ -335,62 +343,73 @@ class TypeRefiner {
     }
   }
 
+  private refineExpectedType(targetType: Type, sourceType: Type): void {
+    // Only refine 'weak' types (polymorphic types), not 'dynamic' types
+    // 'dynamic' represents statically unresolvable types and should not be refined
+    if (targetType.kind === 'weak') {
+      if (sourceType.kind !== 'weak' && sourceType.kind !== 'dynamic') {
+        Object.assign(targetType, sourceType);
+        this.refinementChanged = true;
+      }
+      return;
+    }
+
+    // Don't try to refine from weak/dynamic source types
+    if (sourceType.kind === 'weak' || sourceType.kind === 'dynamic') {
+      return;
+    }
+
+    // Don't refine dynamic target types
+    if (targetType.kind === 'dynamic') {
+      return;
+    }
+
+    if (targetType.kind === 'array' && sourceType.kind === 'array') {
+      this.refineExpectedType(targetType.elementType, sourceType.elementType);
+    } else if (targetType.kind === 'map' && sourceType.kind === 'map') {
+      this.refineExpectedType(targetType.keyType, sourceType.keyType);
+      this.refineExpectedType(targetType.valueType, sourceType.valueType);
+    } else if (targetType.kind === 'set' && sourceType.kind === 'set') {
+      this.refineExpectedType(targetType.elementType, sourceType.elementType);
+    } else if (targetType.kind === 'heap' && sourceType.kind === 'heap') {
+      this.refineExpectedType(targetType.elementType, sourceType.elementType);
+    } else if (targetType.kind === 'heapmap' && sourceType.kind === 'heapmap') {
+      this.refineExpectedType(targetType.keyType, sourceType.keyType);
+      this.refineExpectedType(targetType.valueType, sourceType.valueType);
+    } else if (targetType.kind === 'graph' && sourceType.kind === 'graph') {
+      this.refineExpectedType(targetType.nodeType, sourceType.nodeType);
+    } else if (targetType.kind === 'binarytree' && sourceType.kind === 'binarytree') {
+      this.refineExpectedType(targetType.elementType, sourceType.elementType);
+    }
+  }
+
   private refineMethodCall(callee: MemberExpression, args: Expression[]): void {
+    const objectType = this.analyzeExpressionType(callee.object, this.typeEnv);
+
+    if (!objectType || objectType.kind === 'weak' || objectType.kind === 'dynamic') return;
+
+    try {
+      const methodType = synthMemberExpression(callee, objectType);
+
+      if (methodType.kind === 'function') {
+        for (let i = 0; i < Math.min(args.length, methodType.parameters.length); i++) {
+          const paramType = methodType.parameters[i];
+          const argExpr = args[i];
+          const argType = this.analyzeExpressionType(argExpr, this.typeEnv);
+
+          // Refine the object type components (paramType is a reference to them)
+          this.refineExpectedType(paramType, argType);
+
+          // Refine the argument expression based on the parameter type
+          this.refineExpressionFromType(argExpr, paramType);
+        }
+      }
+    } catch (e) {
+      // Ignore errors during refinement
+    }
+
     if (callee.object.type === 'Identifier') {
-      const varName = callee.object.name;
-      const varType = this.typeEnv.get(varName);
-
-      if (!varType) return;
-
-      const methodName = callee.property.name;
-
-      // Check if variable type was inferred
-      const decl = this.variableDeclEnv.get(varName);
-      const isInferred = decl && decl.typeAnnotation && decl.typeAnnotation.isInferred;
-
-      if (varType.kind === 'map') {
-        if (methodName === 'set' && args.length === 2) {
-          this.refineTypeFromExpression(varType.keyType, args[0]);
-          this.refineTypeFromExpression(varType.valueType, args[1]);
-
-          this.refineExpressionFromType(args[0], varType.keyType);
-          this.refineExpressionFromType(args[1], varType.valueType);
-        }
-        if (methodName === 'get' && args.length === 1) {
-          this.refineTypeFromExpression(varType.keyType, args[0]);
-          this.refineExpressionFromType(args[0], varType.keyType);
-        }
-      }
-      else if (varType.kind === 'set') {
-        if ((methodName === 'add' || methodName === 'has') && args.length === 1) {
-          this.refineTypeFromExpression(varType.elementType, args[0]);
-          this.refineExpressionFromType(args[0], varType.elementType);
-        }
-      }
-      else if (varType.kind === 'heap') {
-        if (methodName === 'push' && args.length === 1) {
-          this.refineTypeFromExpression(varType.elementType, args[0]);
-          this.refineExpressionFromType(args[0], varType.elementType);
-        }
-      }
-      else if (varType.kind === 'heapmap') {
-        if (methodName === 'push' && args.length === 2) {
-          this.refineTypeFromExpression(varType.keyType, args[0]);
-          this.refineTypeFromExpression(varType.valueType, args[1]);
-
-          this.refineExpressionFromType(args[0], varType.keyType);
-          this.refineExpressionFromType(args[1], varType.valueType);
-        }
-      }
-      else if (varType.kind === 'array') {
-        if (methodName === 'push' && args.length === 1) {
-          this.refineTypeFromExpression(varType.elementType, args[0]);
-          this.refineExpressionFromType(args[0], varType.elementType);
-        }
-      }
-
-      // Update AST if variable type changed (it might have been refined in place)
-      this.updateVariableAnnotation(varName, varType);
+      this.updateVariableAnnotation(callee.object.name, objectType);
     }
   }
 
@@ -407,8 +426,9 @@ class TypeRefiner {
       const paramType = funcInfo.parameters[i];
       const argType = argTypes[i];
 
-      if ((paramType.kind === 'weak' || paramType.kind === 'poly') &&
-        argType.kind !== 'weak' && argType.kind !== 'poly') {
+      // Only refine 'weak' types (polymorphic types that can be instantiated)
+      // 'dynamic' types should NOT be refined - they represent statically unresolvable types
+      if (paramType.kind === 'weak' && argType.kind !== 'weak' && argType.kind !== 'dynamic') {
         Object.assign(paramType, argType);
         paramsChanged = true;
 
@@ -421,10 +441,10 @@ class TypeRefiner {
           );
         }
       }
-      // Refine array element types
+      // Refine array element types (only weak, not dynamic)
       else if (paramType.kind === 'array' && argType.kind === 'array') {
-        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
-          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
+        if (paramType.elementType.kind === 'weak' &&
+          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'dynamic') {
           Object.assign(paramType.elementType, argType.elementType);
           paramsChanged = true;
 
@@ -438,16 +458,16 @@ class TypeRefiner {
           }
         }
       }
-      // Refine map key/value types
+      // Refine map key/value types (only weak, not dynamic)
       else if (paramType.kind === 'map' && argType.kind === 'map') {
         let mapChanged = false;
-        if ((paramType.keyType.kind === 'weak' || paramType.keyType.kind === 'poly') &&
-          argType.keyType.kind !== 'weak' && argType.keyType.kind !== 'poly') {
+        if (paramType.keyType.kind === 'weak' &&
+          argType.keyType.kind !== 'weak' && argType.keyType.kind !== 'dynamic') {
           Object.assign(paramType.keyType, argType.keyType);
           mapChanged = true;
         }
-        if ((paramType.valueType.kind === 'weak' || paramType.valueType.kind === 'poly') &&
-          argType.valueType.kind !== 'weak' && argType.valueType.kind !== 'poly') {
+        if (paramType.valueType.kind === 'weak' &&
+          argType.valueType.kind !== 'weak' && argType.valueType.kind !== 'dynamic') {
           Object.assign(paramType.valueType, argType.valueType);
           mapChanged = true;
         }
@@ -462,10 +482,10 @@ class TypeRefiner {
           }
         }
       }
-      // Refine set element types
+      // Refine set element types (only weak, not dynamic)
       else if (paramType.kind === 'set' && argType.kind === 'set') {
-        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
-          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
+        if (paramType.elementType.kind === 'weak' &&
+          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'dynamic') {
           Object.assign(paramType.elementType, argType.elementType);
           paramsChanged = true;
 
@@ -478,10 +498,10 @@ class TypeRefiner {
           }
         }
       }
-      // Refine heap element types
+      // Refine heap element types (only weak, not dynamic)
       else if (paramType.kind === 'heap' && argType.kind === 'heap') {
-        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
-          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
+        if (paramType.elementType.kind === 'weak' &&
+          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'dynamic') {
           Object.assign(paramType.elementType, argType.elementType);
           paramsChanged = true;
 
@@ -494,16 +514,16 @@ class TypeRefiner {
           }
         }
       }
-      // Refine heapmap key/value types
+      // Refine heapmap key/value types (only weak, not dynamic)
       else if (paramType.kind === 'heapmap' && argType.kind === 'heapmap') {
         let heapmapChanged = false;
-        if ((paramType.keyType.kind === 'weak' || paramType.keyType.kind === 'poly') &&
-          argType.keyType.kind !== 'weak' && argType.keyType.kind !== 'poly') {
+        if (paramType.keyType.kind === 'weak' &&
+          argType.keyType.kind !== 'weak' && argType.keyType.kind !== 'dynamic') {
           Object.assign(paramType.keyType, argType.keyType);
           heapmapChanged = true;
         }
-        if ((paramType.valueType.kind === 'weak' || paramType.valueType.kind === 'poly') &&
-          argType.valueType.kind !== 'weak' && argType.valueType.kind !== 'poly') {
+        if (paramType.valueType.kind === 'weak' &&
+          argType.valueType.kind !== 'weak' && argType.valueType.kind !== 'dynamic') {
           Object.assign(paramType.valueType, argType.valueType);
           heapmapChanged = true;
         }
@@ -518,10 +538,10 @@ class TypeRefiner {
           }
         }
       }
-      // Refine binarytree element types
+      // Refine binarytree element types (only weak, not dynamic)
       else if (paramType.kind === 'binarytree' && argType.kind === 'binarytree') {
-        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
-          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
+        if (paramType.elementType.kind === 'weak' &&
+          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'dynamic') {
           Object.assign(paramType.elementType, argType.elementType);
           paramsChanged = true;
 
@@ -534,26 +554,11 @@ class TypeRefiner {
           }
         }
       }
-      // Refine avltree element types
-      else if (paramType.kind === 'avltree' && argType.kind === 'avltree') {
-        if ((paramType.elementType.kind === 'weak' || paramType.elementType.kind === 'poly') &&
-          argType.elementType.kind !== 'weak' && argType.elementType.kind !== 'poly') {
-          Object.assign(paramType.elementType, argType.elementType);
-          paramsChanged = true;
 
-          if (i < funcDecl.parameters.length) {
-            funcDecl.parameters[i].typeAnnotation = typeToAnnotation(
-              paramType,
-              funcDecl.parameters[i].typeAnnotation?.line || 0,
-              funcDecl.parameters[i].typeAnnotation?.column || 0
-            );
-          }
-        }
-      }
-      // Refine graph node types
+      // Refine graph node types (only weak, not dynamic)
       else if (paramType.kind === 'graph' && argType.kind === 'graph') {
-        if ((paramType.nodeType.kind === 'weak' || paramType.nodeType.kind === 'poly') &&
-          argType.nodeType.kind !== 'weak' && argType.nodeType.kind !== 'poly') {
+        if (paramType.nodeType.kind === 'weak' &&
+          argType.nodeType.kind !== 'weak' && argType.nodeType.kind !== 'dynamic') {
           Object.assign(paramType.nodeType, argType.nodeType);
           paramsChanged = true;
 
@@ -568,8 +573,9 @@ class TypeRefiner {
       }
     }
 
-    // If parameters changed, re-infer return type if it's still weak
-    if (paramsChanged && (funcInfo.returnType.kind === 'weak' || funcInfo.returnType.kind === 'poly')) {
+    // If parameters changed, re-infer return type if it's still weak (not dynamic)
+    // Only 'weak' types can be refined, 'dynamic' represents statically unresolvable types
+    if (paramsChanged && funcInfo.returnType.kind === 'weak') {
       // Build parameter type map with updated types
       const paramTypeMap = new Map<string, Type>();
       for (let i = 0; i < funcDecl.parameters.length; i++) {
@@ -578,7 +584,7 @@ class TypeRefiner {
 
       // Re-collect constraints to get updated return type
       const constraints = this.collectConstraints(funcDecl.body, paramTypeMap);
-      if (constraints.returnType && constraints.returnType.kind !== 'weak') {
+      if (constraints.returnType && constraints.returnType.kind !== 'weak' && constraints.returnType.kind !== 'dynamic') {
         Object.assign(funcInfo.returnType, constraints.returnType);
         funcDecl.returnType = typeToAnnotation(
           constraints.returnType,
@@ -616,56 +622,57 @@ class TypeRefiner {
 
   private refineNestedTypes(targetType: Type, sourceType: Type): void {
     // Recursively refine weak types in targetType with concrete types from sourceType
+    // Only refine 'weak' types, not 'dynamic' types
     if (targetType.kind === 'array' && sourceType.kind === 'array') {
       if (this.hasWeakTypes(targetType.elementType) && !this.hasWeakTypes(sourceType.elementType)) {
-        if (targetType.elementType.kind === 'weak' || targetType.elementType.kind === 'poly') {
+        if (targetType.elementType.kind === 'weak') {
           Object.assign(targetType.elementType, sourceType.elementType);
           this.refinementChanged = true;
-        } else {
+        } else if (targetType.elementType.kind !== 'dynamic') {
           this.refineNestedTypes(targetType.elementType, sourceType.elementType);
         }
       }
     } else if (targetType.kind === 'map' && sourceType.kind === 'map') {
       if (this.hasWeakTypes(targetType.keyType) && !this.hasWeakTypes(sourceType.keyType)) {
-        if (targetType.keyType.kind === 'weak' || targetType.keyType.kind === 'poly') {
+        if (targetType.keyType.kind === 'weak') {
           Object.assign(targetType.keyType, sourceType.keyType);
           this.refinementChanged = true;
-        } else {
+        } else if (targetType.keyType.kind !== 'dynamic') {
           this.refineNestedTypes(targetType.keyType, sourceType.keyType);
         }
       }
       if (this.hasWeakTypes(targetType.valueType) && !this.hasWeakTypes(sourceType.valueType)) {
-        if (targetType.valueType.kind === 'weak' || targetType.valueType.kind === 'poly') {
+        if (targetType.valueType.kind === 'weak') {
           Object.assign(targetType.valueType, sourceType.valueType);
           this.refinementChanged = true;
-        } else {
+        } else if (targetType.valueType.kind !== 'dynamic') {
           this.refineNestedTypes(targetType.valueType, sourceType.valueType);
         }
       }
     } else if ((targetType.kind === 'set' || targetType.kind === 'heap') &&
       (sourceType.kind === 'set' || sourceType.kind === 'heap')) {
       if (this.hasWeakTypes(targetType.elementType) && !this.hasWeakTypes(sourceType.elementType)) {
-        if (targetType.elementType.kind === 'weak' || targetType.elementType.kind === 'poly') {
+        if (targetType.elementType.kind === 'weak') {
           Object.assign(targetType.elementType, sourceType.elementType);
           this.refinementChanged = true;
-        } else {
+        } else if (targetType.elementType.kind !== 'dynamic') {
           this.refineNestedTypes(targetType.elementType, sourceType.elementType);
         }
       }
     } else if (targetType.kind === 'heapmap' && sourceType.kind === 'heapmap') {
       if (this.hasWeakTypes(targetType.keyType) && !this.hasWeakTypes(sourceType.keyType)) {
-        if (targetType.keyType.kind === 'weak' || targetType.keyType.kind === 'poly') {
+        if (targetType.keyType.kind === 'weak') {
           Object.assign(targetType.keyType, sourceType.keyType);
           this.refinementChanged = true;
-        } else {
+        } else if (targetType.keyType.kind !== 'dynamic') {
           this.refineNestedTypes(targetType.keyType, sourceType.keyType);
         }
       }
       if (this.hasWeakTypes(targetType.valueType) && !this.hasWeakTypes(sourceType.valueType)) {
-        if (targetType.valueType.kind === 'weak' || targetType.valueType.kind === 'poly') {
+        if (targetType.valueType.kind === 'weak') {
           Object.assign(targetType.valueType, sourceType.valueType);
           this.refinementChanged = true;
-        } else {
+        } else if (targetType.valueType.kind !== 'dynamic') {
           this.refineNestedTypes(targetType.valueType, sourceType.valueType);
         }
       }
@@ -675,8 +682,10 @@ class TypeRefiner {
   private refineTypeFromExpression(targetType: Type, expr: Expression): void {
     const exprType = this.analyzeExpressionType(expr, this.typeEnv);
 
-    if (targetType.kind === 'weak' || targetType.kind === 'poly') {
-      if (exprType.kind !== 'weak' && exprType.kind !== 'poly') {
+    // Only refine 'weak' types (polymorphic types), not 'dynamic' types
+    // 'dynamic' represents statically unresolvable types and should not be refined
+    if (targetType.kind === 'weak') {
+      if (exprType.kind !== 'weak' && exprType.kind !== 'dynamic') {
         Object.assign(targetType, exprType);
         this.refinementChanged = true;
       }
@@ -687,8 +696,10 @@ class TypeRefiner {
     if (expr.type === 'Identifier') {
       const varName = expr.name;
       const varType = this.typeEnv.get(varName);
-      if (varType && (varType.kind === 'weak' || varType.kind === 'poly')) {
-        if (type.kind !== 'weak' && type.kind !== 'poly') {
+      // Only refine 'weak' types (polymorphic types), not 'dynamic' types
+      // 'dynamic' represents statically unresolvable types and should not be refined
+      if (varType && varType.kind === 'weak') {
+        if (type.kind !== 'weak' && type.kind !== 'dynamic') {
           Object.assign(varType, type);
           this.updateVariableAnnotation(varName, varType);
           this.refinementChanged = true;
@@ -725,7 +736,6 @@ class TypeRefiner {
             if (!returnType) {
               returnType = stmtReturnType;
             } else if (!typesEqual(returnType, stmtReturnType, this.typeEqualityCache)) {
-              // Multiple return types - create union
               throw new Error('Multiple return types detected in function body.');
             }
           }
@@ -779,6 +789,9 @@ class TypeRefiner {
         case 'VariableDeclaration':
           for (const declarator of s.declarations) {
             this.analyzeExpressionForConstraints(declarator.initializer, paramTypes, constraints.parameters);
+            // Add declared variable to paramTypes so it can be found in subsequent expressions
+            const initType = this.analyzeExpressionType(declarator.initializer, paramTypes);
+            paramTypes.set(declarator.name, initType);
           }
           break;
 
@@ -810,6 +823,17 @@ class TypeRefiner {
 
         case 'ForStatement':
           this.analyzeExpressionForConstraints(s.iterable, paramTypes, constraints.parameters);
+          // Add loop variable to paramTypes so it can be found in the body
+          const iterableType = this.analyzeExpressionType(s.iterable, paramTypes);
+          let loopVarType: Type = { kind: 'dynamic' };
+          if (iterableType.kind === 'array' || iterableType.kind === 'set') {
+            loopVarType = iterableType.elementType;
+          } else if (iterableType.kind === 'map' || iterableType.kind === 'heapmap') {
+            loopVarType = iterableType.keyType;
+          } else if (iterableType.kind === 'range') {
+            loopVarType = { kind: 'int' };
+          }
+          paramTypes.set(s.variable, loopVarType);
           collectFromStatement(s.body);
           break;
 
@@ -843,170 +867,17 @@ class TypeRefiner {
     return constraints;
   }
 
+  /**
+   * Analyze the type of an expression using the provided type environment.
+   * Delegates to the shared synthesizeExpressionType function.
+   */
   private analyzeExpressionType(expr: Expression, paramTypes: Map<string, Type>): Type {
-    switch (expr.type) {
-      case 'Identifier':
-        return paramTypes.get(expr.name) || { kind: 'weak' };
-
-      case 'IntegerLiteral':
-        return { kind: 'int' };
-
-      case 'FloatLiteral':
-        return { kind: 'float' };
-
-      case 'StringLiteral':
-        return { kind: 'string' };
-
-      case 'BooleanLiteral':
-        return { kind: 'boolean' };
-
-      case 'ArrayLiteral':
-        if (expr.elements.length === 0) {
-          return { kind: 'array', elementType: { kind: 'weak' } };
-        }
-        const elementTypes = expr.elements.map((e) => this.analyzeExpressionType(e, paramTypes));
-        const firstType = elementTypes[0];
-        const allSame = elementTypes.every((t) => typesEqual(t, firstType, this.typeEqualityCache));
-        if (allSame) {
-          return { kind: 'array', elementType: firstType };
-        }
-        throw new Error('Array literal has elements of differing types.');
-
-      case 'BinaryExpression': {
-        const leftType = this.analyzeExpressionType(expr.left, paramTypes);
-        const rightType = this.analyzeExpressionType(expr.right, paramTypes);
-
-        if (['+', '-', '*', '%'].includes(expr.operator)) {
-          if (leftType.kind === 'int' && rightType.kind === 'int') {
-            return { kind: 'int' };
-          }
-          if (leftType.kind === 'float' || rightType.kind === 'float') {
-            return { kind: 'float' };
-          }
-          if (leftType.kind === 'string' && rightType.kind === 'string' && expr.operator === '+') {
-            return { kind: 'string' };
-          }
-        }
-
-        if (expr.operator === '/') {
-          return { kind: 'int' };
-        }
-
-        if (expr.operator === '/.') {
-          return { kind: 'float' };
-        }
-
-        if (['<', '<=', '>', '>=', '==', '!=', '&&', '||'].includes(expr.operator)) {
-          return { kind: 'boolean' };
-        }
-
-        return { kind: 'weak' };
-      }
-
-      case 'UnaryExpression': {
-        const operandType = this.analyzeExpressionType(expr.operand, paramTypes);
-        if (expr.operator === '-') {
-          return operandType;
-        }
-        if (expr.operator === '!') {
-          return { kind: 'boolean' };
-        }
-        return { kind: 'weak' };
-      }
-
-      case 'CallExpression': {
-        if (expr.callee.type === 'MemberExpression') {
-          const objectType = this.analyzeExpressionType(expr.callee.object, paramTypes);
-          const methodName = expr.callee.property.name;
-
-          if (objectType.kind === 'graph') {
-            if (methodName === 'size') return { kind: 'int' };
-            if (methodName === 'getNeighbors') {
-              return {
-                kind: 'array',
-                elementType: {
-                  kind: 'record',
-                  fieldTypes: [
-                    ['to', objectType.nodeType],
-                    ['weight', { kind: 'int' }]
-                  ]
-                }
-              };
-            }
-          }
-
-          if (objectType.kind === 'map') {
-            if (methodName === 'get') return objectType.valueType;
-            if (methodName === 'size') return { kind: 'int' };
-          }
-
-          if (objectType.kind === 'heapmap') {
-            if (methodName === 'pop') return objectType.keyType;
-            if (methodName === 'size') return { kind: 'int' };
-          }
-
-          if (objectType.kind === 'heap') {
-            if (methodName === 'pop') return objectType.elementType;
-            if (methodName === 'size') return { kind: 'int' };
-          }
-
-          if (objectType.kind === 'set') {
-            if (methodName === 'has') return { kind: 'boolean' };
-            if (methodName === 'size') return { kind: 'int' };
-          }
-
-          if (objectType.kind === 'array') {
-            if (methodName === 'push') return objectType;
-            if (methodName === 'size') return { kind: 'int' };
-          }
-
-          if (objectType.kind === 'string') {
-            if (methodName === 'upper' || methodName === 'lower') return { kind: 'string' };
-          }
-        }
-
-        // Handle regular function calls
-        if (expr.callee.type === 'Identifier') {
-          const funcInfo = this.functionEnv.get(expr.callee.name);
-          if (funcInfo) {
-            return funcInfo.returnType;
-          }
-        }
-
-        return { kind: 'weak' };
-      }
-
-      case 'IndexExpression': {
-        const objectType = this.analyzeExpressionType(expr.object, paramTypes);
-        const indexType = this.analyzeExpressionType(expr.index, paramTypes);
-
-        if (objectType.kind === 'array') {
-          // Check if it's a slice operation
-          if (indexType.kind === 'range' ||
-            (indexType.kind === 'array' && indexType.elementType.kind === 'int')) {
-            // Slicing returns the whole array type
-            return objectType;
-          }
-          // Regular indexing returns element type
-          return objectType.elementType;
-        }
-        if (objectType.kind === 'map') {
-          return objectType.valueType;
-        }
-        if (objectType.kind === 'record') {
-          const valueTypes = objectType.fieldTypes.map(pair => pair[1]);
-          if (valueTypes.length === 1) return valueTypes[0];
-          throw new Error('Record has fields of differing types.');
-        }
-        return { kind: 'weak' };
-      }
-
-      case 'RangeExpression':
-        return { kind: 'range' };
-
-      default:
-        return { kind: 'weak' };
-    }
+    const ctx: TypeSynthContext = {
+      getVariableType: (name) => paramTypes.get(name),
+      getFunctionInfo: (name) => this.functionEnv.get(name),
+      typeEqualityCache: this.typeEqualityCache,
+    };
+    return synthExpression(expr, ctx);
   }
 
   private analyzeExpressionForConstraints(
@@ -1023,9 +894,9 @@ class TypeRefiner {
         // If both operands are identifiers that are parameters, constrain them
         if (expr.left.type === 'Identifier' && paramTypes.has(expr.left.name)) {
           const rightType = this.analyzeExpressionType(expr.right, paramTypes);
-          if (rightType.kind !== 'weak' && rightType.kind !== 'poly') {
+          if (rightType.kind !== 'weak' && rightType.kind !== 'dynamic') {
             const currentConstraint = constraints.get(expr.left.name);
-            if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'poly') {
+            if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'dynamic') {
               constraints.set(expr.left.name, rightType);
             }
           }
@@ -1033,9 +904,9 @@ class TypeRefiner {
 
         if (expr.right.type === 'Identifier' && paramTypes.has(expr.right.name)) {
           const leftType = this.analyzeExpressionType(expr.left, paramTypes);
-          if (leftType.kind !== 'weak' && leftType.kind !== 'poly') {
+          if (leftType.kind !== 'weak' && leftType.kind !== 'dynamic') {
             const currentConstraint = constraints.get(expr.right.name);
-            if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'poly') {
+            if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'dynamic') {
               constraints.set(expr.right.name, leftType);
             }
           }
@@ -1083,14 +954,12 @@ class TypeRefiner {
           }
           // BinaryTree/AVLTree methods
           else if (['insert', 'search'].includes(methodName) && argCount === 1) {
-            // Ambiguous between BinaryTree and AVLTree, but maybe we can default to BinaryTree or check if we can handle ambiguity
-            // For now, let's not infer if ambiguous, or maybe infer a generic tree if we had one.
-            // But wait, 'insert' is also on BinaryTree.
+            inferredType = { kind: 'binarytree', elementType: { kind: 'weak' } };
           }
 
           if (inferredType) {
             const currentConstraint = constraints.get(paramName);
-            if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'poly') {
+            if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'dynamic') {
               constraints.set(paramName, inferredType);
             }
           }
@@ -1115,7 +984,7 @@ class TypeRefiner {
 
           if (propertyName === 'length') {
             const currentConstraint = constraints.get(paramName);
-            if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'poly') {
+            if (!currentConstraint || currentConstraint.kind === 'weak' || currentConstraint.kind === 'dynamic') {
               constraints.set(paramName, { kind: 'array', elementType: { kind: 'weak' } });
             }
           }
@@ -1131,7 +1000,7 @@ class TypeRefiner {
         // If indexing a parameter with a concrete type, constrain it to be an array
         if (expr.object.type === 'Identifier' && paramTypes.has(expr.object.name)) {
           const paramType = paramTypes.get(expr.object.name)!;
-          if (paramType.kind === 'weak' || paramType.kind === 'poly') {
+          if (paramType.kind === 'weak' || paramType.kind === 'dynamic') {
             // Constrain to be an array
             constraints.set(expr.object.name, { kind: 'array', elementType: { kind: 'weak' } });
           }

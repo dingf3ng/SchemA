@@ -103,7 +103,7 @@ export class Evaluator {
 
       case 'ArrayLiteral': {
         const elements = expr.elements.map((e) => this.evaluateExpression(e));
-        const elementType = elements.length > 0 ? elements[0].type.static : { kind: 'poly' as const };
+        const elementType = elements.length > 0 ? elements[0].type.static : { kind: 'weak' as const };
         return {
           value: new SchemaArray(elements),
           type: { static: { kind: 'array', elementType }, refinements: [] }
@@ -777,7 +777,7 @@ export class Evaluator {
       return this.evaluateGraphMember(object, propertyName);
     }
 
-    if (object.type.static.kind === 'binarytree' || object.type.static.kind === 'avltree') {
+    if (object.type.static.kind === 'binarytree') {
       return this.evaluateBinaryTreeMember(object, propertyName);
     }
 

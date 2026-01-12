@@ -1,7 +1,7 @@
 import { Program, Statement, Expression } from '../transpiler/ast-types';
-import { synthMemberExpression } from './member-utils';
 import { FunEnv, TypeEnv } from './type-checker-main';
 import { resolve, Type, typesEqual, typeToString } from './type-checker-utils';
+import { synthExpression, TypeSynthContext } from './expression-synth-utils';
 
 export class TypeChecker {
   // Environments
@@ -83,9 +83,10 @@ export class TypeChecker {
               `Type mismatch: expected ${typeToString(annotatedType)}, got ${typeToString(initializerType)}. At ${declarator.line}, ${declarator.column}`
             );
           }
-          // If the annotated type is weak but the initializer has a concrete type, use the initializer type
-          const finalType = (annotatedType.kind === 'weak' || annotatedType.kind === 'poly') &&
-            initializerType.kind !== 'weak' && initializerType.kind !== 'poly'
+          // If the annotated type is weak (polymorphic) but the initializer has a concrete type, use the initializer type
+          // Note: 'dynamic' types should remain dynamic - they represent statically unresolvable types
+          const finalType = annotatedType.kind === 'weak' &&
+            initializerType.kind !== 'weak' && initializerType.kind !== 'dynamic'
             ? initializerType
             : annotatedType;
           this.typeEnv.set(declarator.name, finalType);
@@ -126,7 +127,7 @@ export class TypeChecker {
           iterated.kind !== 'heap' &&
           iterated.kind !== 'heapmap' &&
           iterated.kind !== 'range' &&
-          iterated.kind !== 'weak'
+          iterated.kind !== 'dynamic'
         ) {
           throw new Error(
             `Type checking: Cannot iterate over non-iterable type ${iterated.kind}. At ${stmt.iterable.line}, ${stmt.iterable.column}`
@@ -137,8 +138,9 @@ export class TypeChecker {
 
         // Skip binding if variable name is '_'
         if (stmt.variable !== '_') {
-          if (iterated.kind === 'weak') {
-            this.typeEnv.set(stmt.variable, { kind: 'weak' });
+          if (iterated.kind === 'dynamic') {
+            // Dynamic iterable - loop variable is dynamic (statically unresolvable)
+            this.typeEnv.set(stmt.variable, { kind: 'dynamic' });
           } else if (iterated.kind === 'array' || iterated.kind === 'set') {
             this.typeEnv.set(stmt.variable, iterated.elementType);
           } else if (iterated.kind === 'map') {
@@ -206,6 +208,12 @@ export class TypeChecker {
           // Array/Map element assignment
           const varDecl = this.variableDeclEnv.get(stmt.target.object.name);
           shouldEnforceStrictType = varDecl && varDecl.typeAnnotation && !varDecl.typeAnnotation.isInferred;
+
+          // Also enforce strict type checking if the collection's element/value type
+          // has already been refined to a concrete type (even if inferred)
+          if (!shouldEnforceStrictType && targetType.kind !== 'weak' && targetType.kind !== 'dynamic') {
+            shouldEnforceStrictType = true;
+          }
         }
 
         if (shouldEnforceStrictType && !typesEqual(valueType, targetType, this.typeEqualityCache)) {
@@ -265,433 +273,18 @@ export class TypeChecker {
       );
     }
   }
-
   private synthExpression(expr: Expression): Type {
-    switch (expr.type) {
-      case 'TypeOfExpression': {
-        // typeof returns a string representing the type
-        this.synthExpression(expr.operand);
-        return { kind: 'string' };
-      }
-
-      case 'PredicateCheckExpression': {
-        // Evaluate subject expression to ensure it's well-typed
-        this.synthExpression(expr.subject);
-
-        // Evaluate predicate arguments if any
-        if (expr.predicateArgs) {
-          for (const arg of expr.predicateArgs) {
-            this.synthExpression(arg);
-          }
-        }
-
-        // Turnstile operator always returns boolean
-        return { kind: 'boolean' };
-      }
-
-      case 'IntegerLiteral':
-        return { kind: 'int' };
-
-      case 'FloatLiteral':
-        return { kind: 'float' };
-
-      case 'StringLiteral':
-        return { kind: 'string' };
-
-      case 'BooleanLiteral':
-        return { kind: 'boolean' };
-
-      case 'ArrayLiteral': {
-        if (expr.elements.length === 0) {
-          return { kind: 'array', elementType: { kind: 'poly' } };
-        }
-
-        const elementTypes = expr.elements.map((e) => this.synthExpression(e));
-        const firstType = elementTypes[0];
-        const allSame = elementTypes.every(
-          (t) => typesEqual(t, firstType, this.typeEqualityCache) &&
-            typesEqual(firstType, t, this.typeEqualityCache));
-
-        if (allSame) {
-          return { kind: 'array', elementType: firstType };
-        } else {
-          throw new Error(
-            `Type checking: array elements must be of the same type. At ${expr.line}, ${expr.column}`
-          );
-        }
-      }
-
-      case 'MapLiteral': {
-        if (expr.entries.length === 0) {
-          return {
-            kind: 'map',
-            keyType: { kind: 'weak' },
-            valueType: { kind: 'weak' },
-          };
-        }
-        const keyTypes = expr.entries.map((e) => this.synthExpression(e.key));
-        const valueTypes = expr.entries.map((e) => this.synthExpression(e.value));
-        const firstKeyType = keyTypes[0];
-        const firstValueType = valueTypes[0];
-        const allKeysSame = keyTypes.every(
-          (t) => typesEqual(t, firstKeyType, this.typeEqualityCache) &&
-            typesEqual(firstKeyType, t, this.typeEqualityCache));
-        const allValuesSame = valueTypes.every(
-          (t) => typesEqual(t, firstValueType, this.typeEqualityCache) &&
-            typesEqual(firstValueType, t, this.typeEqualityCache));
-
-        if (allKeysSame && allValuesSame) {
-          return {
-            kind: 'map',
-            keyType: firstKeyType,
-            valueType: firstValueType,
-          };
-        } else {
-          throw new Error(
-            `Type checking: map keys and values must be of the same type. At ${expr.line}, ${expr.column}`
-          );
-        }
-      }
-      case 'SetLiteral': {
-        if (expr.elements.length === 0) {
-          return { kind: 'set', elementType: { kind: 'weak' } };
-        }
-
-        const elementTypes = expr.elements.map((e) => this.synthExpression(e));
-        const firstType = elementTypes[0];
-        const allSame = elementTypes.every(
-          (t) => typesEqual(t, firstType, this.typeEqualityCache) &&
-            typesEqual(firstType, t, this.typeEqualityCache));
-
-        if (allSame) {
-          return { kind: 'set', elementType: firstType };
-        } else {
-          throw new Error(
-            `Type checking: set elements must be of the same type. At ${expr.line}, ${expr.column}`
-          );
-        }
-      }
-
-      case 'Identifier': {
-        // Underscore cannot be used as a value
-        if (expr.name === '_') {
-          throw new Error(`Type checking: underscore (_) cannot be used as a value, at ${expr.line}, ${expr.column}`);
-        }
-        const type = this.typeEnv.get(expr.name);
-        if (!type) {
-          throw new Error(`Type checking: undefined variable ${expr.name}, at ${expr.line}, ${expr.column}`);
-        }
-        return type;
-      }
-
-      case 'MetaIdentifier':
-        return { kind: 'string' };
-
-      case 'RangeExpression': {
-        // Range expressions can be int..int or string..string
-        if (expr.start) {
-          const startType = this.synthExpression(expr.start);
-          if (expr.end) {
-            const endType = this.synthExpression(expr.end);
-
-            if (startType.kind === 'weak' || endType.kind === 'weak') {
-              return { kind: 'array', elementType: { kind: 'int' } };
-            }
-
-            // Both must be the same type
-            if (startType.kind === 'int' && endType.kind === 'int') {
-              // Finite integer range returns an array of integers
-              return { kind: 'array', elementType: { kind: 'int' } };
-            } else if (startType.kind === 'string' && endType.kind === 'string') {
-              // String range returns an array of strings
-              return { kind: 'array', elementType: { kind: 'string' } };
-            } else {
-              throw new Error(`Type checking: range start and end must be the same type (int or string), at ${expr.line}, ${expr.column}`);
-            }
-          } else {
-            // Infinite range (e.g., 0..)
-            if (startType.kind === 'int' || startType.kind === 'weak') {
-              return { kind: 'range' };
-            } else {
-              throw new Error(`Type checking: infinite ranges are only supported for integers, at ${expr.line}, ${expr.column}`);
-            }
-          }
-        } else {
-          // Start defaults to 0
-          if (expr.end) {
-            const endType = this.synthExpression(expr.end);
-            if (endType.kind === 'int' || endType.kind === 'weak') {
-              return { kind: 'array', elementType: { kind: 'int' } };
-            } else {
-              throw new Error(`Type checking: range with default start (0) requires integer end, at ${expr.line}, ${expr.column}`);
-            }
-          } else {
-            // Both start and end are missing - should not happen
-            throw new Error(`Type checking: range must have at least a start or end, at ${expr.line}, ${expr.column}`);
-          }
-        }
-      }
-
-      case 'BinaryExpression': {
-        const leftType = this.synthExpression(expr.left);
-        const rightType = this.synthExpression(expr.right);
-
-        if (this.isWeak(leftType) || this.isWeak(rightType)) {
-          if (['<', '<=', '>', '>=', '==', '!=', '&&', '||'].includes(expr.operator)) {
-            return { kind: 'boolean' };
-          }
-          return { kind: 'weak' };
-        }
-
-        const leftNumeric = this.getNumericKind(leftType);
-        const rightNumeric = this.getNumericKind(rightType);
-
-        // Arithmetic operators: +, -, *, % (work on int and float)
-        if (['+', '-', '*', '%'].includes(expr.operator)) {
-          if (leftNumeric && rightNumeric) {
-            if (leftNumeric === 'float' || rightNumeric === 'float') {
-              return { kind: 'float' };
-            }
-            return { kind: 'int' };
-          }
-        }
-
-        // Integer division operator: / (requires both operands to be int, returns int)
-        if (expr.operator === '/') {
-          if (leftNumeric === 'int' && rightNumeric === 'int') {
-            return { kind: 'int' };
-          }
-        }
-
-        // Float division operator: /. (works on int or float, returns float)
-        if (expr.operator === '/.') {
-          if (leftNumeric && rightNumeric) {
-            return { kind: 'float' };
-          }
-        }
-
-        // Bitwise shift operators: << and >> (require both operands to be int)
-        if (['<<', '>>'].includes(expr.operator)) {
-          if (leftNumeric === 'int' && rightNumeric === 'int') {
-            return { kind: 'int' };
-          }
-        }
-
-        // String concatenation
-        if (
-          expr.operator === '+' &&
-          leftType.kind === 'string' &&
-          rightType.kind === 'string'
-        ) {
-          return { kind: 'string' };
-        }
-
-        // Comparison operators (work on int or float)
-        if (['<', '<=', '>', '>='].includes(expr.operator)) {
-          if (leftNumeric && rightNumeric) {
-            return { kind: 'boolean' };
-          }
-        }
-
-        // Equality operators (allow comparison if types are compatible)
-        if (['==', '!='].includes(expr.operator)) {
-          // Types can be compared if they're equal or one is assignable to the other
-          if (typesEqual(leftType, rightType, this.typeEqualityCache) ||
-            typesEqual(rightType, leftType, this.typeEqualityCache)) {
-            return { kind: 'boolean' };
-          }
-          // Allow comparison between numeric types (int and float)
-          if (leftNumeric && rightNumeric) {
-            return { kind: 'boolean' };
-          }
-        }
-
-        // Logical operators
-        if (
-          ['&&', '||'].includes(expr.operator) &&
-          leftType.kind === 'boolean' &&
-          rightType.kind === 'boolean'
-        ) {
-          return { kind: 'boolean' };
-        }
-
-        throw new Error(
-          `Type checking: invalid binary operation, ${typeToString(leftType)} ${expr.operator} ${typeToString(rightType)}, at ${expr.line}, ${expr.column}`
-        );
-      }
-
-      case 'UnaryExpression': {
-        const operandType = this.synthExpression(expr.operand);
-
-        if (expr.operator === '-') {
-          if (operandType.kind === 'int') {
-            return { kind: 'int' };
-          } else if (operandType.kind === 'float') {
-            return { kind: 'float' };
-          }
-        }
-
-        if (expr.operator === '!' && operandType.kind === 'boolean') {
-          return { kind: 'boolean' };
-        }
-
-        throw new Error(
-          `Type checking: invalid unary operation, ${expr.operator} ${typeToString(operandType)}`
-        );
-      }
-
-      case 'CallExpression': {
-        const callee = expr.callee;
-        let funcType: Type;
-
-        // Special case: MetaIdentifier callee means this is a predicate call like @greater_than(5)
-        // These are used as arguments to other predicates
-        if (callee.type === 'MetaIdentifier') {
-          // Type-check all arguments to ensure they're valid expressions
-          for (const arg of expr.arguments) {
-            this.synthExpression(arg);
-          }
-          // Predicate calls have the predicate type
-          return { kind: 'predicate' };
-        }
-
-        if (callee.type === 'Identifier') {
-          const envType = this.functionEnv.get(callee.name);
-          if (envType) {
-            funcType = {
-              kind: 'function',
-              parameters: envType.parameters,
-              returnType: envType.returnType,
-              variadic: envType.variadic
-            };
-          } else {
-            try {
-              // infer for error reporting
-              funcType = this.synthExpression(callee);
-            } catch (e) {
-              throw new Error(`Type checking: undefined function ${callee.name}, at ${callee.line}, ${callee.column}`);
-            }
-          }
-        } else {
-          // infer for error reporting
-          funcType = this.synthExpression(callee);
-        }
-
-        if (funcType.kind === 'weak') {
-          return { kind: 'weak' };
-        }
-
-        if (funcType.kind !== 'function') {
-          throw new Error(`Type checking: cannot call non-function type: ${typeToString(funcType)}, at ${expr.line}, ${expr.column}`);
-        }
-
-        if (funcType.variadic) {
-          for (let i = 0; i < expr.arguments.length; i++) {
-            if (i < funcType.parameters.length) {
-              this.checkExpression(expr.arguments[i], funcType.parameters[i]);
-            } else if (funcType.parameters.length > 0) {
-              this.checkExpression(expr.arguments[i], funcType.parameters[funcType.parameters.length - 1]);
-            } else {
-              throw new Error(`Type checking: variadic function must have at least one parameter type, at ${expr.line}, ${expr.column}`);
-            }
-          }
-        } else {
-          if (expr.arguments.length !== funcType.parameters.length) {
-            throw new Error(
-              `Type checking: function expects ${funcType.parameters.length} arguments, got ${expr.arguments.length}, at ${expr.line}, ${expr.column}`
-            );
-          }
-
-          for (let i = 0; i < expr.arguments.length; i++) {
-            this.checkExpression(expr.arguments[i], funcType.parameters[i]);
-          }
-        }
-
-        return funcType.returnType;
-      }
-
-      case 'MemberExpression': {
-        const objectType = this.synthExpression(expr.object);
-        return synthMemberExpression(expr, objectType);
-      }
-
-      case 'IndexExpression': {
-        const objectType = this.synthExpression(expr.object);
-        const indexType = this.synthExpression(expr.index);
-
-        if (objectType.kind === 'array') {
-          if (indexType.kind === 'int') {
-            return objectType.elementType;
-          } else if (indexType.kind === 'array' && indexType.elementType.kind === 'int') {
-            // Range expression returns array<int>, so this covers ranges
-            return objectType; // Slicing returns an array of the same type
-          } else if (indexType.kind === 'range') {
-            return objectType;
-          } else {
-            throw new Error(
-              `Type checking: cannot index array with type "${typeToString(indexType)}"}, at ${expr.line}, ${expr.column}`,
-            );
-          }
-        } else if (objectType.kind === 'map') {
-          // Check that index type matches map key type
-          this.checkExpression(expr.index, objectType.keyType);
-          return objectType.valueType;
-        } else if (objectType.kind === 'tuple') {
-          // Tuples are indexed by integers
-          if (indexType.kind !== 'int') {
-            throw new Error(
-              `Type checking: cannot index tuple with non-integer type ${typeToString(indexType)}, at ${expr.line}, ${expr.column}`,
-            );
-          } else {
-            // For literal integer indices, return the specific element type
-            if (expr.index.type === 'IntegerLiteral') {
-              const idx = expr.index.value;
-              if (idx >= 0 && idx < objectType.elementTypes.length) {
-                return objectType.elementTypes[idx];
-              } else {
-                throw new Error(
-                  `Type checking: tuple index ${idx} out of bounds (length: ${objectType.elementTypes.length}), at ${expr.line}, ${expr.column}`,
-                );
-              }
-            } else {
-              return { kind: 'dynamic' }
-            }
-          }
-
-        } else if (objectType.kind === 'record') {
-          // Records can be indexed by strings corresponding to field names
-          if (indexType.kind !== 'string') {
-            throw new Error(
-              `Type checking: cannot index record with non-string type ${typeToString(indexType)}, at ${expr.line}, ${expr.column}`,
-            );
-          } else {
-            // For literal string indices, return the specific field type
-            if (expr.index.type === 'StringLiteral') {
-              const fieldName = expr.index.value;
-              for (const [name, fieldType] of objectType.fieldTypes) {
-                if (name === fieldName) {
-                  return fieldType;
-                }
-              }
-              throw new Error(
-                `Type checking: record has no field named "${fieldName}", at ${expr.line}, ${expr.column}`,
-              );
-            } else {
-              return { kind: 'dynamic' }
-            }
-          }
-        } else {
-          throw new Error(
-            `Type checking: cannot index type ${typeToString(objectType)}, at ${expr.line}, ${expr.column}`,
-          );
-        }
-      }
-      default:
-        const _exhaustiveCheck: never = expr;
-        throw new Error(`Type checking: unknown expression type ${expr}`);
-    }
+    const ctx: TypeSynthContext = {
+      getVariableType: (name: string): Type | undefined => {
+        return this.typeEnv.get(name);
+      },
+      getFunctionInfo: (name: string): { parameters: Type[]; returnType: Type; variadic?: boolean } | undefined => {
+        return this.functionEnv.get(name);
+      },
+      typeEqualityCache: this.typeEqualityCache,
+    };
+    return synthExpression(expr, ctx);
   }
-
 }
 
 export function check(refined: { typeEnv: TypeEnv; functionEnv: FunEnv }, program: Program): void {

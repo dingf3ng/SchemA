@@ -2,6 +2,18 @@ import { MemberExpression } from "../transpiler/ast-types";
 import { Type, typeToString } from "./type-checker-utils";
 
 export function synthMemberExpression(expr: MemberExpression, objectType: Type): Type {
+  // Handle weak types - they are polymorphic placeholders that haven't been refined yet
+  // During inference, we may encounter weak types before refinement occurs.
+  // Return weak to allow inference to continue - the type will be refined later.
+  if (objectType.kind === 'weak') {
+    return { kind: 'weak' };
+  }
+
+  // Handle dynamic types - member access on dynamic returns dynamic
+  if (objectType.kind === 'dynamic') {
+    return { kind: 'dynamic' };
+  }
+
   // Handle built-in data structure methods
   // Arrays, Maps, Sets, Heaps, HeapMaps, BinaryTrees, AVLTrees, Graphs
   if (objectType.kind === 'array') {
@@ -14,7 +26,7 @@ export function synthMemberExpression(expr: MemberExpression, objectType: Type):
     return synthHeapMember(expr, objectType);
   } else if (objectType.kind === 'heapmap') {
     return synthHeapMapMember(expr, objectType);
-  } else if (objectType.kind === 'binarytree' || objectType.kind === 'avltree') {
+  } else if (objectType.kind === 'binarytree') {
     return synthTreeMember(expr, objectType);
   } else if (objectType.kind === 'graph') {
     return synthGraphMember(expr, objectType);
@@ -209,32 +221,28 @@ function synthHeapMapMember(expr: MemberExpression, objectType: { kind: 'heapmap
 }
 
 export function synthTreeMember(expr: MemberExpression, objectType: { kind: 'binarytree' | 'avltree', elementType: Type }): Type {
-  if (objectType.kind === 'binarytree' || objectType.kind === 'avltree') {
-    if (expr.property.name === 'insert') {
-      return {
-        kind: 'function',
-        parameters: [objectType.elementType],
-        returnType: { kind: 'void' },
-      };
-    } else if (expr.property.name === 'search') {
-      return {
-        kind: 'function',
-        parameters: [objectType.elementType],
-        returnType: { kind: 'boolean' },
-      };
-    } else if (expr.property.name === 'getHeight') {
-      return {
-        kind: 'function',
-        parameters: [],
-        returnType: { kind: 'int' },
-      };
-    } else {
-      throw new Error(
-        `Type checking: unknown tree member "${expr.property.name}", at ${expr.line}, ${expr.column}`
-      );
-    }
+  if (expr.property.name === 'insert') {
+    return {
+      kind: 'function',
+      parameters: [objectType.elementType],
+      returnType: { kind: 'void' },
+    };
+  } else if (expr.property.name === 'search') {
+    return {
+      kind: 'function',
+      parameters: [objectType.elementType],
+      returnType: { kind: 'boolean' },
+    };
+  } else if (expr.property.name === 'getHeight') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'int' },
+    };
   } else {
-    throw new Error(`Internal: Should be called with tree member access only`);
+    throw new Error(
+      `Type checking: unknown tree member "${expr.property.name}", at ${expr.line}, ${expr.column}`
+    );
   }
 }
 

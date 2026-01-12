@@ -894,14 +894,16 @@ describe('TypeChecker - Comprehensive Tests', () => {
       });
     });
 
-    describe('Union Type Checking', () => {
-      it('should allow union types', () => {
+    describe('Numeric Operations Between Int and Float', () => {
+      it('should allow operations between int and float types', () => {
         const code = `
           do main() {
-            let arr = [1, "two"]
+            let x: int = 10
+            let y: float = 2.5
+            let z = x + y
           }
         `;
-        // Arrays with mixed types should create unions
+        // Mixing int and float in numeric operations should be allowed
         expect(() => check(code)).not.toThrow();
       });
     });

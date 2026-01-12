@@ -46,41 +46,6 @@ x = "hello"
     }).toThrow(/Type mismatch/);
   });
 
-  it('should allow assignment to simple variable with union type', () => {
-    const code = `
-let x : int | string = 5
-x = "hello"
-    `;
-
-    expect(() => {
-      run(code);
-    }).not.toThrow();
-  });
-
-  it('should allow assignment to array with union type', () => {
-    const code = `
-let x : Array< int | string > = [5, "hello"]
-x[1] = "world"
-x[0] = 42
-    `;
-
-    expect(() => {
-      run(code);
-    }).not.toThrow();
-  });
-
-  it('should allow assignment to array with union type', () => {
-    const code = `
-let x : Array< int | string > = [5, "hello"]
-x[1] = 42.3
-x[0] = 42
-    `;
-
-    expect(() => {
-      run(code);
-    }).toThrow(/Type mismatch/);
-  });
-
   describe('Basic Types in Arrays', () => {
     it('should allow assignment of boolean to boolean array element', () => {
       const code = `
@@ -147,13 +112,13 @@ m["key"] = "value"
       `;
       expect(() => { run(code); }).toThrow(/Type mismatch/);
     });
-    
+
     it('should reject assignment to Map via indexing with wrong key type', () => {
-       const code = `
+      const code = `
 let m : Map<string, int> = Map()
 m[123] = 42
        `;
-       expect(() => { run(code); }).toThrow(/Type mismatch/);
+      expect(() => { run(code); }).toThrow(/Type mismatch/);
     });
   });
 
@@ -201,36 +166,6 @@ hm.push("key", "value")
     });
   });
 
-  describe('Union and Intersection Types', () => {
-    it('should allow assignment to Array<int | string>', () => {
-      const code = `
-let arr : Array<int | string> = [1, "two"]
-arr[0] = "one"
-arr[1] = 2
-      `;
-      expect(() => { run(code); }).not.toThrow();
-    });
-
-    it('should reject assignment of boolean to Array<int | string>', () => {
-      const code = `
-let arr : Array<int | string> = [1, "two"]
-arr[0] = true
-      `;
-      expect(() => { run(code); }).toThrow(/Type mismatch/);
-    });
-
-    it('should allow assignment to Map<string, int | boolean>', () => {
-      const code = `
-let m : Map<string, int | boolean> = Map()
-m.set("a", 1)
-m.set("b", true)
-m["c"] = 0
-m["d"] = false
-      `;
-      expect(() => { run(code); }).not.toThrow();
-    });
-  });
-
   describe('Nested Complex Types', () => {
     it('should allow assignment to Map<string, Array<int>>', () => {
       const code = `
@@ -245,48 +180,6 @@ m["evens"] = [2, 4, 6]
       const code = `
 let m : Map<string, Array<int>> = Map()
 m.set("strings", ["a", "b"])
-      `;
-      expect(() => { run(code); }).toThrow(/Type mismatch/);
-    });
-
-    it('should handle deeply nested types: Map<Array<int | boolean>, Map<boolean | string, string>>', () => {
-      // Note: Map keys in this language might need to be hashable/comparable. 
-      // Assuming Array<int | boolean> is a valid key type or just testing the type checker's structural validation.
-      // If arrays are not valid keys at runtime, this might fail at runtime but pass type check, or fail type check if keys are constrained.
-      // Based on previous context, Map keys seem flexible in type checker.
-      const code = `
-let complexMap : Map<Array<int | boolean>, Map<boolean | string, string>> = Map()
-let key : Array<int | boolean> = [1, true]
-let innerMap : Map<boolean | string, string> = Map()
-
-innerMap.set(true, "value1")
-innerMap.set("key2", "value2")
-
-complexMap.set(key, innerMap)
-      `;
-      expect(() => { run(code); }).not.toThrow();
-    });
-
-    it('should reject invalid inner map in deeply nested type', () => {
-      const code = `
-let complexMap : Map<Array<int | boolean>, Map<boolean | string, string>> = Map()
-let key : Array<int | boolean> = [1, true]
-let invalidInnerMap : Map<boolean | string, int> = Map() // Value type mismatch (int vs string)
-
-invalidInnerMap.set(true, 1)
-
-complexMap.set(key, invalidInnerMap)
-      `;
-      expect(() => { run(code); }).toThrow(/Type mismatch/);
-    });
-
-    it('should reject invalid key in deeply nested type', () => {
-      const code = `
-let complexMap : Map<Array<int | boolean>, Map<boolean | string, string>> = Map()
-let invalidKey : Array<string> = ["invalid"]
-let innerMap : Map<boolean | string, string> = Map()
-
-complexMap.set(invalidKey, innerMap)
       `;
       expect(() => { run(code); }).toThrow(/Type mismatch/);
     });

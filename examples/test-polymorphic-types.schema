@@ -118,10 +118,10 @@ stringKeyMap.set("y", 200)
 print("String-keyed map keys:", stringKeyMap.keys())
 print("String-keyed map values:", stringKeyMap.values())
 
-print("\n=== Test 7: Union Types from Dynamic Record Access ===")
+print("\n=== Test 7: Types from Dynamic Record Access ===")
 
 // When a record has fields of different types and we access dynamically,
-// the result should be a union type
+// the result should be a dynamic type
 let mixedGraph = Graph(false)
 mixedGraph.addVertex(1)
 mixedGraph.addVertex(2)

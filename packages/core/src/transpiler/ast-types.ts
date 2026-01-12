@@ -231,6 +231,7 @@ export type TypeAnnotation =
 
 export interface BaseTypeAnnotation extends ASTNode {
   type: 'TypeAnnotation';
+  isInferred?: boolean; // Indicates if this type was inferred rather than explicitly annotated
 }
 
 export interface SimpleTypeAnnotation extends BaseTypeAnnotation {

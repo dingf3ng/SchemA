@@ -13,7 +13,7 @@ export function initializeBuiltins(): [FunEnv, TypeEnv] {
   let functionEnv: FunEnv = new Map();
   let typeEnv: TypeEnv = new Map();
   functionEnv.set('print', {
-    parameters: [{ kind: 'poly' }],
+    parameters: [{ kind: 'dynamic' }],
     returnType: { kind: 'void' },
     variadic: true,
   });
@@ -65,7 +65,7 @@ export function initializeBuiltins(): [FunEnv, TypeEnv] {
 
   functionEnv.set('AVLTree', {
     parameters: [],
-    returnType: { kind: 'avltree', elementType: { kind: 'weak' } },
+    returnType: { kind: 'binarytree', elementType: { kind: 'weak' } },
   });
 
   functionEnv.set('int_min', {
@@ -107,7 +107,8 @@ export function initializeBuiltins(): [FunEnv, TypeEnv] {
     returnType: { kind: 'float' },
   });
 
-  typeEnv.set('inf', { kind: 'int' });
+  typeEnv.set('int_inf', { kind: 'int' });
+  typeEnv.set('float_inf', { kind: 'float' });
   
   return [functionEnv, typeEnv];
 }

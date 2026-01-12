@@ -7,7 +7,7 @@ do dijkstra(graph, start) -> Map<int, int> {
       n = graph.size()
   
   for i in ..n {
-    dist.set(i, inf)
+    dist.set(i, int_inf)
   }
   dist.set(start, 0)
   pq.push(start, 0)

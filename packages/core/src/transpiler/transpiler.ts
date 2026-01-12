@@ -33,10 +33,7 @@ import {
   ArrayLiteralContext,
   ParameterContext,
   TypeAnnotationContext,
-  UnionTypeContext,
-  IntersectionTypeContext,
   PrimaryTypeContext,
-  PostfixOpContext,
   CallOpContext,
   MemberOpContext,
   IndexOpContext,
@@ -159,35 +156,7 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
   }
 
   visitTypeAnnotation(ctx: TypeAnnotationContext): ASTTypeAnnotation {
-    return this.visit(ctx.unionType());
-  }
-
-  visitUnionType(ctx: UnionTypeContext): ASTTypeAnnotation {
-    const types = ctx.intersectionType().map(t => this.visit(t));
-    if (types.length === 1) {
-      return types[0];
-    }
-    return {
-      type: 'TypeAnnotation',
-      kind: 'union',
-      types,
-      line: ctx.start.line,
-      column: ctx.start.charPositionInLine + 1,
-    };
-  }
-
-  visitIntersectionType(ctx: IntersectionTypeContext): ASTTypeAnnotation {
-    const types = ctx.primaryType().map(t => this.visit(t));
-    if (types.length === 1) {
-      return types[0];
-    }
-    return {
-      type: 'TypeAnnotation',
-      kind: 'intersection',
-      types,
-      line: ctx.start.line,
-      column: ctx.start.charPositionInLine + 1,
-    };
+    return this.visit(ctx.primaryType());
   }
 
   visitPrimaryType(ctx: PrimaryTypeContext): ASTTypeAnnotation {

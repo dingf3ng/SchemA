@@ -1,5 +1,5 @@
 let m = Map()
 m.set(1, 0.1)
-m.set(2, inf)
+m.set(2, float_inf)
 print(m.get(1))
 print(m.get(2))

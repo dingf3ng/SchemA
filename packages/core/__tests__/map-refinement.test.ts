@@ -7,6 +7,24 @@ function check(code: string) {
   typeCheck(ast);
 }
 
+/**
+ * Helper to ensure both interpreter and machine produce the same result
+ */
+function expectBothToEqual(code: string): string[] {
+  const interpResult = run(code);
+  const machineResult = runMachine(code);
+  expect(interpResult).toEqual(machineResult);
+  return interpResult;
+}
+
+/**
+ * Helper to ensure both interpreter and machine throw the same error
+ */
+function expectBothToThrow(code: string, errorPattern: RegExp): void {
+  expect(() => run(code)).toThrow(errorPattern);
+  expect(() => runMachine(code)).toThrow(errorPattern);
+}
+
 describe('Map Type Refinement', () => {
   describe('Basic Map Refinement', () => {
     it('should refine Map<weak, weak> to Map<string, int> after set', () => {
@@ -15,9 +33,7 @@ describe('Map Type Refinement', () => {
         map.set("a", 1)
         print(typeof(map))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Map<string, int>']);
+      expect(expectBothToEqual(code)).toEqual(['Map<string, int>']);
     });
 
     it('should refine Map to Map<int, string> after multiple sets', () => {
@@ -27,9 +43,7 @@ describe('Map Type Refinement', () => {
         map.set(2, "world")
         print(typeof(map))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Map<int, string>']);
+      expect(expectBothToEqual(code)).toEqual(['Map<int, string>']);
     });
 
     it('should refine Map to Map<boolean, float> after set', () => {
@@ -39,38 +53,32 @@ describe('Map Type Refinement', () => {
         map.set(false, 2.71)
         print(typeof(map))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Map<boolean, float>']);
+      expect(expectBothToEqual(code)).toEqual(['Map<boolean, float>']);
     });
   });
 
-  describe('Map Refinement with Union Types', () => {
-    it('should refine Map to Map<string, int | boolean> with mixed value types', () => {
+  describe('Map Type Mismatch Errors (Union Types Not Supported)', () => {
+    it('should throw with mixed value types', () => {
       const code = `
         let map = Map()
         map.set("a", 1)
         map.set("b", true)
         print(typeof(map))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Map<string, int | boolean>']);
+      expectBothToThrow(code, /Type mismatch/);
     });
 
-    it('should refine Map to Map<int | string, boolean> with mixed key types', () => {
+    it('should throw with mixed key types', () => {
       const code = `
         let map = Map()
         map.set(1, true)
         map.set("key", false)
         print(typeof(map))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Map<int | string, boolean>']);
+      expectBothToThrow(code, /Type mismatch/);
     });
 
-    it('should refine Map to Map<int | string, int | float> with fully mixed types', () => {
+    it('should throw with fully mixed types', () => {
       const code = `
         let map = Map()
         map.set(1, 100)
@@ -79,9 +87,7 @@ describe('Map Type Refinement', () => {
         map.set("another", 2.71)
         print(typeof(map))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Map<int | string, int | float>']);
+      expectBothToThrow(code, /Type mismatch/);
     });
   });
 
@@ -93,9 +99,7 @@ describe('Map Type Refinement', () => {
         set.add(2)
         print(typeof(set))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Set<int>']);
+      expect(expectBothToEqual(code)).toEqual(['Set<int>']);
     });
 
     it('should refine Set to Set<string> after add', () => {
@@ -105,12 +109,10 @@ describe('Map Type Refinement', () => {
         set.add("world")
         print(typeof(set))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Set<string>']);
+      expect(expectBothToEqual(code)).toEqual(['Set<string>']);
     });
 
-    it('should refine Set to Set<int | string> with mixed element types', () => {
+    it('should throw with mixed element types', () => {
       const code = `
         let set = Set()
         set.add(1)
@@ -118,12 +120,10 @@ describe('Map Type Refinement', () => {
         set.add(2)
         print(typeof(set))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Set<int | string>']);
+      expectBothToThrow(code, /Type mismatch/);
     });
 
-    it('should refine Set to Set<int | boolean | float> with multiple union members', () => {
+    it('should throw with multiple types', () => {
       const code = `
         let set = Set()
         set.add(1)
@@ -131,9 +131,7 @@ describe('Map Type Refinement', () => {
         set.add(3.14)
         print(typeof(set))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Set<int | boolean | float>']);
+      expectBothToThrow(code, /Type mismatch/);
     });
   });
 
@@ -145,24 +143,20 @@ describe('Map Type Refinement', () => {
         arr.push(2)
         print(typeof(arr))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Array<int>']);
+      expect(expectBothToEqual(code)).toEqual(['Array<int>']);
     });
 
-    it('should refine Array to Array<string | int> with mixed push', () => {
+    it('should report type mismatch with mixed push', () => {
       const code = `
         let arr = []
         arr.push(1)
         arr.push("hello")
         print(typeof(arr))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Array<int | string>']);
+      expectBothToThrow(code, /Type mismatch/);
     });
 
-    it('should refine Array to Array<int | boolean | float> with multiple types', () => {
+    it('should throw with multiple types', () => {
       const code = `
         let arr = []
         arr.push(1)
@@ -170,9 +164,7 @@ describe('Map Type Refinement', () => {
         arr.push(3.14)
         print(typeof(arr))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Array<int | boolean | float>']);
+      expectBothToThrow(code, /Type mismatch/);
     });
   });
 
@@ -185,9 +177,7 @@ describe('Map Type Refinement', () => {
         heap.push(7)
         print(typeof(heap))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Heap<int>']);
+      expect(expectBothToEqual(code)).toEqual(['Heap<int>']);
     });
 
     it('should refine MaxHeap to MaxHeap<float> after push', () => {
@@ -197,21 +187,17 @@ describe('Map Type Refinement', () => {
         heap.push(2.71)
         print(typeof(heap))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Heap<float>']);
+      expect(expectBothToEqual(code)).toEqual(['Heap<float>']); 
     });
 
-    it('should refine MinHeap to MinHeap<int | float> with mixed types', () => {
+    it('should fail with mixed types', () => {
       const code = `
         let heap = MinHeap()
         heap.push(5)
         heap.push(3.14)
         print(typeof(heap))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Heap<int | float>']);
+      expectBothToThrow(code, /Type mismatch/);
     });
   });
 
@@ -222,9 +208,7 @@ describe('Map Type Refinement', () => {
         map.set("nums", [1, 2, 3])
         print(typeof(map))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Map<string, Array<int>>']);
+      expect(expectBothToEqual(code)).toEqual(['Map<string, Array<int>>']);
     });
 
     it('should refine Map with Map values: Map<string, Map<int, boolean>>', () => {
@@ -256,47 +240,19 @@ describe('Map Type Refinement', () => {
       expect(output).toEqual(['Array<Map<string, int>>']);
     });
 
-    it('should refine Map with union of nested structures', () => {
+    it('should throw with union of nested structures (union types not supported)', () => {
       const code = `
         let map = Map()
         map.set("arr", [1, 2])
         map.set("num", 42)
         print(typeof(map))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual(['Map<string, Array<int> | int>']);
+      expect(() => run(code)).toThrow(); 
+      expect(() => runMachine(code)).toThrow();
     });
   });
 
-  describe('Refinement with Intersection Types', () => {
-    it('should handle Map with intersection type annotation', () => {
-      const code = `
-        do main() {
-          let map: Map<int & float, string> = Map()
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should handle Set with intersection type annotation', () => {
-      const code = `
-        do main() {
-          let set: Set<int & float> = Set()
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should handle MinHeap with intersection type annotation', () => {
-      const code = `
-        do main() {
-          let heap: MinHeap<int & float> = MinHeap()
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-  });
+    
 
   describe('Negative Tests - Type Mismatches', () => {
     it('should fail when assigning wrong type to typed Map', () => {
@@ -339,26 +295,6 @@ describe('Map Type Refinement', () => {
       expect(() => check(code)).toThrow('Type mismatch');
     });
 
-    it('should fail when Map union type constraint is violated', () => {
-      const code = `
-        do main() {
-          let map: Map<int | string, boolean> = Map()
-          map.set(true, true)
-        }
-      `;
-      expect(() => check(code)).toThrow('Type mismatch');
-    });
-
-    it('should fail when Set union type constraint is violated', () => {
-      const code = `
-        do main() {
-          let set: Set<int | string> = Set()
-          set.add(true)
-        }
-      `;
-      expect(() => check(code)).toThrow('Type mismatch');
-    });
-
     it('should fail with nested structure type mismatch', () => {
       const code = `
         do main() {
@@ -366,7 +302,7 @@ describe('Map Type Refinement', () => {
           map.set("arr", [1, 2, "oops"])
         }
       `;
-      expect(() => check(code)).toThrow('Type mismatch');
+      expect(() => check(code)).toThrow('array elements must be of the same type');
     });
 
     it('should fail when nested Map has wrong inner type', () => {
@@ -383,29 +319,7 @@ describe('Map Type Refinement', () => {
   });
 
   describe('Positive Tests - Valid Type Annotations', () => {
-    it('should accept valid Map with union types', () => {
-      const code = `
-        do main() {
-          let map: Map<int | string, boolean> = Map()
-          map.set(1, true)
-          map.set("key", false)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should accept valid Set with union types', () => {
-      const code = `
-        do main() {
-          let set: Set<int | string | boolean> = Set()
-          set.add(1)
-          set.add("hello")
-          set.add(true)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
+    
     it('should accept valid nested Map structures', () => {
       const code = `
         do main() {
@@ -439,18 +353,6 @@ describe('Map Type Refinement', () => {
       `;
       expect(() => check(code)).not.toThrow();
     });
-
-    it('should accept complex union in Map values', () => {
-      const code = `
-        do main() {
-          let map: Map<string, int | Array<int> | boolean> = Map()
-          map.set("num", 42)
-          map.set("arr", [1, 2, 3])
-          map.set("flag", true)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
   });
 
   describe('Mixed Refinement Scenarios', () => {
@@ -473,23 +375,16 @@ describe('Map Type Refinement', () => {
       expect(output).toEqual(['Map<string, int>', 'Set<string>', 'Array<boolean>']);
     });
 
-    it('should handle progressive refinement with increasing union complexity', () => {
+    it('should throw with progressive refinement attempting union types', () => {
       const code = `
         let map = Map()
         map.set("a", 1)
         print(typeof(map))
         map.set("b", true)
         print(typeof(map))
-        map.set("c", 3.14)
-        print(typeof(map))
       `;
-      const output = run(code);
-      expect(output).toEqual(runMachine(code));
-      expect(output).toEqual([
-        'Map<string, int | boolean | float>',
-        'Map<string, int | boolean | float>',
-        'Map<string, int | boolean | float>'
-      ]);
+      expect(() => run(code)).toThrow(); 
+      expect(() => runMachine(code)).toThrow();
     });
   });
 });

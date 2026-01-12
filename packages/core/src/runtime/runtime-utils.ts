@@ -81,7 +81,6 @@ export function runtimeTypedBinderToString(binder: RuntimeTypedBinder): string {
     case 'int':
     case 'float':
     case 'string':
-    case 'poly':
     case 'boolean':
     case 'array':
     case 'map':
@@ -89,7 +88,6 @@ export function runtimeTypedBinderToString(binder: RuntimeTypedBinder): string {
     case 'heap':
     case 'heapmap':
     case 'binarytree':
-    case 'avltree':
     case 'graph':
     case 'range':
     case 'dynamic':
@@ -142,7 +140,6 @@ export function resolveTypeAnnotation(annotation: TypeAnnotation | undefined): T
       case 'boolean': return { kind: 'boolean' };
       case 'void': return { kind: 'void' };
       case 'weak': return { kind: 'weak' };
-      case 'poly': return { kind: 'poly' };
       case 'range': return { kind: 'range' };
       default: throw new Error(`Unknown simple type annotation: ${annotation.name}`);
     }
@@ -162,8 +159,6 @@ export function resolveTypeAnnotation(annotation: TypeAnnotation | undefined): T
         return { kind: 'graph', nodeType: resolveTypeAnnotation(annotation.typeParameters[0]) };
       case 'BinaryTree':
         return { kind: 'binarytree', elementType: resolveTypeAnnotation(annotation.typeParameters[0]) };
-      case 'AVLTree':
-        return { kind: 'avltree', elementType: resolveTypeAnnotation(annotation.typeParameters[0]) };
       default: throw new Error(`Unknown generic type annotation: ${annotation.name}`);
     }
   } else if (annotation.kind === 'function') {
@@ -302,7 +297,7 @@ export function hasDynamicTypes(type: Type): boolean {
     return hasDynamicTypes(type.nodeType);
   }
 
-  if (type.kind === 'binarytree' || type.kind === 'avltree') {
+  if (type.kind === 'binarytree') {
     return hasDynamicTypes(type.elementType);
   }
 

@@ -27,7 +27,7 @@ export function initializeBuiltins(glbEnv: Environment, outRef: string[]): Envir
     type: {
       static: {
         kind: 'function',
-        parameters: [{ kind: 'poly' }],
+        parameters: [{ kind: 'dynamic' }],
         returnType: { kind: 'void' },
         variadic: true
       },
@@ -197,15 +197,20 @@ export function initializeBuiltins(glbEnv: Environment, outRef: string[]): Envir
           if (aVal > bVal) return 1;
           return 0;
         }),
-        type: { static: { kind: 'avltree', elementType: { kind: 'weak' } }, refinements: [] }
+        type: { static: { kind: 'binarytree', elementType: { kind: 'weak' } }, refinements: [] }
       }),
     },
-    type: { static: { kind: 'function', parameters: [], returnType: { kind: 'avltree', elementType: { kind: 'weak' } } }, refinements: [] },
+    type: { static: { kind: 'function', parameters: [], returnType: { kind: 'binarytree', elementType: { kind: 'weak' } } }, refinements: [] },
   });
 
-  glbEnv.define('inf', {
+  glbEnv.define('int_inf', {
     value: Infinity,
     type: { static: { kind: 'int' }, refinements: [] },
+  });
+
+  glbEnv.define('float_inf', {
+    value: Infinity,
+    type: { static: { kind: 'float' }, refinements: [] },
   });
 
   glbEnv.define('len', {
@@ -278,7 +283,7 @@ export function initializeBuiltins(glbEnv: Environment, outRef: string[]): Envir
     },
     type: { static: { kind: 'function', parameters: [{ kind: 'float' }], returnType: { kind: 'float' }, variadic: true }, refinements: [] },
   });
-  
+
   glbEnv.define('float_abs', {
     value: {
       fn: (arg: RuntimeTypedBinder) => {

@@ -10,93 +10,67 @@ function check(code: string) {
 
 describe('Type Widening', () => {
   describe('Basic Array Widening', () => {
-    it('should widen array type with index assignment', () => {
+    it('should throw error when assigning different type with index assignment', () => {
       const code = `
 let ak = [1,2,3]
 ak[2] = "k"
-print(typeof(ak)) // given no type annotation, should widen to Array<int | string>
+print(typeof(ak))
 print(ak)
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      // Should show the actual array with widened type
-      expect(output.length).toBe(2);
-      expect(output[0]).not.toBe('Array<int>');
-      expect(output[1]).toContain('k'); // Array should contain the string "k"
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen array type with push method', () => {
+    it('should throw error when pushing different type', () => {
       const code = `
 let ak = [1,2,3]
 ak.push("k")
-print(typeof(ak)) // given no type annotation, should widen to Array<int | string>
+print(typeof(ak))
 print(ak)
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      // Should show the actual array with widened type
-      expect(output.length).toBe(2);
-      expect(output[0]).not.toBe('Array<int>');
-      expect(output[1]).toContain('k'); // Array should contain the string "k"
+      expect(() => check(code)).toThrow();
     });
 
-    it('should match user example exactly', () => {
+    it('should throw error with user example', () => {
       const code = `
 let ak = [1,2,3]
-print(typeof(ak)) // should also be Array<int | string> as the inference is a whole
-ak[2] = "k" // should widen type to Array<int | string> as well
-ak.push("k") // ok
+print(typeof(ak))
+ak[2] = "k"
+ak.push("k")
 print(typeof(ak))
       `;
-      // This should not throw an error
-      expect(() => run(code)).not.toThrow();
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).not.toBe('Array<int>');
-      expect(output[1]).not.toBe('Array<int>');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen array from string to string | boolean', () => {
+    it('should throw error when assigning boolean to string array', () => {
       const code = `
 let arr = ["a", "b", "c"]
 arr[1] = true
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('string');
-      expect(output[0]).toContain('boolean');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen array from boolean to boolean | int', () => {
+    it('should throw error when pushing int to boolean array', () => {
       const code = `
 let arr = [true, false]
 arr.push(42)
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('boolean');
-      expect(output[0]).toContain('int');
-      expect(runMachine(code)).toEqual(output);
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen array to include float', () => {
+    it('should throw error when pushing float to int array', () => {
       const code = `
 let arr = [1, 2, 3]
 arr.push(3.14)
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('int');
-      expect(output[0]).toContain('float');
-      expect(runMachine(code)).toEqual(output);
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Map Type Widening', () => {
-    it('should widen Map value type with different value types', () => {
+    it('should throw error when setting different value types', () => {
       const code = `
 let m = Map()
 m.set("a", 1)
@@ -104,14 +78,10 @@ print(typeof(m))
 m.set("b", "value")
 print(typeof(m))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Map<string, int | string>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen Map key type with different key types', () => {
+    it('should throw error when setting different key types', () => {
       const code = `
 let m = Map()
 m.set(1, "value")
@@ -119,14 +89,10 @@ print(typeof(m))
 m.set("key", "value")
 print(typeof(m))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Map<int | string, string>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen Map both key and value types', () => {
+    it('should throw error when setting different key and value types', () => {
       const code = `
 let m = Map()
 m.set(1, 100)
@@ -134,15 +100,10 @@ print(typeof(m))
 m.set("key", true)
 print(typeof(m))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Map<int | string, int | boolean>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
-      expect(output[1]).toContain('boolean');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should progressively widen Map value type', () => {
+    it('should throw error when progressively adding different value types', () => {
       const code = `
 let m = Map()
 m.set("a", 1)
@@ -153,19 +114,12 @@ print(typeof(m))
 m.set("d", true)
 print(typeof(m))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Map<string, int | float | boolean>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('float');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('float');
-      expect(output[2]).toContain('boolean');
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Set Type Widening', () => {
-    it('should widen Set element type from int to int | string', () => {
+    it('should throw error when adding different type to Set', () => {
       const code = `
 let s = Set()
 s.add(1)
@@ -174,14 +128,10 @@ print(typeof(s))
 s.add("hello")
 print(typeof(s))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Set<int | string>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen Set to include multiple types', () => {
+    it('should throw error when adding multiple different types to Set', () => {
       const code = `
 let s = Set()
 s.add(1)
@@ -191,17 +141,10 @@ print(typeof(s))
 s.add(3.14)
 print(typeof(s))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Set<int | boolean | float>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('boolean');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('boolean');
-      expect(output[2]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen Set from string to string | boolean | int', () => {
+    it('should throw error when adding boolean and int to string Set', () => {
       const code = `
 let s = Set()
 s.add("a")
@@ -211,17 +154,12 @@ s.add(true)
 s.add(42)
 print(typeof(s))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Set<string | boolean | int>');
-      expect(output[1]).toContain('string');
-      expect(output[1]).toContain('boolean');
-      expect(output[1]).toContain('int');
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Heap Type Widening', () => {
-    it('should widen MinHeap element type from int to int | float', () => {
+    it('should throw error when pushing float to int MinHeap', () => {
       const code = `
 let h = MinHeap()
 h.push(1)
@@ -230,14 +168,10 @@ print(typeof(h))
 h.push(3.14)
 print(typeof(h))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Heap<int | float>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen MaxHeap element type progressively', () => {
+    it('should throw error when pushing float to int MaxHeap', () => {
       const code = `
 let h = MaxHeap()
 h.push(5)
@@ -245,16 +179,12 @@ print(typeof(h))
 h.push(2.71)
 print(typeof(h))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output); expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Heap<int | float>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Nested Structure Widening', () => {
-    it('should widen Array of Arrays with different inner types', () => {
+    it('should throw error when pushing arrays with different element types', () => {
       const code = `
 let arr = []
 arr.push([1, 2, 3])
@@ -262,14 +192,10 @@ print(typeof(arr))
 arr.push([true, false])
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Array<Array<int> | Array<boolean>>');
-      expect(output[1]).toContain('Array<int>');
-      expect(output[1]).toContain('Array<boolean>');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen Map with nested Array values', () => {
+    it('should throw error when setting arrays with different element types in Map', () => {
       const code = `
 let m = Map()
 m.set("nums", [1, 2, 3])
@@ -277,14 +203,10 @@ print(typeof(m))
 m.set("flags", [true, false])
 print(typeof(m))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Map<string, Array<int> | Array<boolean>>');
-      expect(output[1]).toContain('Array<int>');
-      expect(output[1]).toContain('Array<boolean>');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen Array of Maps with different value types', () => {
+    it('should throw error when pushing Maps with different value types', () => {
       const code = `
 let arr = []
 let m1 = Map()
@@ -296,14 +218,10 @@ m2.set("b", true)
 arr.push(m2)
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Array<Map<string, int> | Map<string, boolean>>');
-      expect(output[1]).toContain('Map<string, int>');
-      expect(output[1]).toContain('Map<string, boolean>');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen Map values from simple to complex types', () => {
+    it('should throw error when setting both primitive and array types in Map', () => {
       const code = `
 let m = Map()
 m.set("num", 42)
@@ -311,11 +229,7 @@ print(typeof(m))
 m.set("arr", [1, 2, 3])
 print(typeof(m))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Map<string, int | Array<int>>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('Array<int>');
+      expect(() => check(code)).toThrow();
     });
   });
 
@@ -407,89 +321,10 @@ print(typeof(m))
     });
   });
 
-  describe('Positive Tests - Valid Widening with Annotations', () => {
-    it('should allow widening within union type bounds for Array', () => {
-      const code = `
-        do main() {
-          let arr: Array<int | string> = [1, 2, 3]
-          arr.push("valid")
-          arr[0] = "also_valid"
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should allow widening within union type bounds for Map values', () => {
-      const code = `
-        do main() {
-          let m: Map<string, int | boolean> = Map()
-          m.set("a", 1)
-          m.set("b", true)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should allow widening within union type bounds for Map keys', () => {
-      const code = `
-        do main() {
-          let m: Map<int | string, boolean> = Map()
-          m.set(1, true)
-          m.set("key", false)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should allow widening within union type bounds for Set', () => {
-      const code = `
-        do main() {
-          let s: Set<int | string | boolean> = Set()
-          s.add(1)
-          s.add("hello")
-          s.add(true)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should allow widening within union type bounds for MinHeap', () => {
-      const code = `
-        do main() {
-          let h: MinHeap<int | float> = MinHeap()
-          h.push(1)
-          h.push(3.14)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should allow nested structure widening within bounds', () => {
-      const code = `
-        do main() {
-          let arr: Array<Array<int> | Array<boolean>> = []
-          arr.push([1, 2, 3])
-          arr.push([true, false])
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should allow complex union widening in Map', () => {
-      const code = `
-        do main() {
-          let m: Map<string, int | Array<int> | boolean> = Map()
-          m.set("num", 42)
-          m.set("arr", [1, 2, 3])
-          m.set("flag", true)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-  });
+  // Removed: Positive Tests section - union types are no longer supported
 
   describe('Multiple Data Structure Widening', () => {
-    it('should widen multiple data structures independently', () => {
+    it('should throw error when trying to widen multiple data structures', () => {
       const code = `
 let arr = [1, 2, 3]
 let m = Map()
@@ -505,17 +340,10 @@ print(typeof(arr))
 print(typeof(m))
 print(typeof(s))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('int');
-      expect(output[0]).toContain('string');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should handle progressive widening across multiple structures', () => {
+    it('should throw error with progressive widening attempts', () => {
       const code = `
 let arr = [1]
 let m = Map()
@@ -541,40 +369,22 @@ print(typeof(arr))
 print(typeof(m))
 print(typeof(h))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      // Initial types
-      expect(output[0]).toBe('Array<int | boolean | float>');
-      expect(output[1]).toContain('Map<');
-      expect(output[2]).toContain('Heap<');
-
-      // After first widening
-      expect(output[3]).toContain('int');
-      expect(output[3]).toContain('boolean');
-
-      // Final widened types
-      expect(output[6]).toContain('int');
-      expect(output[6]).toContain('boolean');
-      expect(output[6]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Array Index Assignment Widening', () => {
-    it('should widen array type through index assignment', () => {
+    it('should throw error when assigning different type through index', () => {
       const code = `
 let arr = [1, 2, 3]
 print(typeof(arr))
 arr[0] = "string"
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Array<int | string>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen array through multiple index assignments with different types', () => {
+    it('should throw error with multiple index assignments of different types', () => {
       const code = `
 let arr = [1, 2, 3]
 arr[0] = true
@@ -584,20 +394,10 @@ print(typeof(arr))
 arr[2] = "hello"
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('int');
-      expect(output[0]).toContain('boolean');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('boolean');
-      expect(output[1]).toContain('float');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('boolean');
-      expect(output[2]).toContain('float');
-      expect(output[2]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen empty array through index assignment', () => {
+    it('should throw error when assigning different types to empty array via index', () => {
       const code = `
 let arr = []
 arr[0] = 42
@@ -605,38 +405,28 @@ print(typeof(arr))
 arr[1] = "string"
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Array<int | string>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen boolean array through index assignment', () => {
+    it('should throw error when assigning int to boolean array', () => {
       const code = `
 let arr = [true, false, true]
 arr[1] = 42
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('boolean');
-      expect(output[0]).toContain('int');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen string array through index assignment', () => {
+    it('should throw error when assigning float to string array', () => {
       const code = `
 let arr = ["a", "b", "c"]
 arr[2] = 3.14
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('string');
-      expect(output[0]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen array with both index assignment and push', () => {
+    it('should throw error with both index assignment and push', () => {
       const code = `
 let arr = [1, 2, 3]
 arr[0] = "indexed"
@@ -646,34 +436,20 @@ print(typeof(arr))
 arr[4] = 3.14
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('int');
-      expect(output[0]).toContain('string');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
-      expect(output[1]).toContain('boolean');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('string');
-      expect(output[2]).toContain('boolean');
-      expect(output[2]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen nested arrays through index assignment', () => {
+    it('should throw error when assigning array with different element type', () => {
       const code = `
 let arr = [[1, 2], [3, 4]]
 print(typeof(arr))
 arr[0] = ["a", "b"]
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Array<Array<int> | Array<string>>');
-      expect(output[1]).toContain('Array<int>');
-      expect(output[1]).toContain('Array<string>');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should progressively widen through sequential index assignments', () => {
+    it('should throw error with progressive sequential index assignments', () => {
       const code = `
 let arr = [1]
 print(typeof(arr))
@@ -684,35 +460,21 @@ print(typeof(arr))
 arr[3] = 3.14
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Array<int | string | boolean | float>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('string');
-      expect(output[2]).toContain('boolean');
-      expect(output[3]).toContain('int');
-      expect(output[3]).toContain('string');
-      expect(output[3]).toContain('boolean');
-      expect(output[3]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen with out-of-bounds index assignment', () => {
+    it('should throw error with out-of-bounds index assignment', () => {
       const code = `
 let arr = [1, 2, 3]
 arr[10] = "far"
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('int');
-      expect(output[0]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Map Index Assignment (get/set) Widening', () => {
-    it('should widen Map through sequential .set() operations', () => {
+    it('should throw error with sequential .set() operations of different types', () => {
       const code = `
 let m = Map()
 m.set("key1", 1)
@@ -720,14 +482,10 @@ print(typeof(m))
 m.set("key2", "value")
 print(typeof(m))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Map<string, int | string>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen Map keys through sequential set operations', () => {
+    it('should throw error when setting different key types', () => {
       const code = `
 let m = Map()
 m.set(1, "first")
@@ -737,19 +495,12 @@ print(typeof(m))
 m.set(true, "third")
 print(typeof(m))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Map<int | string | boolean, string>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('string');
-      expect(output[2]).toContain('boolean');
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Set Add Operation Widening', () => {
-    it('should widen Set through sequential add operations', () => {
+    it('should throw error with sequential add operations of different types', () => {
       const code = `
 let s = Set()
 s.add(1)
@@ -759,17 +510,10 @@ print(typeof(s))
 s.add(true)
 print(typeof(s))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Set<int | string | boolean>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('string');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('string');
-      expect(output[2]).toContain('boolean');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen Set from homogeneous to heterogeneous', () => {
+    it('should throw error when adding float to int Set', () => {
       const code = `
 let s = Set()
 s.add(1)
@@ -779,16 +523,12 @@ print(typeof(s))
 s.add(3.14)
 print(typeof(s))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Set<int | float>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Heap Push Operation Widening', () => {
-    it('should widen MinHeap through sequential push operations', () => {
+    it('should throw error with sequential push operations of different types', () => {
       const code = `
 let h = MinHeap()
 h.push(5)
@@ -797,14 +537,10 @@ print(typeof(h))
 h.push(2.71)
 print(typeof(h))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Heap<int | float>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen MaxHeap through push operations with multiple types', () => {
+    it('should throw error when pushing different types to MaxHeap', () => {
       const code = `
 let h = MaxHeap()
 h.push(10)
@@ -812,16 +548,12 @@ print(typeof(h))
 h.push(3.14)
 print(typeof(h))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toBe('Heap<int | float>');
-      expect(output[1]).toContain('int');
-      expect(output[1]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Mixed Operations Widening', () => {
-    it('should handle widening with mix of index and method operations', () => {
+    it('should throw error with mix of index and method operations', () => {
       const code = `
 let arr = [1, 2, 3]
 arr[0] = "index"
@@ -829,15 +561,10 @@ arr.push(true)
 arr[4] = 3.14
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('int');
-      expect(output[0]).toContain('string');
-      expect(output[0]).toContain('boolean');
-      expect(output[0]).toContain('float');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should widen across different data structures simultaneously', () => {
+    it('should throw error when widening different structures simultaneously', () => {
       const code = `
 let arr = [1]
 let m = Map()
@@ -859,25 +586,12 @@ print(typeof(arr))
 print(typeof(m))
 print(typeof(s))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('int');
-      expect(output[0]).toContain('string');
-      expect(output[1]).toContain('Map');
-      expect(output[2]).toContain('Set');
-      expect(output[3]).toContain('int');
-      expect(output[3]).toContain('string');
-      expect(output[3]).toContain('boolean');
-      expect(output[4]).toContain('int');
-      expect(output[4]).toContain('string');
-      expect(output[4]).toContain('boolean');
-      expect(output[5]).toContain('int');
-      expect(output[5]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
   });
 
   describe('Edge Cases', () => {
-    it('should handle widening empty array on first push', () => {
+    it('should throw error when pushing different type to empty array', () => {
       const code = `
 let arr = []
 print(typeof(arr))
@@ -886,14 +600,10 @@ print(typeof(arr))
 arr.push("string")
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[1]).toBe('Array<int | string>');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should handle widening empty Map on first set', () => {
+    it('should throw error when setting different value types to empty Map', () => {
       const code = `
 let m = Map()
 print(typeof(m))
@@ -902,14 +612,10 @@ print(typeof(m))
 m.set("key2", true)
 print(typeof(m))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[1]).toBe('Map<string, int | boolean>');
-      expect(output[2]).toContain('int');
-      expect(output[2]).toContain('boolean');
+      expect(() => check(code)).toThrow();
     });
 
-    it('should handle widening with multiple union members', () => {
+    it('should throw error when adding multiple different types', () => {
       const code = `
 let arr = [1]
 arr.push(true)
@@ -917,12 +623,7 @@ arr.push(3.14)
 arr.push("hello")
 print(typeof(arr))
       `;
-      const output = run(code);
-      expect(runMachine(code)).toEqual(output);
-      expect(output[0]).toContain('int');
-      expect(output[0]).toContain('boolean');
-      expect(output[0]).toContain('float');
-      expect(output[0]).toContain('string');
+      expect(() => check(code)).toThrow();
     });
   });
 });

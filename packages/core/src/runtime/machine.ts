@@ -225,7 +225,7 @@ export class Machine implements EvaluatorContext {
         if (expr.elements.length === 0) {
           this.focus = {
             kind: 'value',
-            value: { value: new SchemaArray([]), type: { static: { kind: 'array', elementType: { kind: 'poly' } }, refinements: [] } }
+            value: { value: new SchemaArray([]), type: { static: { kind: 'array', elementType: { kind: 'weak' } }, refinements: [] } }
           };
         } else {
           this.kontinuation.push({
@@ -1039,12 +1039,12 @@ export class Machine implements EvaluatorContext {
       case 'array-lit': {
         const evaluated = [...kont.evaluatedElements, value];
         if (kont.remainingElements.length === 0) {
-          const elementType = evaluated.length > 0 ? evaluated[0].type.static : { kind: 'poly' as const };
+          const elementType = evaluated.length > 0 ? evaluated[0].type.static : { kind: 'weak' as const };
           this.focus = {
             kind: 'value',
             value: {
               value: new SchemaArray(evaluated),
-              type: { static: { kind: 'array', elementType }, refinements: [] }
+              type: { static: { kind: 'array', elementType: elementType }, refinements: [] }
             }
           };
         } else {

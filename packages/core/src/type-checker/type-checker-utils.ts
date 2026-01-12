@@ -1,9 +1,8 @@
 import { TypeAnnotation } from "../transpiler/ast-types";
 
 export type Type =
-  | { kind: 'weak' } // weak polymorphic type, like in ocaml
-  | { kind: 'poly' } // real polymorphic type, only for print
-  | { kind: 'dynamic' } // dynamic type, for accessing tuples/records due to heterogeneous types
+  | { kind: 'weak' } // weak polymorphic type, like in OCaml's '_a, used for uninstantiated type parameters that CAN be refined through usage (e.g., Map() before any .set() call)
+  | { kind: 'dynamic' } // dynamic type, used when static type checking cannot determine the type (e.g., non-literal tuple indexing, iterating over unknown types)
   | { kind: 'int' }
   | { kind: 'float' }
   | { kind: 'string' }
@@ -16,7 +15,6 @@ export type Type =
   | { kind: 'heap'; elementType: Type }
   | { kind: 'heapmap'; keyType: Type; valueType: Type }
   | { kind: 'binarytree'; elementType: Type }
-  | { kind: 'avltree'; elementType: Type }
   | { kind: 'graph'; nodeType: Type }
   | { kind: 'range' }
   | { kind: 'record'; fieldTypes: [string, Type][] } // { keyName: Type }
@@ -30,8 +28,6 @@ export type Type =
 
 export function typeToString(type: Type): string {
   switch (type.kind) {
-    case 'poly':
-      return 'poly';
     case 'weak':
       return 'weak';
     case 'int':
@@ -58,8 +54,6 @@ export function typeToString(type: Type): string {
       return `Set<${typeToString(type.elementType)}>`;
     case 'binarytree':
       return `BinaryTree<${typeToString(type.elementType)}>`;
-    case 'avltree':
-      return `AVLTree<${typeToString(type.elementType)}>`;
     case 'heap':
       return `Heap<${typeToString(type.elementType)}>`;
     case 'heapmap':
@@ -96,8 +90,12 @@ export function typesEqual(t1: Type, t2: Type, typeEqualityCache: Map<string, bo
 }
 
 function typesEqualUncached(t1: Type, t2: Type, typeEqualityCache: Map<string, boolean>): boolean {
-  // Handle weak and poly types (wildcards) - they match anything
-  if (t1.kind === 'weak' || t1.kind === 'poly' || t2.kind === 'weak' || t2.kind === 'poly') {
+  // Both 'weak' and 'dynamic' types act as wildcards in type equality checks:
+  // - 'weak' (polymorphic) types match anything and can be refined to concrete types during usage
+  // - 'dynamic' types match anything but represent statically unresolvable types (not refinable)
+  // Note: The difference between weak and dynamic is in REFINEMENT behavior, not in equality checking.
+  // In equality checks, both need to match anything to allow type checking to proceed.
+  if (t1.kind === 'weak' || t2.kind === 'weak' || t1.kind === 'dynamic' || t2.kind === 'dynamic') {
     return true;
   }
 
@@ -127,7 +125,6 @@ function typesEqualUncached(t1: Type, t2: Type, typeEqualityCache: Map<string, b
     case 'set':
     case 'heap':
     case 'binarytree':
-    case 'avltree':
       return typesEqual((t1 as any).elementType, (t2 as any).elementType, typeEqualityCache);
 
     case 'graph':
@@ -155,15 +152,21 @@ function typesEqualUncached(t1: Type, t2: Type, typeEqualityCache: Map<string, b
     }
 
     case 'record': {
-      const fields1 = (t1 as any).fieldTypes;
-      const fields2 = (t2 as any).fieldTypes;
-      if (fields1.length !== fields2.length) {
+      const fields1 = t1.fieldTypes as [string, Type][];
+      if (t2.kind !== 'record') {
         return false;
+      } else {
+        const fields2 = t2.fieldTypes as [string, Type][];
+        if (fields1.length !== fields2.length) {
+          return false;
+        }
+        // fieldTypes is [fieldName: string, fieldType: Type][]
+        // Compare field names and field types
+        return fields1.every(([name1, type1]: [string, Type], i: number) => {
+          const [name2, type2] = fields2[i];
+          return name1 === name2 && typesEqual(type1, type2, typeEqualityCache);
+        });
       }
-      return fields1.every(([k1, v1]: [Type, Type], i: number) => {
-        const [k2, v2] = fields2[i];
-        return typesEqual(k1, k2, typeEqualityCache) && typesEqual(v1, v2, typeEqualityCache);
-      });
     }
 
     default:
@@ -185,8 +188,6 @@ export function typeToAnnotation(type: Type, line: number, column: number): Type
       return { type: 'TypeAnnotation', kind: 'simple', name: 'void', line, column };
     case 'weak':
       return { type: 'TypeAnnotation', kind: 'simple', name: 'weak', line, column };
-    case 'poly':
-      return { type: 'TypeAnnotation', kind: 'simple', name: 'poly', line, column };
     case 'range':
       return { type: 'TypeAnnotation', kind: 'simple', name: 'Range', line, column };
     case 'array':
@@ -258,15 +259,6 @@ export function typeToAnnotation(type: Type, line: number, column: number): Type
         line,
         column
       };
-    case 'avltree':
-      return {
-        type: 'TypeAnnotation',
-        kind: 'generic',
-        name: 'AVLTree',
-        typeParameters: [typeToAnnotation(type.elementType, line, column)],
-        line,
-        column
-      };
     case 'function':
       return {
         type: 'TypeAnnotation',
@@ -314,8 +306,6 @@ export function resolve(annotation: TypeAnnotation): Type {
           return { kind: 'void' };
         case 'weak':
           return { kind: 'weak' };
-        case 'poly':
-          return { kind: 'poly' };
         case 'Range':
           return { kind: 'range' };
         default:
@@ -374,13 +364,6 @@ export function resolve(annotation: TypeAnnotation): Type {
         if (annotation.typeParameters.length !== 1) throw new Error(`BinaryTree type requires exactly one type parameter`);
         return {
           kind: 'binarytree',
-          elementType: resolve(annotation.typeParameters[0]),
-        };
-      }
-      if (annotation.name === 'AVLTree') {
-        if (annotation.typeParameters.length !== 1) throw new Error(`AVLTree type requires exactly one type parameter`);
-        return {
-          kind: 'avltree',
           elementType: resolve(annotation.typeParameters[0]),
         };
       }

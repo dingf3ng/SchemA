@@ -195,7 +195,7 @@ describe('Type Inference Completeness', () => {
               n = graph.size()
 
           for i in ..n {
-            dist.set(i, inf)
+            dist.set(i, int_inf)
           }
           dist.set(start, 0)
           pq.push(start, 0)

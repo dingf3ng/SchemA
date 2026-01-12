@@ -45,55 +45,29 @@ describe('Built-in Data Structures Strictness & Advanced Types', () => {
     });
   });
 
-  describe('Integration with Union and Intersection Types', () => {
-    it('should support Union types in data structures', () => {
+  describe('Type Inference with Built-ins', () => {
+    it('should refine generic types from first usage', () => {
+      // First usage refines the type, subsequent usages must match
       const code = `
         do main() {
-          // Key can be int or string
-          let m: MinHeapMap<int | string, boolean> = MinHeapMap()
-          m.push(1, true)
-          m.push("key", false)
-          
-          let k: int | string = m.pop()
+          let m = MinHeapMap()
+          m.push(1, "value")
+          m.push(2, "another") // Same types as first usage - OK
         }
       `;
       expect(() => check(code)).not.toThrow();
     });
 
-    it('should support Intersection types in data structures', () => {
+    it('should fail when subsequent usage has different types than first usage', () => {
+      // After first push refines to MinHeapMap<int, string>, second push with different types should fail
       const code = `
         do main() {
-          // Value must satisfy both constraints (hypothetically, though primitive intersection is usually empty/never, 
-          // structurally it validates the parser/checker handling)
-          // Let's use a more realistic structural intersection if we had objects, 
-          // but for now we test the type system accepts the syntax and logic.
-          let h: MinHeap<int & float> = MinHeap() 
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
-    });
-
-    it('should enforce Union type constraints on operations', () => {
-      const code = `
-        do main() {
-          let m: MinHeapMap<int | string, boolean> = MinHeapMap()
-          m.push(true, true) // Error: boolean is not int | string
+          let m = MinHeapMap()
+          m.push(1, "value")
+          m.push("key", 2) // Different types - should fail
         }
       `;
       expect(() => check(code)).toThrow('Type mismatch');
-    });
-  });
-
-  describe('Type Inference with Built-ins', () => {
-    it('should infer generic types from constructor when explicit type is omitted', () => {
-      const code = `
-        do main() {
-          let m = MinHeapMap() // Infers MinHeapMap< int | string , int | string>
-          m.push(1, "value")
-          m.push("key", 2)
-        }
-      `;
-      expect(() => check(code)).not.toThrow();
     });
 
     it('should validate types when explicit type is provided but constructor is generic', () => {
@@ -101,7 +75,6 @@ describe('Built-in Data Structures Strictness & Advanced Types', () => {
         do main() {
           let m: MinHeapMap<int, string> = MinHeapMap()
           m.push(1, "val")
-          // m.push("bad", "val") // This would be a runtime/compile error if we checked push args against variable type
         }
       `;
       expect(() => check(code)).not.toThrow();

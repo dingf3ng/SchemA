@@ -1,7 +1,7 @@
 import { Program, Statement, Expression } from '../transpiler/ast-types';
-import { synthMemberExpression } from './member-utils';
 import { FunEnv, initializeBuiltins, TypeEnv } from './type-checker-main';
 import { resolve, Type, typesEqual, typeToAnnotation, typeToString } from './type-checker-utils';
+import { synthExpression, TypeSynthContext} from './expression-synth-utils';
 
 /**
  * TypeInferer is responsible for plugging in all type annotations where they're missing.
@@ -166,6 +166,8 @@ export class TypeInferer {
             // Infer type from initializer
             const inferredType = this.inferExpressionType(declarator.initializer);
             declarator.typeAnnotation = typeToAnnotation(inferredType, declarator.line, declarator.column);
+            // Mark the annotation as inferred
+            declarator.typeAnnotation.isInferred = true;
           }
           // Add variable to type environment
           this.typeEnv.set(declarator.name, resolve(declarator.typeAnnotation));
@@ -209,9 +211,12 @@ export class TypeInferer {
             }
           } else if (iterableType.kind === 'range') {
             this.typeEnv.set(stmt.variable, { kind: 'int' });
-          } else {
-            // Unknown iterable type, use weak
+          } else if (iterableType.kind === 'weak') {
+            // Weak polymorphic iterable - loop variable is also weak (can be refined)
             this.typeEnv.set(stmt.variable, { kind: 'weak' });
+          } else {
+            // Unknown iterable type, use dynamic (static type cannot be determined)
+            this.typeEnv.set(stmt.variable, { kind: 'dynamic' });
           }
         }
 
@@ -246,332 +251,17 @@ export class TypeInferer {
   }
 
   /**
-   * Infer the type of an expression without checking against environment
-   * This is used during the inference phase before type checking
+   * Infer the type of an expression without checking against environment.
+   * This is used during the inference phase before type checking.
+   * Delegates to the shared synthesizeExpressionType function.
    */
   private inferExpressionType(expr: Expression): Type {
-    switch (expr.type) {
-      case 'IntegerLiteral':
-        return { kind: 'int' };
-
-      case 'FloatLiteral':
-        return { kind: 'float' };
-
-      case 'StringLiteral':
-        return { kind: 'string' };
-
-      case 'BooleanLiteral':
-        return { kind: 'boolean' };
-
-      case 'ArrayLiteral':
-        if (expr.elements.length === 0) {
-          return { kind: 'array', elementType: { kind: 'weak' } };
-        }
-        const elementTypes = expr.elements.map((e) => this.inferExpressionType(e));
-        const firstType = elementTypes[0];
-        const allSame = elementTypes.every((t) => typesEqual(t, firstType, this.typeEqualityCache));
-
-        if (allSame) {
-          return { kind: 'array', elementType: firstType };
-        }
-
-        throw new Error(`Type checking: cannot infer type for array literal with heterogeneous element types at ${expr.line}, ${expr.column}`);
-
-      case 'BinaryExpression': {
-        const leftType = this.inferExpressionType(expr.left);
-        const rightType = this.inferExpressionType(expr.right);
-
-        // Arithmetic operators
-        if (['+', '-', '*', '%'].includes(expr.operator)) {
-          if (leftType.kind === 'weak' || rightType.kind === 'weak') {
-            return { kind: 'weak' };
-          }
-          if (leftType.kind === 'int' && rightType.kind === 'int') {
-            return { kind: 'int' };
-          }
-          if (leftType.kind === 'float' || rightType.kind === 'float') {
-            return { kind: 'float' };
-          }
-          if (['+'].includes(expr.operator) && leftType.kind === 'string' && rightType.kind === 'string') {
-            return { kind: 'string' };
-          }
-        }
-
-        if (expr.operator === '/') {
-          return { kind: 'int' };
-        }
-
-        if (expr.operator === '/.') {
-          return { kind: 'float' };
-        }
-
-        // Comparison and logical operators return boolean
-        if (['<', '<=', '>', '>=', '==', '!=', '&&', '||'].includes(expr.operator)) {
-          return { kind: 'boolean' };
-        }
-
-        throw new Error(`Type checking: cannot infer type for binary expression ${JSON.stringify(expr)}`);
-      }
-
-      case 'UnaryExpression': {
-        const operandType = this.inferExpressionType(expr.operand);
-        if (expr.operator === '-' && operandType.kind === 'int') {
-          return { kind: 'int' };
-        }
-        if (expr.operator === '-' && operandType.kind === 'float') {
-          return { kind: 'float' };
-        }
-        if (expr.operator === '!' && operandType.kind === 'boolean') {
-          return { kind: 'boolean' };
-        }
-
-        throw new Error(`Type checking: cannot infer type for unary expression ${expr.toString()}`);
-      }
-
-      case 'CallExpression': {
-        // For built-in constructors, return their types
-        // Noted that all type parameters are marked as weak-polymorphic
-        // which is going to be further refined during the second pass
-        if (expr.callee.type === 'Identifier') {
-          const calleeName = expr.callee.name;
-
-          if (calleeName === 'MinHeap' || calleeName === 'MaxHeap') {
-            return { kind: 'heap', elementType: { kind: 'weak' } };
-          }
-          if (calleeName === 'MinHeapMap' || calleeName === 'MaxHeapMap') {
-            return { kind: 'heapmap', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } };
-          }
-          if (calleeName === 'Map') {
-            return { kind: 'map', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } };
-          }
-          if (calleeName === 'Set') {
-            return { kind: 'set', elementType: { kind: 'weak' } };
-          }
-          if (calleeName === 'Graph') {
-            return { kind: 'graph', nodeType: { kind: 'weak' } };
-          }
-          if (calleeName === 'BinaryTree') {
-            return { kind: 'binarytree', elementType: { kind: 'weak' } };
-          }
-          if (calleeName === 'AVLTree') {
-            return { kind: 'avltree', elementType: { kind: 'weak' } };
-          }
-          // For other function calls, We want to look up their return types from the function environment
-          const funcInfo = this.functionEnv.get(calleeName);
-          if (funcInfo) {
-            return funcInfo.returnType;
-          } else {
-            throw new Error(`Type checking: cannot infer type for call expression to unknown function ${calleeName}`);
-          }
-        }
-
-        // Handle method calls (e.g., m.entries(), g.getNeighbors())
-        if (expr.callee.type === 'MemberExpression') {
-          const objectType = this.inferExpressionType(expr.callee.object);
-          const methodName = expr.callee.property.name;
-
-          // Map methods
-          if (objectType.kind === 'map') {
-            if (methodName === 'entries') {
-              // entries() returns Array<Tuple<K, V>>
-              return {
-                kind: 'array',
-                elementType: {
-                  kind: 'tuple',
-                  elementTypes: [objectType.keyType, objectType.valueType]
-                }
-              };
-            }
-            if (methodName === 'keys') {
-              // keys() returns Array<K>
-              return { kind: 'array', elementType: objectType.keyType };
-            }
-            if (methodName === 'values') {
-              // values() returns Array<V>
-              return { kind: 'array', elementType: objectType.valueType };
-            }
-          }
-
-          // Graph methods
-          if (objectType.kind === 'graph') {
-            if (methodName === 'getNeighbors') {
-              // getNeighbors() returns Array<Record<{to: T, weight: int}>>
-              return {
-                kind: 'array',
-                elementType: {
-                  kind: 'record',
-                  fieldTypes: [
-                    ['to', objectType.nodeType], // "to": T
-                    ['weight', { kind: 'int' }]      // "weight": int
-                  ]
-                }
-              };
-            }
-            if (methodName === 'getEdges') {
-              // getEdges() returns Array<Record<{from: T, to: T, weight: int}>>
-              return {
-                kind: 'array',
-                elementType: {
-                  kind: 'record',
-                  fieldTypes: [
-                    ['from', objectType.nodeType], // "from": T
-                    ['to', objectType.nodeType], // "to": T
-                    ['weight', { kind: 'int' }]      // "weight": int
-                  ]
-                }
-              };
-            }
-            if (methodName === 'getVertices') {
-              // getVertices() returns Array<T>
-              return { kind: 'array', elementType: objectType.nodeType };
-            }
-          }
-
-          // For other methods, return weak type (will be refined later)
-          return { kind: 'weak' };
-        }
-
-        // We don't have higher-order functions so that's all
-        throw new Error(`Type checking: cannot infer type for call expression ${expr.toString()}`);
-      }
-
-      case 'RangeExpression': {
-        if (expr.start) {
-          const startType = this.inferExpressionType(expr.start);
-          if (expr.end) {
-            const endType = this.inferExpressionType(expr.end);
-            // Accept int, intersection with int, or weak types
-
-            if (startType.kind === 'int' && endType.kind === 'int') {
-              return { kind: 'array', elementType: { kind: 'int' } };
-            }
-            if (startType.kind === 'string' && endType.kind === 'string') {
-              return { kind: 'array', elementType: { kind: 'string' } };
-            }
-          } else {
-            if (startType.kind === 'int') {
-              return { kind: 'range' };
-            } else {
-              throw Error(
-                `Type checking: infinite range expression must have an int start. At ${expr.line}, ${expr.column}`
-              );
-            }
-          }
-        } else if (expr.end) {
-          const endType = this.inferExpressionType(expr.end);
-          if (endType.kind === 'int') {
-            return { kind: 'array', elementType: { kind: 'int' } };
-          } else {
-            throw Error(
-              `Type checking: range with unspecified starting value must have an int end. At ${expr.line}, ${expr.column}`
-            );
-          }
-        }
-        throw Error(`Type checking: cannot infer type for range expression ${expr.toString()}`);
-      }
-
-      case 'MemberExpression': {
-        const objectType = this.inferExpressionType(expr.object);
-        // Handle built-in data structure methods
-        // Arrays, Maps, Sets, Heaps, HeapMaps, BinaryTrees, AVLTrees, Graphs
-        return synthMemberExpression(expr, objectType);
-      }
-
-      case 'IndexExpression': {
-        const objectType = this.inferExpressionType(expr.object);
-        const indexType = this.inferExpressionType(expr.index);
-
-        if (objectType.kind === 'array') {
-          if (indexType.kind === 'int') {
-            return objectType.elementType;
-          }
-          // Support slicing with array<int> (finite range)
-          if (indexType.kind === 'array' && indexType.elementType.kind === 'int') {
-            return objectType;
-          }
-          // Support slicing with range (infinite range)
-          if (indexType.kind === 'range') {
-            return objectType;
-          }
-        }
-
-        if (objectType.kind === 'map') {
-          // For inference, we accept any index type and return the value type
-          // More strict checking will happen in the checking phase
-          return objectType.valueType;
-        }
-
-        if (objectType.kind === 'tuple') {
-          // Tuples are indexed by integers
-          if (indexType.kind === 'int') {
-            // For literal integer indices, return the specific element type
-            if (expr.index.type === 'IntegerLiteral') {
-              const idx = expr.index.value;
-              if (idx >= 0 && idx < objectType.elementTypes.length) {
-                return objectType.elementTypes[idx];
-              }
-              throw new Error(
-                `Type checking: tuple index ${idx} out of bounds (length: ${objectType.elementTypes.length}), at ${expr.line}, ${expr.column}`,
-              );
-            }
-            // For non-literal indices, the type is dynamic
-            return { kind: 'dynamic' };
-          }
-          throw new Error(
-            `Type checking: cannot index tuple with non-integer type ${typeToString(indexType)}, at ${expr.line}, ${expr.column}`,
-          );
-        }
-
-        if (objectType.kind === 'record') {
-          if (indexType.kind === 'string') {
-            // For literal string indices, return the specific field type
-            if (expr.index.type === 'StringLiteral') {
-              const fieldName = expr.index.value;
-              for (const [fname, ftype] of objectType.fieldTypes) {
-                if (fname === fieldName) {
-                  return ftype;
-                }
-              }
-              throw new Error(
-                `Type checking: record has no field named ${fieldName}, at ${expr.line}, ${expr.column}`,
-              );
-            }
-            // For non-literal string indices, the type is dynamic
-            return { kind: 'dynamic' };
-          }
-          throw new Error(
-            `Type checking: cannot index record with non-string type ${typeToString(indexType)}, at ${expr.line}, ${expr.column}`,
-          );
-        }
-
-        if (objectType.kind === 'weak') {
-          return { kind: 'weak' };
-        }
-
-        throw new Error(
-          `Type checking: cannot index type ${typeToString(objectType)} with ${typeToString(indexType)}, at ${expr.line}, ${expr.column}`,
-        );
-      }
-
-      case 'TypeOfExpression':
-        return { kind: 'string' };
-
-      case 'PredicateCheckExpression':
-        // Turnstile operator always returns boolean
-        return { kind: 'boolean' };
-
-      case 'Identifier': {
-        // Look up identifier type from type environment
-        const type = this.typeEnv.get(expr.name);
-        if (type) {
-          return type;
-        }
-        // If not found in environment
-        throw new Error(`Type checking: cannot infer type for identifier ${expr.name}`);
-      }
-      default:
-        throw new Error(`Type checking: cannot infer type for expression of type ${expr.type}`);
-    }
+    const ctx: TypeSynthContext = {
+      getVariableType: (name) => this.typeEnv.get(name),
+      getFunctionInfo: (name) => this.functionEnv.get(name),
+      typeEqualityCache: this.typeEqualityCache,
+    };
+    return synthExpression(expr, ctx);
   }
 }
 

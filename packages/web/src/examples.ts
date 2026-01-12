@@ -158,7 +158,7 @@ do dijkstra(graph, start) -> Map<int, int> {
       n = graph.size()
   
   for i in ..n {
-    dist.set(i, inf)
+    dist.set(i, int_inf)
   }
   dist.set(start, 0)
   pq.push(start, 0)
@@ -226,7 +226,7 @@ do bellmanFord(graph, start) {
       edges = graph.getEdges(),
       n = graph.size()
   for i in ..n {
-    dist.set(i, inf)
+    dist.set(i, int_inf)
   }
 
   dist.set(start, 0)
@@ -238,7 +238,7 @@ do bellmanFord(graph, start) {
           v = edge["to"],
           w = edge["weight"]
 
-      if dist.get(u) != inf {
+      if dist.get(u) != int_inf {
         let newDist = dist.get(u) + w
         if newDist < dist.get(v) {
           dist.set(v, newDist)
@@ -252,7 +252,7 @@ do bellmanFord(graph, start) {
     let u = edge["from"],
         v = edge["to"],
         w = edge["weight"]
-    if dist.get(u) != inf {
+    if dist.get(u) != int_inf {
       let newDist = dist.get(u) + w
       if newDist < dist.get(v) {
         print("Negative cycle detected!")

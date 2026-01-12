@@ -165,7 +165,7 @@ do dijkstraClean(graph, start) {
   let n = graph.size()
 
   for i in 0..n {
-    dist.set(i, inf)
+    dist.set(i, int_inf)
   }
   dist.set(start, 0)
   pq.push(start, 0)
