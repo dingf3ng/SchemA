@@ -172,7 +172,7 @@ export function synthExpression(
       // Float division: /.
       if (expr.operator === '/.') {
         if (
-          (leftType.kind === 'float' || leftType.kind === 'int') && 
+          (leftType.kind === 'float' || leftType.kind === 'int') &&
           (rightType.kind === 'float' || rightType.kind === 'int')) {
           return { kind: 'float' };
         }
@@ -223,29 +223,46 @@ export function synthExpression(
     case 'UnaryExpression': {
       const operandType = recurse(expr.operand);
 
+      if (operandType.kind === 'dynamic') {
+        if (expr.operator === '-') {
+          return { kind: 'dynamic' };
+        } else if (expr.operator === '!') {
+          return { kind: 'boolean' };
+        } else {
+          throw new Error(`Type checking: unknown unary operator ${expr.operator}, at ${expr.line}, ${expr.column}`);
+        }
+      }
+
+      if (operandType.kind === 'weak') {
+        if (expr.operator === '-') {
+          return { kind: 'weak' };
+        } else if (expr.operator === '!') {
+          return { kind: 'boolean' };
+        } else {
+          throw new Error(`Type checking: unknown unary operator ${expr.operator}, at ${expr.line}, ${expr.column}`);
+        }
+      }
+
       if (expr.operator === '-') {
         if (operandType.kind === 'int') {
           return { kind: 'int' };
         } else if (operandType.kind === 'float') {
           return { kind: 'float' };
-        } else if (operandType.kind === 'dynamic') {
-          return { kind: 'dynamic' };
+        } else {
+          throw new Error(
+            `Type checking: unary minus requires numeric operand, got ${typeToString(operandType)}, at ${expr.line}, ${expr.column}`
+          );
         }
-        throw new Error(
-          `Type checking: unary minus requires numeric operand, got ${typeToString(operandType)}, at ${expr.line}, ${expr.column}`
-        );
       }
 
       if (expr.operator === '!') {
-        if (operandType.kind === 'dynamic') {
-          return { kind: 'boolean' };
-        }
         if (operandType.kind === 'boolean') {
           return { kind: 'boolean' };
+        } else {
+          throw new Error(
+            `Type checking: logical not requires boolean operand, got ${typeToString(operandType)}, at ${expr.line}, ${expr.column}`
+          );
         }
-        throw new Error(
-          `Type checking: logical not requires boolean operand, got ${typeToString(operandType)}, at ${expr.line}, ${expr.column}`
-        );
       }
       throw new Error(`Type checking: unknown unary operator ${expr.operator}, at ${expr.line}, ${expr.column}`);
     }

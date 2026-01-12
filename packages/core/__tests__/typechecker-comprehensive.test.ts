@@ -170,7 +170,7 @@ describe('TypeChecker - Comprehensive Tests', () => {
         expect(() => check(code)).not.toThrow();
       });
 
-      it('should create union type for multiple different return types', () => {
+      it('should fail for multiple different return types', () => {
         const code = `
           do getValue(flag: boolean) {
             if flag {
@@ -184,7 +184,7 @@ describe('TypeChecker - Comprehensive Tests', () => {
           }
         `;
         // This should not throw during inference and checking
-        expect(() => check(code)).not.toThrow();
+        expect(() => check(code)).toThrow(/function getValue has multiple return types/);
       });
     });
 
@@ -474,7 +474,7 @@ describe('TypeChecker - Comprehensive Tests', () => {
             let arr: Array<int> = [1, 2, "three"]
           }
         `;
-        expect(() => check(code)).toThrow(/Type mismatch/);
+        expect(() => check(code)).toThrow(/array elements must be of the same type/);
       });
 
       it('should check array indexing returns correct type', () => {
@@ -527,14 +527,14 @@ describe('TypeChecker - Comprehensive Tests', () => {
         expect(() => check(code)).toThrow(/Type mismatch/);
       });
 
-      it('should not reject array indexing with correct parameter type', () => {
+      it('should reject array indexing with wrong parameter type', () => {
         const code = `
           do main() {
-            let arr: Array<int | string> = [1, 2, 3]
+            let arr: Array<int> = [1, 2, 3]
             arr[0] = "not an int"
           }
         `;
-        expect(() => check(code)).not.toThrow();
+        expect(() => check(code)).toThrow(/Type mismatch/);
       });
 
       it('should reject array indexing with wrong parameter type', () => {

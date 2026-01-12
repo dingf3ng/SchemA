@@ -72,7 +72,7 @@ describe('Type System', () => {
       expect(() => check(code)).not.toThrow();
     });
 
-    it('should fail for mixed array types if not union', () => {
+    it('should fail for mixed array types', () => {
       // Assuming Array inference might default to first element or common type
       // If explicit type is given, it should enforce it
       const code = `
@@ -80,7 +80,7 @@ describe('Type System', () => {
           let arr: Array<int> = [1, "two"]
         }
       `;
-      expect(() => check(code)).toThrow('Type mismatch');
+      expect(() => check(code)).toThrow('array elements must be of the same type');
     });
 
     it('should check map key and value types', () => {

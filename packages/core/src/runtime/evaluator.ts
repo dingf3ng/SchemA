@@ -595,29 +595,29 @@ export class Evaluator {
         throw new Error('Right shift requires both operands to be int');
 
       case '<':
-        if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
+        if ((leftType === 'int' || leftType === 'float') &&
+          (rightType === 'int' || rightType === 'float')) {
           return { value: (left.value as number) < (right.value as number), type: { static: { kind: 'boolean' }, refinements: [] } };
         }
         throw new Error(`Cannot compare ${leftType} < ${rightType}. At line ${line}, column ${column}`);
 
       case '<=':
-        if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
+        if ((leftType === 'int' || leftType === 'float') &&
+          (rightType === 'int' || rightType === 'float')) {
           return { value: (left.value as number) <= (right.value as number), type: { static: { kind: 'boolean' }, refinements: [] } };
         }
         throw new Error(`Cannot compare ${leftType} <= ${rightType}. At line ${line}, column ${column}`);
 
       case '>':
-        if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
+        if ((leftType === 'int' || leftType === 'float') &&
+          (rightType === 'int' || rightType === 'float')) {
           return { value: (left.value as number) > (right.value as number), type: { static: { kind: 'boolean' }, refinements: [] } };
         }
         throw new Error(`Cannot compare ${leftType} > ${rightType}. At line ${line}, column ${column}`);
 
       case '>=':
-        if ((leftType === 'int' || leftType === 'float' || leftType === 'intersection') &&
-          (rightType === 'int' || rightType === 'float' || rightType === 'intersection')) {
+        if ((leftType === 'int' || leftType === 'float') &&
+          (rightType === 'int' || rightType === 'float')) {
           return { value: (left.value as number) >= (right.value as number), type: { static: { kind: 'boolean' }, refinements: [] } };
         }
         throw new Error(`Cannot compare ${leftType} >= ${rightType}. At line ${line}, column ${column}`);
@@ -1254,7 +1254,7 @@ export class Evaluator {
             }
           }
         };
-      case 'haveEdge':
+      case 'hasEdge':
         return {
           type: { static: { kind: 'function', parameters: [graphType.nodeType, graphType.nodeType], returnType: { kind: 'boolean' } }, refinements: [] },
           value: {
@@ -1494,8 +1494,8 @@ export class Evaluator {
   }
 
   if (object.type.static.kind === 'map' || object.value instanceof SchemaMap) {
-    const key = index;
-    const val = (object.value as SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>).get(key);
+    const key = runtimeTypedBinderToKey(index);
+    const val = (object.value as SchemaMap<any, RuntimeTypedBinder>).get(key);
     return val || { type: { static: { kind: 'void' }, refinements: [] }, value: new Sole() };
   }
 

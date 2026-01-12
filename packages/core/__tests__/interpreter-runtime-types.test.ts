@@ -75,6 +75,32 @@ describe('Interpreter Runtime Type Resolution', () => {
       expect(run(code)).toEqual(runMachine(code));
     });
 
+    it('should handle int /. float and return float', () => {
+      const code = `
+        let x: int = 15
+        let y: float = 3.0
+        let z = x /. y
+        @assert(z == 5.0, "15 /. 3.0 should be 5.0")
+        @assert(typeof(z) == "float")
+      `;
+      expect(() => run(code)).not.toThrow();
+      expect(() => runMachine(code)).not.toThrow();
+      expect(run(code)).toEqual(runMachine(code));
+    });
+
+    it('should handle float /. int and return float', () => {
+      const code = `
+        let x: float = 13.0
+        let y: int = 3
+        let z = x /. y
+        @assert(z == 4.333333333333333, "13.0 /. 3 should be 4.333333333333333")
+        @assert(typeof(z) == "float")
+      `;
+      expect(() => run(code)).not.toThrow();
+      expect(() => runMachine(code)).not.toThrow();
+      expect(run(code)).toEqual(runMachine(code));
+    });
+
     it('should handle complex mixed arithmetic', () => {
       const code = `
         let a: int = 10

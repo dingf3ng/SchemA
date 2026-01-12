@@ -738,7 +738,7 @@ describe('Type Inference Completeness', () => {
       expect(() => expectInferenceComplete(code)).not.toThrow();
     });
 
-    it('should refine types with string methods', () => {
+    it('should throw with string methods do not exists', () => {
       const code = `
         do main() {
           let s = "test"
@@ -746,7 +746,7 @@ describe('Type Inference Completeness', () => {
           let lower = s.lower()
         }
       `;
-      expect(() => expectInferenceComplete(code)).not.toThrow();
+      expect(() => expectInferenceComplete(code)).toThrow();
     });
   });
 
@@ -955,11 +955,11 @@ describe('Type Inference Completeness', () => {
 
             if not visited.has(current) {
               visited.add(current)
-              result = result + [current]
+              result.push(current)
 
               let neighbors = graph.getNeighbors(current)
               for n in neighbors {
-                queue = queue + [n["to"]]
+                queue = queue.push(n["to"])
               }
             }
           }
@@ -985,11 +985,11 @@ describe('Type Inference Completeness', () => {
           let i = 0
           let j = 0
 
-          until i >= left.size() or j >= right.size() {
-            if i >= left.size() {
+          until i >= left.length() or j >= right.length() {
+            if i >= left.length() {
               result = result.push(right[j])
               j = j + 1
-            } else if j >= right.size() {
+            } else if j >= right.length() {
               result = result.push(left[i])
               i = i + 1
             } else if left[i] < right[j] {
@@ -1005,11 +1005,11 @@ describe('Type Inference Completeness', () => {
         }
 
         do mergeSort(arr) {
-          if arr.size() <= 1 {
+          if arr.length() <= 1 {
             return arr
           }
 
-          let mid = arr.size() / 2
+          let mid = arr.length() / 2
           let left = arr[..mid]
           let right = arr[mid..]
 
@@ -1061,7 +1061,7 @@ describe('Type Inference Completeness', () => {
 
           let result = []
           until pq.size() == 0 {
-            result = result + [pq.pop()]
+            result = result.push(pq.pop())
           }
 
           return result

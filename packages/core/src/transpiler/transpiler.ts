@@ -680,17 +680,20 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
   }
 
   visitNumberLiteral(ctx: NumberLiteralContext): IntegerLiteral | FloatLiteral {
-    const value = parseFloat(ctx.NUMBER().text);
-    if (Number.isInteger(value)) {
+    const text = ctx.NUMBER().text;
+    const value = parseFloat(text);
+    // Check if the literal text contains a decimal point to distinguish float from int
+    // This ensures "10.0" is parsed as FloatLiteral, not IntegerLiteral
+    if (text.includes('.')) {
       return {
-        type: 'IntegerLiteral',
+        type: 'FloatLiteral',
         value,
         line: ctx.start.line,
         column: ctx.start.charPositionInLine + 1,
       };
     } else {
       return {
-        type: 'FloatLiteral',
+        type: 'IntegerLiteral',
         value,
         line: ctx.start.line,
         column: ctx.start.charPositionInLine + 1,

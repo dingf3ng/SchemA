@@ -281,6 +281,19 @@ class TypeRefiner {
             this.refineTypeFromExpression(varType.elementType, stmt.value);
             this.updateVariableAnnotation(varName, varType);
           }
+
+          // Handle map index assignment: refine key and value types
+          if (varType && varType.kind === 'map' && isInferred) {
+            // Refine keyType from the index expression
+            const indexType = this.analyzeExpressionType(stmt.target.index, this.typeEnv);
+            if (varType.keyType.kind === 'weak' && indexType.kind !== 'weak' && indexType.kind !== 'dynamic') {
+              Object.assign(varType.keyType, indexType);
+              this.refinementChanged = true;
+            }
+            // Refine valueType from the assigned value
+            this.refineTypeFromExpression(varType.valueType, stmt.value);
+            this.updateVariableAnnotation(varName, varType);
+          }
         }
 
         // Refine target from value
@@ -573,24 +586,29 @@ class TypeRefiner {
       }
     }
 
-    // If parameters changed, re-infer return type if it's still weak (not dynamic)
-    // Only 'weak' types can be refined, 'dynamic' represents statically unresolvable types
-    if (paramsChanged && funcInfo.returnType.kind === 'weak') {
-      // Build parameter type map with updated types
-      const paramTypeMap = new Map<string, Type>();
-      for (let i = 0; i < funcDecl.parameters.length; i++) {
-        paramTypeMap.set(funcDecl.parameters[i].name, funcInfo.parameters[i]);
-      }
+    // If parameters changed, trigger another refinement pass and re-infer return type if needed
+    if (paramsChanged) {
+      this.refinementChanged = true;
+      
+      // Re-infer return type if it's still weak (not dynamic)
+      // Only 'weak' types can be refined, 'dynamic' represents statically unresolvable types
+      if (funcInfo.returnType.kind === 'weak') {
+        // Build parameter type map with updated types
+        const paramTypeMap = new Map<string, Type>();
+        for (let i = 0; i < funcDecl.parameters.length; i++) {
+          paramTypeMap.set(funcDecl.parameters[i].name, funcInfo.parameters[i]);
+        }
 
-      // Re-collect constraints to get updated return type
-      const constraints = this.collectConstraints(funcDecl.body, paramTypeMap);
-      if (constraints.returnType && constraints.returnType.kind !== 'weak' && constraints.returnType.kind !== 'dynamic') {
-        Object.assign(funcInfo.returnType, constraints.returnType);
-        funcDecl.returnType = typeToAnnotation(
-          constraints.returnType,
-          funcDecl.line,
-          funcDecl.column
-        );
+        // Re-collect constraints to get updated return type
+        const constraints = this.collectConstraints(funcDecl.body, paramTypeMap);
+        if (constraints.returnType && constraints.returnType.kind !== 'weak' && constraints.returnType.kind !== 'dynamic') {
+          Object.assign(funcInfo.returnType, constraints.returnType);
+          funcDecl.returnType = typeToAnnotation(
+            constraints.returnType,
+            funcDecl.line,
+            funcDecl.column
+          );
+        }
       }
     }
   }
@@ -755,8 +773,36 @@ class TypeRefiner {
 
       case 'WhileStatement':
       case 'UntilStatement':
-      case 'ForStatement':
         return this.analyzeReturnType(stmt.body);
+
+      case 'ForStatement': {
+        // Save environment before adding loop variable
+        const savedEnv = new Map(this.typeEnv);
+
+        // Infer loop variable type from iterable
+        const iterableType = this.analyzeExpressionType(stmt.iterable, this.typeEnv);
+        let loopVarType: Type = { kind: 'dynamic' };
+
+        if (iterableType.kind === 'weak') {
+          loopVarType = { kind: 'weak' };
+        } else if (iterableType.kind === 'array' || iterableType.kind === 'set') {
+          loopVarType = iterableType.elementType;
+        } else if (iterableType.kind === 'map' || iterableType.kind === 'heapmap') {
+          loopVarType = iterableType.keyType;
+        } else if (iterableType.kind === 'range') {
+          loopVarType = { kind: 'int' };
+        }
+
+        // Add loop variable to environment
+        this.typeEnv.set(stmt.variable, loopVarType);
+
+        const result = this.analyzeReturnType(stmt.body);
+
+        // Restore environment
+        this.typeEnv = savedEnv;
+
+        return result;
+      }
 
       default:
         return null;

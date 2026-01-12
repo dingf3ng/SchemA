@@ -192,11 +192,12 @@ export function isTruthy(value: RuntimeTypedBinder): boolean {
 export function getActualRuntimeType(binder: RuntimeTypedBinder): string {
   const type = binder.type.static;
 
-  // If it's not a intersection, or dynamic type, return the type kind directly
+  // If it's not a weak or dynamic type, return the type kind directly
   if (type.kind !== 'dynamic') {
     return type.kind;
   }
 
+  // For weak or dynamic types, infer the type from the runtime value
   const value = binder.value;
   if (typeof value === 'number') {
     return Number.isInteger(value) ? 'int' : 'float';

@@ -118,7 +118,7 @@ m["key"] = "value"
 let m : Map<string, int> = Map()
 m[123] = 42
        `;
-      expect(() => { run(code); }).toThrow(/Type mismatch/);
+      expect(() => { run(code); }).toThrow(/Type checking: cannot index map with key of type/);
     });
   });
 

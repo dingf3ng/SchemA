@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 import { parse, interpret } from '@schema/core'
+import { Interpreter } from '../../core/src/runtime/interpreter'
 
 function App() {
   const [input, setInput] = useState('')
@@ -8,7 +9,7 @@ function App() {
 
   const handleRun = () => {
     const parsed = parse(input)
-    const evaluated = interpret(parsed).join('\n')
+    const evaluated = interpret(parsed, new Interpreter()).join('\n')
     setOutput(`${parsed}\n${evaluated}`)
   }
 
