@@ -105,6 +105,19 @@ export function synthExpression(
       );
     }
 
+    case 'TupleLiteral': {
+      const elementTypes = expr.elements.map(recurse);
+      return { kind: 'tuple', elementTypes };
+    }
+
+    case 'RecordLiteral': {
+      const fieldTypes: [string, Type][] = expr.entries.map((e) => [
+        e.key,
+        recurse(e.value),
+      ]);
+      return { kind: 'record', fieldTypes };
+    }
+
     case 'BinaryExpression': {
       const leftType = recurse(expr.left);
       const rightType = recurse(expr.right);

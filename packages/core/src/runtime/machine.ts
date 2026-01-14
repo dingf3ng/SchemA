@@ -210,19 +210,6 @@ export class Machine implements EvaluatorContext {
         this.focus = { kind: 'value', value: { value: expr.value, type: { static: { kind: 'boolean' }, refinements: [] } } };
         break;
 
-      case 'Identifier': {
-        if (expr.name === '_') {
-          throw new Error('Underscore (_) cannot be used as a value');
-        }
-        const value = this.currentEnv.get(expr.name);
-        this.focus = { kind: 'value', value };
-        break;
-      }
-
-      case 'MetaIdentifier':
-        this.focus = { kind: 'value', value: { value: expr.name, type: { static: { kind: 'predicate' }, refinements: [] } } };
-        break;
-
       case 'ArrayLiteral': {
         if (expr.elements.length === 0) {
           this.focus = {
@@ -239,6 +226,106 @@ export class Machine implements EvaluatorContext {
         }
         break;
       }
+
+      case 'MapLiteral': {
+        if (expr.entries.length === 0) {
+          this.focus = {
+            kind: 'value',
+            value: {
+              value: new SchemaMap<any, RuntimeTypedBinder>(),
+              type: { static: { kind: 'map', keyType: { kind: 'weak' }, valueType: { kind: 'weak' } }, refinements: [] }
+            }
+          };
+        } else {
+          // Start evaluating the first key
+          const firstEntry = expr.entries[0];
+          this.kontinuation.push({
+            kind: 'map-lit-key',
+            evaluatedEntries: [],
+            remainingEntries: expr.entries.slice(1),
+            currentValue: firstEntry.value
+          });
+          this.focus = { kind: 'expr', expr: firstEntry.key };
+        }
+        break;
+      }
+
+      case 'SetLiteral': {
+        if (expr.elements.length === 0) {
+          this.focus = {
+            kind: 'value',
+            value: {
+              value: new SchemaSet<RuntimeTypedBinder>(),
+              type: { static: { kind: 'set', elementType: { kind: 'weak' } }, refinements: [] }
+            }
+          };
+        } else {
+          this.kontinuation.push({
+            kind: 'set-lit',
+            evaluatedElements: [],
+            remainingElements: expr.elements.slice(1)
+          });
+          this.focus = { kind: 'expr', expr: expr.elements[0] };
+        }
+        break;
+      }
+      
+      case 'TupleLiteral': {
+        if (expr.elements.length === 0) {
+          this.focus = {
+            kind: 'value',
+            value: {
+              value: [] as RuntimeTypedBinder[],
+              type: { static: { kind: 'tuple', elementTypes: [] }, refinements: [] }
+            }
+          };
+        } else {
+          this.kontinuation.push({
+            kind: 'tuple-lit',
+            evaluatedElements: [],
+            remainingElements: expr.elements.slice(1)
+          });
+          this.focus = { kind: 'expr', expr: expr.elements[0] };
+        }
+        break;
+      }
+
+      case 'RecordLiteral': {
+        if (expr.entries.length === 0) {
+          this.focus = {
+            kind: 'value',
+            value: {
+              value: new Map<string, RuntimeTypedBinder>(),
+              type: { static: { kind: 'record', fieldTypes: [] }, refinements: [] }
+            }
+          };
+        } else {
+          const firstEntry = expr.entries[0];
+          this.kontinuation.push({
+            kind: 'record-lit',
+            evaluatedEntries: [],
+            remainingEntries: expr.entries.slice(1).map(e => ({ key: e.key, value: e.value }))
+          });
+          this.focus = { kind: 'expr', expr: firstEntry.value };
+          // Store the current key for later
+          (this.kontinuation[this.kontinuation.length - 1] as any).currentKey = firstEntry.key;
+        }
+        break;
+      }
+
+      case 'Identifier': {
+        if (expr.name === '_') {
+          throw new Error('Underscore (_) cannot be used as a value');
+        }
+        const value = this.currentEnv.get(expr.name);
+        this.focus = { kind: 'value', value };
+        break;
+      }
+
+      case 'MetaIdentifier':
+        this.focus = { kind: 'value', value: { value: expr.name, type: { static: { kind: 'predicate' }, refinements: [] } } };
+        break;
+
 
       case 'BinaryExpression': {
         // Handle short-circuit operators specially
@@ -347,6 +434,7 @@ export class Machine implements EvaluatorContext {
       }
 
       default:
+        const _exhaustiveCheck: never = expr;
         throw new Error(`Unsupported expression type: ${(expr as any).type}`);
     }
   }
@@ -524,6 +612,7 @@ export class Machine implements EvaluatorContext {
       }
 
       default:
+        const _exhaustiveCheck: never = stmt;
         throw new Error(`Unsupported statement type: ${(stmt as any).type}`);
     }
   }
@@ -649,7 +738,7 @@ export class Machine implements EvaluatorContext {
         const idxActualType = getActualRuntimeType(idx);
 
         if ((obj.type.static.kind === 'array' || obj.value instanceof SchemaArray) &&
-            (idx.type.static.kind === 'int' || idxActualType === 'int')) {
+          (idx.type.static.kind === 'int' || idxActualType === 'int')) {
           (obj.value as SchemaArray<RuntimeTypedBinder>).set(idx.value as number, valueToAssign);
         } else if (obj.type.static.kind === 'map' || obj.value instanceof SchemaMap) {
           const key = runtimeTypedBinderToKey(idx);
@@ -1059,6 +1148,131 @@ export class Machine implements EvaluatorContext {
         break;
       }
 
+      case 'set-lit': {
+        const evaluated = [...kont.evaluatedElements, value];
+        if (kont.remainingElements.length === 0) {
+          const elementType = evaluated.length > 0 ? evaluated[0].type.static : { kind: 'weak' as const };
+          const set = new SchemaSet<any>();
+          evaluated.forEach(el => {
+            const k = runtimeTypedBinderToKey(el);
+            set.add(k);
+          });
+          this.focus = {
+            kind: 'value',
+            value: {
+              value: set,
+              type: { static: { kind: 'set', elementType: elementType }, refinements: [] }
+            }
+          };
+        } else {
+          this.kontinuation.push({
+            kind: 'set-lit',
+            evaluatedElements: evaluated,
+            remainingElements: kont.remainingElements.slice(1)
+          });
+          this.focus = { kind: 'expr', expr: kont.remainingElements[0] };
+        }
+        break;
+      }
+
+      case 'tuple-lit': {
+        const evaluated = [...kont.evaluatedElements, value];
+        if (kont.remainingElements.length === 0) {
+          const elementTypes = evaluated.map(el => el.type.static);
+          this.focus = {
+            kind: 'value',
+            value: {
+              value: evaluated,
+              type: { static: { kind: 'tuple', elementTypes: elementTypes }, refinements: [] }
+            }
+          };
+        } else {
+          this.kontinuation.push({
+            kind: 'tuple-lit',
+            evaluatedElements: evaluated,
+            remainingElements: kont.remainingElements.slice(1)
+          });
+          this.focus = { kind: 'expr', expr: kont.remainingElements[0] };
+        }
+        break;
+      }
+
+      case 'record-lit': {
+        const currentKey = (kont as any).currentKey as string;
+        const evaluated = [...kont.evaluatedEntries, { key: currentKey, value: value }];
+        if (kont.remainingEntries.length === 0) {
+          // Build the record Map with string keys
+          const recordMap = new Map<string, RuntimeTypedBinder>();
+          const fieldTypes: Array<[string, any]> = [];
+          evaluated.forEach(({ key, value }) => {
+            recordMap.set(key, value);
+            fieldTypes.push([key, value.type.static]);
+          });
+          this.focus = {
+            kind: 'value',
+            value: {
+              value: recordMap,
+              type: { static: { kind: 'record', fieldTypes: fieldTypes }, refinements: [] }
+            }
+          };
+        } else {
+          const nextEntry = kont.remainingEntries[0];
+          const newKont = {
+            kind: 'record-lit' as const,
+            evaluatedEntries: evaluated,
+            remainingEntries: kont.remainingEntries.slice(1)
+          };
+          (newKont as any).currentKey = nextEntry.key;
+          this.kontinuation.push(newKont);
+          this.focus = { kind: 'expr', expr: nextEntry.value };
+        }
+        break;
+      }
+
+      case 'map-lit-key': {
+        // We have the key, now evaluate the value
+        this.kontinuation.push({
+          kind: 'map-lit-value',
+          evaluatedEntries: kont.evaluatedEntries,
+          remainingEntries: kont.remainingEntries,
+          currentKey: value
+        });
+        this.focus = { kind: 'expr', expr: kont.currentValue };
+        break;
+      }
+
+      case 'map-lit-value': {
+        // We have both key and value, add to entries
+        const evaluated = [...kont.evaluatedEntries, { key: kont.currentKey, value: value }];
+        if (kont.remainingEntries.length === 0) {
+          // Build the final map
+          const map = new SchemaMap<any, RuntimeTypedBinder>();
+          evaluated.forEach(({ key, value }) => {
+            const keyVal = runtimeTypedBinderToKey(key);
+            map.set(keyVal, value);
+          });
+          const keyType = evaluated.length > 0 ? evaluated[0].key.type.static : { kind: 'weak' as const };
+          const valueType = evaluated.length > 0 ? evaluated[0].value.type.static : { kind: 'weak' as const };
+          this.focus = {
+            kind: 'value',
+            value: {
+              value: map,
+              type: { static: { kind: 'map', keyType, valueType }, refinements: [] }
+            }
+          };
+        } else {
+          const nextEntry = kont.remainingEntries[0];
+          this.kontinuation.push({
+            kind: 'map-lit-key',
+            evaluatedEntries: evaluated,
+            remainingEntries: kont.remainingEntries.slice(1),
+            currentValue: nextEntry.value
+          });
+          this.focus = { kind: 'expr', expr: nextEntry.key };
+        }
+        break;
+      }
+
       case 'range-start': {
         if (kont.end) {
           this.kontinuation.push({
@@ -1223,6 +1437,7 @@ export class Machine implements EvaluatorContext {
       }
 
       default:
+        const _exhaustiveCheck: never = kont;
         throw new Error(`Unknown continuation kind: ${(kont as any).kind}`);
     }
   }

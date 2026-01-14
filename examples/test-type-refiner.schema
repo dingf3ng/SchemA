@@ -1,0 +1,42 @@
+// Test cases for the completed analyzeExpressionType function
+
+// Test RangeExpression
+do testRange() {
+    let r1 = 1..10        // int array
+    @assert(typeof(r1) == "Array<int>")
+    let r2 = "a".."z"     // string array
+    @assert(typeof(r1) == "Array<string>")
+    let r3 = 0..          // infinite range
+    @assert(typeof(r1) == "range")
+}
+
+// Test MapLiteral
+do testMapLiteral() {
+    let m1 = {"a": 1, "b": 2}
+    @assert(typeof(m1) == "Map<string, int>")
+    let m2 = {}
+    @assert(typeof(m2) == "Map<weak, weak>")
+}
+
+// Test SetLiteral
+do testSetLiteral() {
+    let s1 = {1, 2, 3}
+    @assert(typeof(s1) == "Set<int>")
+    let s2 = {}
+    @assert(typeof(s2) == "Set<weak>")
+}
+
+// Test MemberExpression with method calls
+do testMemberExpression() {
+    let arr = [1, 2, 3]
+    let len = arr.length()
+    arr.push(4)
+    @assert(typeof(arr) == "Array<int>")
+}
+
+do main() {
+    testRange()
+    testMapLiteral()
+    testSetLiteral()
+    testMemberExpression()
+}

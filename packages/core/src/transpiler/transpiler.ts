@@ -29,6 +29,16 @@ import {
   FalseLiteralContext,
   IdentifierContext,
   ArrayLiteralExprContext,
+  MapLiteralContext,
+  MapLiteralExprContext,
+  MapEntryContext,
+  SetLiteralContext,
+  SetLiteralExprContext,
+  TupleLiteralContext,
+  TupleLiteralExprContext,
+  RecordLiteralContext,
+  RecordLiteralExprContext,
+  RecordEntryContext,
   ParenExprContext,
   ArrayLiteralContext,
   ParameterContext,
@@ -59,9 +69,6 @@ import {
   ReturnStatement,
   BlockStatement,
   ExpressionStatement,
-  BinaryExpression,
-  UnaryExpression,
-  CallExpression,
   MemberExpression,
   IndexExpression,
   Identifier,
@@ -70,12 +77,15 @@ import {
   StringLiteral,
   BooleanLiteral,
   ArrayLiteral,
-  TypeOfExpression,
   InvariantStatement,
   AssertStatement,
   TypeAnnotation as ASTTypeAnnotation,
   Parameter as ASTParameter,
   MetaIdentifier,
+  SetLiteral,
+  MapLiteral,
+  TupleLiteral,
+  RecordLiteral,
 } from './ast-types';
 
 class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<any> {
@@ -161,7 +171,7 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
 
   visitPrimaryType(ctx: PrimaryTypeContext): ASTTypeAnnotation {
     if (ctx.childCount === 3 && ctx.getChild(0).text === '(') {
-       return this.visit(ctx.typeAnnotation(0));
+      return this.visit(ctx.typeAnnotation(0));
     }
 
     const name = ctx.POLY_TYPE_ID() ? ctx.POLY_TYPE_ID()!.text : ctx.IDENTIFIER()!.text;
@@ -219,7 +229,7 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
     let value = this.visit(ctx.expression());
 
     const assignmentOp = ctx.assignmentOperator();
-    
+
     // Handle >>= which is parsed as GT GTE
     if (assignmentOp.GT() && assignmentOp.GTE()) {
       value = {
@@ -237,9 +247,9 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
         let operator = binaryOp.text;
         // Normalize >> (GT GT)
         if (operator.replace(/\s/g, '') === '>>') {
-            operator = '>>';
+          operator = '>>';
         }
-        
+
         value = {
           type: 'BinaryExpression',
           operator,
@@ -471,31 +481,31 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
 
   visitRange(ctx: RangeContext): Expression {
     const children = ctx.shift();
-    
+
     // Check if we have an operator (childCount > 1 means we have at least start and operator)
     if (ctx.childCount > 1) {
-        const start = this.visit(children[0]);
-        const end = children.length > 1 ? this.visit(children[1]) : undefined;
+      const start = this.visit(children[0]);
+      const end = children.length > 1 ? this.visit(children[1]) : undefined;
 
-        // Check which operator was used
-        const operatorNode = ctx.getChild(1);
-        const operatorText = operatorNode.text;
-        const inclusive = operatorText === '...';
+      // Check which operator was used
+      const operatorNode = ctx.getChild(1);
+      const operatorText = operatorNode.text;
+      const inclusive = operatorText === '...';
 
-        return {
-          type: 'RangeExpression',
-          start,
-          end,
-          inclusive,
-          line: ctx.start.line,
-          column: ctx.start.charPositionInLine + 1,
-        };
+      return {
+        type: 'RangeExpression',
+        start,
+        end,
+        inclusive,
+        line: ctx.start.line,
+        column: ctx.start.charPositionInLine + 1,
+      };
     }
 
     if (children.length === 1) {
       return this.visit(children[0]);
     }
-    
+
     throw new Error('Invalid range expression');
   }
 
@@ -510,7 +520,7 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
 
     for (let i = 1; i < children.length; i++) {
       let operator = ctx.getChild(currentChildIndex).text;
-      
+
       if (operator === '>') {
         const next = ctx.getChild(currentChildIndex + 1).text;
         if (next === '>') {
@@ -531,7 +541,7 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
         line: ctx.start.line,
         column: ctx.start.charPositionInLine + 1,
       };
-      
+
       // Skip the right operand
       currentChildIndex++;
     }
@@ -820,6 +830,75 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
       line: ctx.start.line,
       column: ctx.start.charPositionInLine + 1,
     };
+  }
+
+  visitSetLiteralExpr(ctx: SetLiteralExprContext): SetLiteral {
+    return this.visit(ctx.setLiteral());
+  }
+
+  visitSetLiteral(ctx: SetLiteralContext): SetLiteral {
+    const elements = ctx.expression().map(e => this.visit(e));
+    return {
+      type: 'SetLiteral',
+      elements,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitMapLiteralExpr(ctx: MapLiteralExprContext): MapLiteral {
+    return this.visit(ctx.mapLiteral());
+  }
+
+  visitMapLiteral(ctx: MapLiteralContext): MapLiteral {
+    const entries = ctx.mapEntry().map(entryCtx => this.visit(entryCtx));
+    return {
+      type: 'MapLiteral',
+      entries,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitMapEntry(ctx: MapEntryContext): { key: Expression; value: Expression } {
+    const key = this.visit(ctx.expression(0));
+    const value = this.visit(ctx.expression(1));
+    return { key, value };
+  }
+
+  visitTupleLiteralExpr(ctx: TupleLiteralExprContext): TupleLiteral {
+    return this.visit(ctx.tupleLiteral());
+  }
+
+  visitTupleLiteral(ctx: TupleLiteralContext): TupleLiteral {
+    const elements = ctx.expression().map(e => this.visit(e));
+    return {
+      type: 'TupleLiteral',
+      elements,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitRecordLiteralExpr(ctx: RecordLiteralExprContext): RecordLiteral {
+    return this.visit(ctx.recordLiteral());
+  }
+
+  visitRecordLiteral(ctx: RecordLiteralContext): RecordLiteral {
+    const entries = ctx.recordEntry().map(entryCtx => this.visit(entryCtx));
+    return {
+      type: 'RecordLiteral',
+      entries,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitRecordEntry(ctx: RecordEntryContext): { key: string; value: Expression } {
+    const rawKey = ctx.STRING().text;
+    const key = rawKey.slice(1, -1);  // Strip surrounding quotes
+    const value = this.visit(ctx.expression());
+    return { key, value };
   }
 
   visitParenExpr(ctx: ParenExprContext): Expression {

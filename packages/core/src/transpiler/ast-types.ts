@@ -18,6 +18,8 @@ export type ASTNodeType =
   | 'ArrayLiteral'
   | 'MapLiteral'
   | 'SetLiteral'
+  | 'TupleLiteral'
+  | 'RecordLiteral'
   | 'TypeOfExpression'
   | 'PredicateCheckExpression'
   | 'InvariantStatement'
@@ -145,6 +147,16 @@ export interface BooleanLiteral extends ASTNode {
 export interface ArrayLiteral extends ASTNode {
   type: 'ArrayLiteral';
   elements: Expression[];
+}
+
+export interface TupleLiteral extends ASTNode {
+  type: 'TupleLiteral';
+  elements: Expression[];
+}
+
+export interface RecordLiteral extends ASTNode {
+  type: 'RecordLiteral';
+  entries: Array<{ key: string; value: Expression }>;
 }
 
 export interface MapLiteral extends ASTNode {
@@ -292,5 +304,7 @@ export type Expression =
   | ArrayLiteral
   | MapLiteral
   | SetLiteral
+  | TupleLiteral
+  | RecordLiteral
   | TypeOfExpression
   | PredicateCheckExpression;

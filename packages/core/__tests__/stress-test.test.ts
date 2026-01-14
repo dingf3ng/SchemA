@@ -1,3 +1,4 @@
+import { runMachine } from '../dist';
 import { run } from '../src/index';
 
 describe('Stress Tests', () => {
@@ -278,6 +279,10 @@ describe('Stress Tests', () => {
   });
 
   describe('Interpreter Stress Tests', () => {
+    // Note: Deep recursion is limited by JavaScript's call stack.
+    // The Evaluator uses direct recursion, so each SchemA function call
+    // uses multiple JS stack frames. For true deep recursion support,
+    // use the Machine (CEK-style) which uses trampolining.
     it('should handle deep recursion efficiently', () => {
       const code = `
         do countdown(n: int) -> int {
@@ -288,7 +293,7 @@ describe('Stress Tests', () => {
         }
 
         do main() {
-          let result = countdown(500)
+          let result = countdown(1000)
           print(result)
         }
 
@@ -296,12 +301,12 @@ describe('Stress Tests', () => {
       `;
 
       const start = Date.now();
-      const output = run(code);
+      const output = runMachine(code);
       const duration = Date.now() - start;
 
-      console.log(`  ✓ Deep recursion (500 levels): ${duration}ms`);
-      expect(output).toEqual(['500']);
-      expect(duration).toBeLessThan(1000);
+      console.log(`  ✓ Deep recursion (1000 levels): ${duration}ms`);
+      expect(output).toEqual(['1000']);
+      expect(duration).toBeLessThan(500);
     });
 
     it('should handle large loops efficiently', () => {

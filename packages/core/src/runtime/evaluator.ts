@@ -110,6 +110,60 @@ export class Evaluator {
         };
       }
 
+      case 'MapLiteral': {
+        const elements = expr.entries.map(
+          ({key, value}) => {return [this.evaluateExpression(key), this.evaluateExpression(value)]}
+        );
+        const [keyType, valueType] = elements.length > 0 ? [elements[0][0].type.static, elements[0][1].type.static] : [{ kind: 'weak' as const }, { kind: 'weak' as const }];
+        const map = new SchemaMap<any, RuntimeTypedBinder>();
+        for (const [keyBinder, valueBinder] of elements) {
+          const key = runtimeTypedBinderToKey(keyBinder);
+          map.set(key, valueBinder);
+        }
+        return {
+          value: map,
+          type: { static: { kind: 'map', keyType, valueType }, refinements: [] }
+        };
+      }
+
+      case 'SetLiteral': {
+        const elements = expr.elements.map((e) => this.evaluateExpression(e));
+        const elementType = elements.length > 0 ? elements[0].type.static : { kind: 'weak' as const };
+        const set = new SchemaSet<any>();
+        for (const element of elements) {
+          const k = runtimeTypedBinderToKey(element);
+          set.add(k);
+        }
+        return {
+          value: set,
+          type: { static: { kind: 'set', elementType }, refinements: [] }
+        };
+      }
+
+      case 'RecordLiteral': {
+        const fields = expr.entries.reduce((acc, { key, value }) => {
+          acc.set(key, this.evaluateExpression(value));
+          return acc;
+        }, new Map<string, RuntimeTypedBinder>());
+        const fieldTypes = Array.from(fields.entries()).reduce((acc, [key, binder]) => {
+          acc.push([key, binder.type.static]);
+          return acc;
+        }, [] as [string, Type][]);
+        return {
+          value: fields,
+          type: { static: { kind: 'record', fieldTypes: fieldTypes }, refinements: [] }
+        };
+      }
+
+      case 'TupleLiteral': {
+        const elements = expr.elements.map((e) => this.evaluateExpression(e));
+        const elementTypes = elements.map((e) => e.type.static);
+        return {
+          value: elements,
+          type: { static: { kind: 'tuple', elementTypes }, refinements: [] }
+        };
+      }
+
       case 'Identifier': {
         if (expr.name === '_') {
           throw new Error('Underscore (_) cannot be used as a value');
@@ -246,6 +300,7 @@ export class Evaluator {
       }
 
       default:
+        const _exhaustiveCheck: never = expr;
         throw new Error(`Unknown expression type: ${(expr as any).type}`);
     }
   }
@@ -487,6 +542,7 @@ export class Evaluator {
       }
 
       default:
+        const _exhaustiveCheck: never = stmt;
         throw new Error(`Unsupported statement type in synchronous evaluation: ${(stmt as any).type}`);
     }
   }
@@ -1190,9 +1246,9 @@ export class Evaluator {
                     },
                     refinements: []
                   },
-                  value: new Map<RuntimeTypedBinder, RuntimeTypedBinder>([
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'to' }, edge.to as RuntimeTypedBinder],
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'weight' }, { type: { static: { kind: 'int' }, refinements: [] }, value: edge.weight }],
+                  value: new Map<string, RuntimeTypedBinder>([
+                    ['to', edge.to as RuntimeTypedBinder],
+                    ['weight', { type: { static: { kind: 'int' }, refinements: [] }, value: edge.weight }],
                   ])
                 };
                 arr.push(record);
@@ -1297,10 +1353,10 @@ export class Evaluator {
               edges.forEach((edge) => {
                 const record: RuntimeTypedBinder = {
                   type: { static: { kind: 'record', fieldTypes: [['from', graphType.nodeType], ['to', graphType.nodeType], ['weight', { kind: 'int' }]] }, refinements: [] },
-                  value: new Map<RuntimeTypedBinder, RuntimeTypedBinder>([
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'from' }, edge.from as RuntimeTypedBinder],
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'to' }, edge.to as RuntimeTypedBinder],
-                    [{ type: { static: { kind: 'string' }, refinements: [] }, value: 'weight' }, { type: { static: { kind: 'int' }, refinements: [] }, value: edge.weight }],
+                  value: new Map<string, RuntimeTypedBinder>([
+                    ['from', edge.from as RuntimeTypedBinder],
+                    ['to', edge.to as RuntimeTypedBinder],
+                    ['weight', { type: { static: { kind: 'int' }, refinements: [] }, value: edge.weight }],
                   ])
                 };
                 arr.push(record);
@@ -1513,11 +1569,10 @@ export class Evaluator {
 
   if (object.type.static.kind === 'record' || object.value instanceof Map) {
     if (index.type.static.kind === 'string' || indexActualType === 'string') {
-      const recordValue = object.value as Map<RuntimeTypedBinder, RuntimeTypedBinder>;
-      for (const [key, value] of recordValue.entries()) {
-        if (key.type.static.kind === 'string' && key.value === index.value) {
-          return value;
-        }
+      const recordValue = object.value as Map<string, RuntimeTypedBinder>;
+      const key = index.value as string;
+      if (recordValue.has(key)) {
+        return recordValue.get(key)!;
       }
       throw new Error(`Record does not have field '${index.value}'`);
     }

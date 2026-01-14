@@ -261,6 +261,53 @@ export interface ArrayLitCont extends BaseContinuation {
 }
 
 /**
+ * Set literal continuation
+ */
+export interface SetLitCont extends BaseContinuation {
+  kind: 'set-lit';
+  evaluatedElements: RuntimeTypedBinder[];
+  remainingElements: Expression[];
+}
+
+/**
+ * Tuple literal continuation
+ */
+export interface TupleLitCont extends BaseContinuation {
+  kind: 'tuple-lit';
+  evaluatedElements: RuntimeTypedBinder[];
+  remainingElements: Expression[];
+}
+
+/**
+ * Record literal continuation - evaluating values
+ */
+export interface RecordLitCont extends BaseContinuation {
+  kind: 'record-lit';
+  evaluatedEntries: Array<{ key: string; value: RuntimeTypedBinder }>;
+  remainingEntries: Array<{ key: string; value: Expression }>;
+}
+
+/**
+ * Map literal continuation - evaluating key first
+ */
+export interface MapLitKeyCont extends BaseContinuation {
+  kind: 'map-lit-key';
+  evaluatedEntries: Array<{ key: RuntimeTypedBinder; value: RuntimeTypedBinder }>;
+  remainingEntries: Array<{ key: Expression; value: Expression }>;
+  currentValue: Expression;
+}
+
+/**
+ * Map literal continuation - evaluating value after key
+ */
+export interface MapLitValueCont extends BaseContinuation {
+  kind: 'map-lit-value';
+  evaluatedEntries: Array<{ key: RuntimeTypedBinder; value: RuntimeTypedBinder }>;
+  remainingEntries: Array<{ key: Expression; value: Expression }>;
+  currentKey: RuntimeTypedBinder;
+}
+
+/**
  * Range expression continuation - evaluate start
  */
 export interface RangeStartCont extends BaseContinuation {
@@ -351,6 +398,11 @@ export type Continuation =
   | IndexObjCont
   | IndexIdxCont
   | ArrayLitCont
+  | SetLitCont
+  | TupleLitCont
+  | RecordLitCont
+  | MapLitKeyCont
+  | MapLitValueCont
   | RangeStartCont
   | RangeEndCont
   | ExprStmtCont

@@ -50,7 +50,7 @@ export type RuntimeTypedBinder =
   | { value: Graph<RuntimeTypedBinder>; type: RuntimeType }
   | { value: LazyRange; type: RuntimeType }
   | { value: RuntimeTypedBinder[]; type: RuntimeType } // tuples
-  | { value: Map<RuntimeTypedBinder, RuntimeTypedBinder>; type: RuntimeType } // records
+  | { value: Map<string, RuntimeTypedBinder>; type: RuntimeType } // records
   | {
     value: {
       predicateName: string;
@@ -104,10 +104,10 @@ export function runtimeTypedBinderToString(binder: RuntimeTypedBinder): string {
       return `(${values.map((v) => runtimeTypedBinderToString(v)).join(', ')})`;
     }
     case 'record': {
-      const values = value as Map<RuntimeTypedBinder, RuntimeTypedBinder>;
+      const values = value as Map<string, RuntimeTypedBinder>;
       const fields = Array.from(values.entries())
         .map(([k, v]) => {
-          return `${runtimeTypedBinderToString(k)}: ${runtimeTypedBinderToString(v)}`;
+          return `${k}: ${runtimeTypedBinderToString(v)}`;
         })
         .join(', ');
       return `{ ${fields} }`;

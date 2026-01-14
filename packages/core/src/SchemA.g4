@@ -192,11 +192,39 @@ primary
     | IDENTIFIER                 # Identifier
     | META_IDENTIFIER            # MetaIdentifier
     | arrayLiteral               # ArrayLiteralExpr
+    | setLiteral                 # SetLiteralExpr
+    | mapLiteral                 # MapLiteralExpr
+    | recordLiteral              # RecordLiteralExpr
+    | tupleLiteral               # TupleLiteralExpr
     | '(' expression ')'         # ParenExpr
     ;
 
 arrayLiteral
     : '[' (expression (',' expression)*)? ']'
+    ;
+
+mapLiteral
+    : '{' (mapEntry (',' mapEntry)*)? '}'
+    ;
+
+mapEntry
+    : expression ':' expression
+    ;
+
+setLiteral
+    : '{' expression (',' expression)* '}'  // Sets need at least one element, use Set() for empty
+    ;
+
+tupleLiteral
+    : '(' expression ',' (expression (',' expression)*)? ')'  // Require at least a comma: (x,) or (x, y, ...)
+    ;
+
+recordLiteral
+    : '(' recordEntry (',' recordEntry)* ')'  // Records need at least one entry
+    ;
+
+recordEntry
+    : STRING ':' expression
     ;
 
 memberExpression
