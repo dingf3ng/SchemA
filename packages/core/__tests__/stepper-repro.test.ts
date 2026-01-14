@@ -2,7 +2,6 @@
 import { Stepper } from '../src/runtime/stepper';
 import { parse } from '../src/transpiler/parser';
 import { typeCheck } from '../src/type-checker/type-checker-main';
-import { Interpreter } from '../src/runtime/interpreter';
 
 describe('Stepper Repro', () => {
   it('should step through recursive fibonacci in a loop without getting stuck', () => {
@@ -26,8 +25,7 @@ describe('Stepper Repro', () => {
     const program = parse(code);
     typeCheck(program);
 
-    const interpreter = new Interpreter();
-    const stepper = new Stepper(interpreter);
+    const stepper = new Stepper();
     stepper.initialize(program);
 
     let steps = 0;
@@ -80,8 +78,7 @@ describe('Stepper Repro', () => {
     const program = parse(code);
     typeCheck(program);
 
-    const interpreter = new Interpreter();
-    const stepper = new Stepper(interpreter);
+    const stepper = new Stepper();
     stepper.initialize(program);
 
     let steps = 0;
