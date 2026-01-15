@@ -28,7 +28,7 @@ export type RuntimeType =
   { static: Type, refinements: Predicate[] }
 
 export class Sole {
-  
+
 }
 
 export type sole = Sole;
@@ -387,4 +387,75 @@ export function checkLoopInvariants(invariants: InvariantStatement[], iteration:
       { kind: 'loop', iteration },
     );
   }
+}
+
+// ============================================================================
+// Iterator Helper
+// ============================================================================
+
+export function getIterator(iterable: RuntimeTypedBinder): IterableIterator<RuntimeTypedBinder> {
+  const staticKind = iterable.type?.static?.kind;
+  const isArray = staticKind === 'array' || iterable.value instanceof SchemaArray;
+  const isSet = staticKind === 'set' || iterable.value instanceof SchemaSet;
+  const isRange = staticKind === 'range' || iterable.value instanceof LazyRange;
+  const isMap = staticKind === 'map' || iterable.value instanceof SchemaMap;
+
+  if (isArray) {
+    const arr = iterable.value as SchemaArray<RuntimeTypedBinder>;
+    let index = 0;
+    return {
+      [Symbol.iterator]() { return this; },
+      next(): IteratorResult<RuntimeTypedBinder> {
+        if (index < arr.length) {
+          return { value: arr.get(index++)!, done: false };
+        }
+        return { value: undefined as any, done: true };
+      }
+    };
+  }
+  if (isSet) {
+    const set = iterable.value as SchemaSet<any>;
+    const values: RuntimeTypedBinder[] = [];
+    set.forEach(v => values.push(keyToRuntimeTypedBinder(v)));
+    let index = 0;
+    return {
+      [Symbol.iterator]() { return this; },
+      next(): IteratorResult<RuntimeTypedBinder> {
+        if (index < values.length) {
+          return { value: values[index++], done: false };
+        }
+        return { value: undefined as any, done: true };
+      }
+    };
+  }
+  if (isRange) {
+    const range = iterable.value as LazyRange;
+    const gen = range.generate();
+    return {
+      [Symbol.iterator]() { return this; },
+      next(): IteratorResult<RuntimeTypedBinder> {
+        const result = gen.next();
+        if (!result.done) {
+          return { value: { value: result.value, type: { static: { kind: 'int' }, refinements: [] } }, done: false };
+        }
+        return { value: undefined as any, done: true };
+      }
+    };
+  }
+  if (isMap) {
+    const map = iterable.value as SchemaMap<any, RuntimeTypedBinder>;
+    const keys: RuntimeTypedBinder[] = [];
+    map.forEach((_value, key) => keys.push(keyToRuntimeTypedBinder(key)));
+    let index = 0;
+    return {
+      [Symbol.iterator]() { return this; },
+      next(): IteratorResult<RuntimeTypedBinder> {
+        if (index < keys.length) {
+          return { value: keys[index++], done: false };
+        }
+        return { value: undefined as any, done: true };
+      }
+    };
+  }
+  throw new Error('Not iterable');
 }

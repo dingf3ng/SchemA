@@ -21,9 +21,9 @@ import {
   LazyRange,
 } from '../builtins/data-structures';
 import {
-  hasDynamicTypes,
   resolveTypeAnnotation,
   runtimeTypedBinderToKey,
+  keyToRuntimeTypedBinder,
   RuntimeTypedBinder,
   checkLoopInvariants,
   extractInvariants,
@@ -497,9 +497,9 @@ export class Interpreter implements EvaluatorContext {
           iteration++;
         });
       } else if (iterable.type.static.kind === 'map') {
-        (iterable.value as SchemaMap<RuntimeTypedBinder, RuntimeTypedBinder>).forEach((value, key) => {
-          // Keys in maps are already RuntimeTypedBinders
-          const runtimeKey = key as RuntimeTypedBinder;
+        (iterable.value as SchemaMap<any, RuntimeTypedBinder>).forEach((_value, key) => {
+          // Keys in maps are stored as primitives, convert back to RuntimeTypedBinder
+          const runtimeKey = keyToRuntimeTypedBinder(key);
           // Skip binding if the variable name is '_' (unnamed variable)
           if (stmt.variable !== '_') {
             this.currentEnv.define(stmt.variable, runtimeKey);

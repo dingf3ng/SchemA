@@ -33,12 +33,12 @@ import {
   getActualRuntimeType,
   hasDynamicTypes,
   isTruthy,
-  keyToRuntimeTypedBinder,
   resolveTypeAnnotation,
   runtimeTypedBinderToKey,
   RuntimeTypedBinder,
   runtimeTypedBinderToString,
   Sole,
+  getIterator,
 } from './runtime-utils';
 import { Continuation, Focus, MachineState } from './machine-utils';
 import { InvariantTracker } from '../analyzer/synthesizer';
@@ -282,7 +282,7 @@ export class Machine implements EvaluatorContext {
         }
         break;
       }
-      
+
       case 'TupleLiteral': {
         if (expr.elements.length === 0) {
           this.focus = {
@@ -908,8 +908,8 @@ export class Machine implements EvaluatorContext {
       }
 
       case 'for-init': {
+        const iterator = getIterator(value);
         // Value is the iterable, set up iterator
-        const iterator = this.getIterator(value);
         const next = iterator.next();
 
         if (!next.done) {
@@ -1574,58 +1574,6 @@ export class Machine implements EvaluatorContext {
     }
 
     throw new Error('Not a function');
-  }
-
-  private getIterator(iterable: RuntimeTypedBinder): IterableIterator<RuntimeTypedBinder> {
-    // Check static type first, then check actual value type for weak/poly types
-    const staticKind = iterable.type.static.kind;
-    const isArray = staticKind === 'array' || iterable.value instanceof SchemaArray;
-    const isSet = staticKind === 'set' || iterable.value instanceof SchemaSet;
-    const isRange = staticKind === 'range' || iterable.value instanceof LazyRange;
-
-    if (isArray) {
-      const arr = iterable.value as SchemaArray<RuntimeTypedBinder>;
-      let index = 0;
-      return {
-        [Symbol.iterator]() { return this; },
-        next(): IteratorResult<RuntimeTypedBinder> {
-          if (index < arr.length) {
-            return { value: arr.get(index++)!, done: false };
-          }
-          return { value: undefined, done: true };
-        }
-      };
-    }
-    if (isSet) {
-      const set = iterable.value as SchemaSet<any>;
-      const values: RuntimeTypedBinder[] = [];
-      set.forEach(v => values.push(keyToRuntimeTypedBinder(v)));
-      let index = 0;
-      return {
-        [Symbol.iterator]() { return this; },
-        next(): IteratorResult<RuntimeTypedBinder> {
-          if (index < values.length) {
-            return { value: values[index++], done: false };
-          }
-          return { value: undefined, done: true };
-        }
-      };
-    }
-    if (isRange) {
-      const range = iterable.value as LazyRange;
-      const gen = range.generate();
-      return {
-        [Symbol.iterator]() { return this; },
-        next(): IteratorResult<RuntimeTypedBinder> {
-          const result = gen.next();
-          if (!result.done) {
-            return { value: { value: result.value, type: { static: { kind: 'int' }, refinements: [] } }, done: false };
-          }
-          return { value: undefined, done: true };
-        }
-      };
-    }
-    throw new Error('Not iterable');
   }
 
   private evaluateFunctionDeclaration(stmt: FunctionDeclaration): void {

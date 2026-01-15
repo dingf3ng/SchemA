@@ -36,8 +36,8 @@ import {
   runtimeTypedBinderToString,
   RuntimeTypedBinder,
   valuesEqual,
-  sole,
-  Sole
+  Sole,
+  getIterator
 } from './runtime-utils';
 import { InvariantStatement } from '../transpiler/ast-types';
 import { Type, typeToString } from '../type-checker/type-checker-utils';
@@ -112,7 +112,7 @@ export class Evaluator {
 
       case 'MapLiteral': {
         const elements = expr.entries.map(
-          ({key, value}) => {return [this.evaluateExpression(key), this.evaluateExpression(value)]}
+          ({ key, value }) => { return [this.evaluateExpression(key), this.evaluateExpression(value)] }
         );
         const [keyType, valueType] = elements.length > 0 ? [elements[0][0].type.static, elements[0][1].type.static] : [{ kind: 'weak' as const }, { kind: 'weak' as const }];
         const map = new SchemaMap<any, RuntimeTypedBinder>();
@@ -465,7 +465,7 @@ export class Evaluator {
         const invariants = extractInvariants(stmt.body);
         let iteration = 0;
 
-        const iterator = this.getIterator(iterable);
+        const iterator = getIterator(iterable);
         for (const item of iterator) {
           if (stmt.variable !== '_') {
             this.currentEnv.define(stmt.variable, item);
@@ -1361,23 +1361,23 @@ export class Evaluator {
                 };
                 arr.push(record);
               });
-              return { 
-                type: { 
-                  static: { 
-                    kind: 'array', 
-                    elementType: { 
-                      kind: 'record', 
+              return {
+                type: {
+                  static: {
+                    kind: 'array',
+                    elementType: {
+                      kind: 'record',
                       fieldTypes: [
-                        ['from', graphType.nodeType], 
-                        ['to', graphType.nodeType], 
+                        ['from', graphType.nodeType],
+                        ['to', graphType.nodeType],
                         ['weight', { kind: 'int' }]
-                      ] 
-                    } 
-                  }, 
-                  refinements: [] 
-                }, 
-                value: arr 
-              }; 
+                      ]
+                    }
+                  },
+                  refinements: []
+                },
+                value: arr
+              };
             }
           }
         }
@@ -1388,294 +1388,239 @@ export class Evaluator {
   }
 
   private evaluateBinaryTreeMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {
-  const treeType = object.type.static as { kind: 'binarytree' | 'avltree'; elementType: Type };
-  const tree = object.value as BinaryTree<RuntimeTypedBinder> | AVLTree<RuntimeTypedBinder>;
+    const treeType = object.type.static as { kind: 'binarytree' | 'avltree'; elementType: Type };
+    const tree = object.value as BinaryTree<RuntimeTypedBinder> | AVLTree<RuntimeTypedBinder>;
 
-  switch (propertyName) {
-    case 'insert':
-      return {
-        type: { static: { kind: 'function', parameters: [treeType.elementType], returnType: { kind: 'void' } }, refinements: [] },
-        value: {
-          fn: (value: RuntimeTypedBinder) => {
-            if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
-              throw new Error('Internal: Tree value is undefined or invalid');
+    switch (propertyName) {
+      case 'insert':
+        return {
+          type: { static: { kind: 'function', parameters: [treeType.elementType], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: (value: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              object.value.insert(value);
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
             }
-            object.value.insert(value);
-            return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
           }
-        }
-      };
-    case 'search':
-      return {
-        type: { static: { kind: 'function', parameters: [treeType.elementType], returnType: { kind: 'boolean' } }, refinements: [] },
-        value: {
-          fn: (value: RuntimeTypedBinder) => {
-            if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
-              throw new Error('Internal: Tree value is undefined or invalid');
+        };
+      case 'search':
+        return {
+          type: { static: { kind: 'function', parameters: [treeType.elementType], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: (value: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.search(value) };
             }
-            return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.search(value) };
           }
-        }
-      };
-    case 'inOrderTraversal':
-      return {
-        type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
-        value: {
-          fn: () => {
-            if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
-              throw new Error('Internal: Tree value is undefined or invalid');
+        };
+      case 'inOrderTraversal':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const elements = object.value.inOrderTraversal();
+              const arr = new SchemaArray<RuntimeTypedBinder>();
+              elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+              return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
             }
-            const elements = object.value.inOrderTraversal();
-            const arr = new SchemaArray<RuntimeTypedBinder>();
-            elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
-            return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
           }
-        }
-      };
-    case 'preOrderTraversal':
-      return {
-        type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
-        value: {
-          fn: () => {
-            if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
-              throw new Error('Internal: Tree value is undefined or invalid');
+        };
+      case 'preOrderTraversal':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const elements = object.value.preOrderTraversal();
+              const arr = new SchemaArray<RuntimeTypedBinder>();
+              elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+              return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
             }
-            const elements = object.value.preOrderTraversal();
-            const arr = new SchemaArray<RuntimeTypedBinder>();
-            elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
-            return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
           }
-        }
-      };
-    case 'postOrderTraversal':
-      return {
-        type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
-        value: {
-          fn: () => {
-            if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
-              throw new Error('Internal: Tree value is undefined or invalid');
+        };
+      case 'postOrderTraversal':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const elements = object.value.postOrderTraversal();
+              const arr = new SchemaArray<RuntimeTypedBinder>();
+              elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+              return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
             }
-            const elements = object.value.postOrderTraversal();
-            const arr = new SchemaArray<RuntimeTypedBinder>();
-            elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
-            return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
           }
-        }
-      };
-    case 'getHeight':
-      return {
-        type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
-        value: {
-          fn: () => {
-            if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
-              throw new Error('Internal: Tree value is undefined or invalid');
+        };
+      case 'getHeight':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.getHeight() };
             }
-            return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.getHeight() };
           }
-        }
-      };
-    default:
-      throw new Error(`Property ${propertyName} does not exist on BinaryTree/AVLTree`);
+        };
+      default:
+        throw new Error(`Property ${propertyName} does not exist on BinaryTree/AVLTree`);
+    }
   }
-}
 
   // ============================================================================
   // Index Expression Evaluation
   // ============================================================================
 
   public evaluateIndex(object: RuntimeTypedBinder, index: RuntimeTypedBinder): RuntimeTypedBinder {
-  // Resolve actual runtime types for weak/union/intersection/dynamic types
-  const indexActualType = getActualRuntimeType(index);
+    // Resolve actual runtime types for weak/union/intersection/dynamic types
+    const indexActualType = getActualRuntimeType(index);
 
-  // Check if object is an array (by static type or actual value)
-  if (object.type.static.kind === 'array' || object.value instanceof SchemaArray) {
-    if (index.type.static.kind === 'int' || indexActualType === 'int') {
-      const val = (object.value as SchemaArray<RuntimeTypedBinder>).get(index.value as number);
-      return val || { type: { static: { kind: 'void' }, refinements: [] }, value: new Sole() };
-    }
-    // Handle array slicing
-    if (index.type.static.kind === 'array' && index.type.static.elementType.kind === 'int') {
-      const indices = (index.value as SchemaArray<RuntimeTypedBinder>);
-      const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
-      const result = new SchemaArray<RuntimeTypedBinder>();
+    // Check if object is an array (by static type or actual value)
+    if (object.type.static.kind === 'array' || object.value instanceof SchemaArray) {
+      if (index.type.static.kind === 'int' || indexActualType === 'int') {
+        const val = (object.value as SchemaArray<RuntimeTypedBinder>).get(index.value as number);
+        return val || { type: { static: { kind: 'void' }, refinements: [] }, value: new Sole() };
+      }
+      // Handle array slicing
+      if (index.type.static.kind === 'array' && index.type.static.elementType.kind === 'int') {
+        const indices = (index.value as SchemaArray<RuntimeTypedBinder>);
+        const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
+        const result = new SchemaArray<RuntimeTypedBinder>();
 
-      for (let i = 0; i < indices.length; i++) {
-        const idxVal = indices.get(i);
-        if (idxVal && idxVal.value !== undefined) {
-          const idx = idxVal.value as number;
-          if (idx >= 0 && idx < sourceArray.length) {
-            const val = sourceArray.get(idx);
-            if (val) result.push(val);
+        for (let i = 0; i < indices.length; i++) {
+          const idxVal = indices.get(i);
+          if (idxVal && idxVal.value !== undefined) {
+            const idx = idxVal.value as number;
+            if (idx >= 0 && idx < sourceArray.length) {
+              const val = sourceArray.get(idx);
+              if (val) result.push(val);
+            }
           }
         }
+
+        return {
+          type: object.type,
+          value: result
+        };
       }
 
-      return {
-        type: object.type,
-        value: result
-      };
-    }
+      // Handle array slicing with Range object
+      if (index.type.static.kind === 'range') {
+        const range = index.value as LazyRange;
+        const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
+        const result = new SchemaArray<RuntimeTypedBinder>();
 
-    // Handle array slicing with Range object
-    if (index.type.static.kind === 'range') {
-      const range = index.value as LazyRange;
-      const sourceArray = (object.value as SchemaArray<RuntimeTypedBinder>);
-      const result = new SchemaArray<RuntimeTypedBinder>();
+        const start = range.getStart;
+        let end = range.getEnd;
+        const inclusive = range.isInclusive;
 
-      const start = range.getStart;
-      let end = range.getEnd;
-      const inclusive = range.isInclusive;
-
-      if (end === undefined) {
-        end = sourceArray.length;
-      } else {
-        if (inclusive) {
-          end = end + 1;
+        if (end === undefined) {
+          end = sourceArray.length;
+        } else {
+          if (inclusive) {
+            end = end + 1;
+          }
         }
+
+        const actualStart = Math.max(0, Math.min(start, sourceArray.length));
+        const actualEnd = Math.max(0, Math.min(end, sourceArray.length));
+
+        for (let i = actualStart; i < actualEnd; i++) {
+          const val = sourceArray.get(i);
+          if (val) result.push(val);
+        }
+
+        return {
+          type: object.type,
+          value: result
+        };
       }
-
-      const actualStart = Math.max(0, Math.min(start, sourceArray.length));
-      const actualEnd = Math.max(0, Math.min(end, sourceArray.length));
-
-      for (let i = actualStart; i < actualEnd; i++) {
-        const val = sourceArray.get(i);
-        if (val) result.push(val);
-      }
-
-      return {
-        type: object.type,
-        value: result
-      };
     }
-  }
 
-  if (object.type.static.kind === 'map' || object.value instanceof SchemaMap) {
-    const key = runtimeTypedBinderToKey(index);
-    const val = (object.value as SchemaMap<any, RuntimeTypedBinder>).get(key);
-    return val || { type: { static: { kind: 'void' }, refinements: [] }, value: new Sole() };
-  }
-
-  if (object.type.static.kind === 'tuple' || Array.isArray(object.value)) {
-    if (index.type.static.kind === 'int' || indexActualType === 'int') {
-      const idx = index.value as number;
-      const tupleValue = object.value as RuntimeTypedBinder[];
-      if (idx >= 0 && idx < tupleValue.length) {
-        return tupleValue[idx];
-      }
-      throw new Error(`Tuple index ${idx} out of bounds (length: ${tupleValue.length})`);
+    if (object.type.static.kind === 'map' || object.value instanceof SchemaMap) {
+      const key = runtimeTypedBinderToKey(index);
+      const val = (object.value as SchemaMap<any, RuntimeTypedBinder>).get(key);
+      return val || { type: { static: { kind: 'void' }, refinements: [] }, value: new Sole() };
     }
-    throw new Error('Tuple indices must be integers');
-  }
 
-  if (object.type.static.kind === 'record' || object.value instanceof Map) {
-    if (index.type.static.kind === 'string' || indexActualType === 'string') {
-      const recordValue = object.value as Map<string, RuntimeTypedBinder>;
-      const key = index.value as string;
-      if (recordValue.has(key)) {
-        return recordValue.get(key)!;
+    if (object.type.static.kind === 'tuple' || Array.isArray(object.value)) {
+      if (index.type.static.kind === 'int' || indexActualType === 'int') {
+        const idx = index.value as number;
+        const tupleValue = object.value as RuntimeTypedBinder[];
+        if (idx >= 0 && idx < tupleValue.length) {
+          return tupleValue[idx];
+        }
+        throw new Error(`Tuple index ${idx} out of bounds (length: ${tupleValue.length})`);
       }
-      throw new Error(`Record does not have field '${index.value}'`);
+      throw new Error('Tuple indices must be integers');
     }
-    throw new Error('Record indices must be strings');
-  }
 
-  throw new Error('Invalid index expression');
-}
+    if (object.type.static.kind === 'record' || object.value instanceof Map) {
+      if (index.type.static.kind === 'string' || indexActualType === 'string') {
+        const recordValue = object.value as Map<string, RuntimeTypedBinder>;
+        const key = index.value as string;
+        if (recordValue.has(key)) {
+          return recordValue.get(key)!;
+        }
+        throw new Error(`Record does not have field '${index.value}'`);
+      }
+      throw new Error('Record indices must be strings');
+    }
+
+    throw new Error('Invalid index expression');
+  }
 
   // ============================================================================
   // Invariant Helper
   // ============================================================================
 
   private checkInvariants(invariants: InvariantStatement[]): void {
-  for(const invariant of invariants) {
-    this.checkSingleInvariant(invariant);
+    for (const invariant of invariants) {
+      this.checkSingleInvariant(invariant);
+    }
   }
-}
 
   private checkSingleInvariant(invariant: InvariantStatement): void {
-  const condition = this.evaluateExpression(invariant.condition);
-  if(typeof condition.value !== 'boolean') {
-  throw new Error(`@invariant condition must evaluate to a boolean at ${invariant.line}:${invariant.column}`);
-}
-if (!condition.value) {
-  let message = 'Invariant violated';
-  if (invariant.message && invariant.message.type === 'StringLiteral') {
-    message = invariant.message.value;
-  }
-  // Include current state in error message
-  const state = this.captureEnvironmentState();
-  throw new Error(`${message}\nCurrent state:\n${state}`);
-}
+    const condition = this.evaluateExpression(invariant.condition);
+    if (typeof condition.value !== 'boolean') {
+      throw new Error(`@invariant condition must evaluate to a boolean at ${invariant.line}:${invariant.column}`);
+    }
+    if (!condition.value) {
+      let message = 'Invariant violated';
+      if (invariant.message && invariant.message.type === 'StringLiteral') {
+        message = invariant.message.value;
+      }
+      // Include current state in error message
+      const state = this.captureEnvironmentState();
+      throw new Error(`${message}\nCurrent state:\n${state}`);
+    }
   }
 
   private captureEnvironmentState(): string {
-  const bindings: string[] = [];
-  const envBindings = this.currentEnv.getAllBindings();
+    const bindings: string[] = [];
+    const envBindings = this.currentEnv.getAllBindings();
 
-  for (const [name, binding] of envBindings) {
-    // Skip function bindings for cleaner output
-    if (binding.type.static.kind === 'function') {
-      continue;
+    for (const [name, binding] of envBindings) {
+      // Skip function bindings for cleaner output
+      if (binding.type.static.kind === 'function') {
+        continue;
+      }
+      const valueStr = runtimeTypedBinderToString(binding);
+      bindings.push(`  ${name} = ${valueStr}`);
     }
-    const valueStr = runtimeTypedBinderToString(binding);
-    bindings.push(`  ${name} = ${valueStr}`);
-  }
 
-  return bindings.length > 0 ? bindings.join('\n') : '  (no variables)';
-}
-
-  // ============================================================================
-  // Iterator Helper
-  // ============================================================================
-
-  private getIterator(iterable: RuntimeTypedBinder): IterableIterator < RuntimeTypedBinder > {
-  const staticKind = iterable.type.static.kind;
-  const isArray = staticKind === 'array' || iterable.value instanceof SchemaArray;
-  const isSet = staticKind === 'set' || iterable.value instanceof SchemaSet;
-  const isRange = staticKind === 'range' || iterable.value instanceof LazyRange;
-
-  if(isArray) {
-    const arr = iterable.value as SchemaArray<RuntimeTypedBinder>;
-    let index = 0;
-    return {
-      [Symbol.iterator]() { return this; },
-      next(): IteratorResult<RuntimeTypedBinder> {
-        if (index < arr.length) {
-          return { value: arr.get(index++)!, done: false };
-        }
-        return { value: undefined as any, done: true };
-      }
-    };
+    return bindings.length > 0 ? bindings.join('\n') : '  (no variables)';
   }
-    if(isSet) {
-    const set = iterable.value as SchemaSet<any>;
-    const values: RuntimeTypedBinder[] = [];
-    set.forEach(v => values.push(keyToRuntimeTypedBinder(v)));
-    let index = 0;
-    return {
-      [Symbol.iterator]() { return this; },
-      next(): IteratorResult<RuntimeTypedBinder> {
-        if (index < values.length) {
-          return { value: values[index++], done: false };
-        }
-        return { value: undefined as any, done: true };
-      }
-    };
-  }
-    if(isRange) {
-    const range = iterable.value as LazyRange;
-    const gen = range.generate();
-    return {
-      [Symbol.iterator]() { return this; },
-      next(): IteratorResult<RuntimeTypedBinder> {
-        const result = gen.next();
-        if (!result.done) {
-          return { value: { value: result.value, type: { static: { kind: 'int' }, refinements: [] } }, done: false };
-        }
-        return { value: undefined as any, done: true };
-      }
-    };
-  }
-    throw new Error('Not iterable');
-}
 }

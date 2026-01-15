@@ -1,17 +1,17 @@
-# Schema - Towards Zero-Cost Algorithm Exploration
+# Schema - Towards Zero-Cost DS&A Experiment
 
->> A domain-specific language (DSL) designed for teaching data structures and algorithms.
+> A domain-specific language (DSL) designed for teaching data structures and algorithms.
 
 ## Overview
 
-SchemA is a simple, focused programming language that removes all unnecessary complexity and helps students concentrate on learning, implementing and debugging algorithms and data structures. It features:
+SchemA is a simple, focused programming language that removes all unnecessary complexity and helps students concentrate on learning, experimenting and debugging algorithms and data structures. It features:
 
 - Clean, minimal syntax
 - Built-in data structures (Array, Map, Set, Heap, HeapMap, Graph, Tree)
-- Static type system with full inference - no annotation is needed
+- Gradual type system with full static inference - no annotation is needed
 - No OOP/FP complexity - just algorithms and data structures
-- Built-in debug toolbox - debugger is no longer a additional tool beyond language itself [In Progress]
-- Dynamic refinement - automated loop invariant synthesis [In Progress]
+- Built-in debug toolbox - debugger is no longer a additional tool beyond language itself
+- Dynamic refinement - automated invariant synthesis and checking
 
 ## Online Playground
 Click [Here](https://dingf3ng.github.io/SchemA/) to play with SchemA now
@@ -83,7 +83,6 @@ let distances = dijkstra(g, 0)
 for i in ..g.size() {
   print("Distance to node", i, ":", distances.get(i))
 }
-
 ```
 
 ## Language Design Principles
@@ -91,11 +90,11 @@ for i in ..g.size() {
 1. **Focus**: Only features needed for DSA learning
 2. **Clarity**: Syntax that reads like pseudocode, no explicit type annotations
 3. **Debugging-As-Primitive**: Easy to debug with built-in tools 
-4. **Practicality**: Can implement any algorithms covered in typical courses
+4. **Completeness**: Can implement any algorithms covered in typical courses
 
 ## Type System
 
-SchemA has a simple type system with the following types:
+SchemA has a simple gradual type system with the following static types:
 
 - `int` - integer values
 - `float` - non-integer numurics
@@ -109,21 +108,28 @@ SchemA has a simple type system with the following types:
 - `AVLTree` - self-balanced trees
 - `MinHeap<T>` / `MaxHeap<T>` - heaps
 - `Graph<T>` - graphs with nodes of type T
+- `tuple` - can be a sum of multiple types
+- `record` - can be a tagged sum of multiple types
 
-Beyond these primitives, SchemA's type system natively support 2 type constructors: type union and type intersection. Examples:
-- `int & float` - intersection of int and float, in SchemA, `inf`(infinity) is of this type
-- `int | string` - union of int and string
-
-Annotating programs with types might be painful, but luckily, all types can be **automatically inferred** in SchemA:
+Beyond these schemA features a dynamic resolution for tuple and record access, as it is sometimes impossible to get the type statically. For example:
 
 ```schema
-let x = 10              // inferred as number
+do proc(idx) {
+  let tup = (1, false, "string")
+  print(tup[idx])       // Cannot be determined statically
+}
+```
+
+Annotating programs with types might be painful, but luckily, (almost, if statically) all types can be **automatically inferred** in SchemA:
+
+```schema
+let x = 10              // inferred as int
 let name = "Alice"      // inferred as string
 let arr = [1, 2, 3]     // inferred as Array<int>
 ```
 For more complex ones,
 ```schema
-let x = 10              // inferred as number
+let x = 10              // inferred as int
 let name = "Alice"      // inferred as string
 let arr = [1, 2, 3]     // inferred as Array<int>
 ```
@@ -131,7 +137,7 @@ let arr = [1, 2, 3]     // inferred as Array<int>
 You can also add explicit type annotations:
 
 ```schema
-do add(x: number, y: number) -> number {
+do add(x: int, y: int) -> int {
   return x + y
 }
 ```
@@ -149,10 +155,8 @@ SchemA is ideal for:
 
 ## Future Enhancements
 
-- [ ] Step-by-step debugger
 - [ ] Visualization of data structures
 - [ ] Better interactive programming experience
-- [ ] Invariant synthesis for debugging
 
 ## License
 
@@ -201,30 +205,6 @@ node packages/core/dist/cli.js examples/data-structures.schema
 node packages/core/dist/cli.js examples/minimal.schema
 ```
 
-## Project Structure
-
-```
-SchemA/
-├── packages/
-│   ├── core/           # Core language implementation
-│   │   └── src/
-│   │       ├── lexer.ts          # Tokenization
-│   │       ├── parser.ts         # AST generation
-│   │       ├── type-checker.ts   # Type system
-│   │       ├── interpreter.ts    # Evaluation
-│   │       └── runtime/
-│   │           ├── data-structures.ts  # Built-in structures
-│   │           |-- environment.ts      # Runtime environment
-|   |           └── values.ts           # Runtime values
-│   └── web/            # Web playground
-└── examples/           # Example algorithms
-    ├── dijkstra.schema
-    ├── bellman-ford.schema
-    ├── segment-tree.schema
-    |-- data-structures.schema
-    └── ...
-```
-
 ## Contributing
 
-This is an educational project. Contributions welcome!
+Any contribution is welcome!

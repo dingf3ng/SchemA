@@ -124,8 +124,6 @@ export class TypeChecker {
           iterated.kind !== 'array' &&
           iterated.kind !== 'set' &&
           iterated.kind !== 'map' &&
-          iterated.kind !== 'heap' &&
-          iterated.kind !== 'heapmap' &&
           iterated.kind !== 'range' &&
           iterated.kind !== 'dynamic'
         ) {

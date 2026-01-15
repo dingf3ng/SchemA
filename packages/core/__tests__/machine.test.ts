@@ -506,6 +506,19 @@ describe('Abstract Machine', () => {
       expect(output).toEqual(['15']);
     });
 
+    it('should run map iteration', () => {
+      const output = runBoth(`
+        let m = Map()
+        m.set("a", 1)
+        m.set("b", 2)
+        for key in m {
+          let value = m.get(key)
+          print(value)
+        }
+      `);
+      expect(output).toEqual(['1', '2']);
+    });
+
     it('should find maximum in array', () => {
       const output = runBoth(`
         do findMax(arr: Array<int>) -> int {
