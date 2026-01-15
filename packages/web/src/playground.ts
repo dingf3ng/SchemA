@@ -460,8 +460,8 @@ function initializeStepper(editor: Monaco.editor.IStandaloneCodeEditor, monaco: 
     stepperWorker.postMessage({ type: 'initialize', payload: { code } });
   }
 
-  function updateStepperState(state: { statementIndex: number; environment: Record<string, unknown>; output: string[]; finished: boolean; line: number; column: number }, editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) {
-    const { statementIndex, environment, output, finished, line } = state;
+  function updateStepperState(state: { statementIndex: number; environment: Record<string, SerializedVariable>; output: string[]; finished: boolean; line: number; column: number }, editor: Monaco.editor.IStandaloneCodeEditor, monaco: typeof Monaco) {
+    const { statementIndex, environment, output, finished, line, column } = state;
 
     // Update info
     if (finished) {
@@ -487,9 +487,10 @@ function initializeStepper(editor: Monaco.editor.IStandaloneCodeEditor, monaco: 
       updateEnvironmentViewer(environment, environmentContent);
     }
 
-    // Highlight current line
+    // Highlight current position (line + column marker)
     if (line > 0) {
-      currentLineDecoration = editor.deltaDecorations(currentLineDecoration, [
+      const decorations: Monaco.editor.IModelDeltaDecoration[] = [
+        // Line background highlight
         {
           range: new monaco.Range(line, 1, line, 1),
           options: {
@@ -498,7 +499,20 @@ function initializeStepper(editor: Monaco.editor.IStandaloneCodeEditor, monaco: 
             glyphMarginClassName: 'current-line-glyph'
           }
         }
-      ]);
+      ];
+
+      // Add column marker if we have valid column info
+      if (column > 0) {
+        decorations.push({
+          range: new monaco.Range(line, column, line, column + 1),
+          options: {
+            className: 'current-step-marker',
+            inlineClassName: 'current-step-inline'
+          }
+        });
+      }
+
+      currentLineDecoration = editor.deltaDecorations(currentLineDecoration, decorations);
 
       // Scroll to line
       editor.revealLineInCenter(line);
@@ -507,23 +521,65 @@ function initializeStepper(editor: Monaco.editor.IStandaloneCodeEditor, monaco: 
     }
   }
 
-  function updateEnvironmentViewer(environment: Record<string, unknown>, container: HTMLElement) {
+  interface SerializedVariable {
+    name: string;
+    value: unknown;
+    type: string;
+    isInternal: boolean;
+  }
+
+  function updateEnvironmentViewer(environment: Record<string, SerializedVariable>, container: HTMLElement) {
     if (!environment || Object.keys(environment).length === 0) {
       container.innerHTML = 'No variables yet.';
       return;
     }
 
-    const entries = Object.entries(environment)
-      .filter(([name]) => !name.startsWith('_') && !['print', 'MinHeap', 'MaxHeap', 'MinHeapMap', 'MaxHeapMap', 'Graph'].includes(name))
-      .map(([name, value]) => {
-        const displayValue = formatValue(value);
-        return `<div class="env-var"><span class="env-var-name">${escapeHtml(name)}:</span><span class="env-var-value">${escapeHtml(displayValue)}</span></div>`;
-      });
+    // Separate user variables and internal variables
+    const userVars: Array<[string, SerializedVariable]> = [];
+    const internalVars: Array<[string, SerializedVariable]> = [];
 
-    if (entries.length === 0) {
-      container.innerHTML = 'No user variables yet.';
+    // Built-in names to filter out
+    const builtinNames = ['print', 'MinHeap', 'MaxHeap', 'MinHeapMap', 'MaxHeapMap', 'Graph', 'BinaryTree', 'AVLTree', 'Set', 'Map', 'Array'];
+
+    for (const [name, variable] of Object.entries(environment)) {
+      // Skip built-in functions and types
+      if (builtinNames.includes(name)) continue;
+
+      if (variable.isInternal || name.startsWith('$')) {
+        internalVars.push([name, variable]);
+      } else if (!name.startsWith('_')) {
+        userVars.push([name, variable]);
+      }
+    }
+
+    let html = '';
+
+    // User variables section
+    if (userVars.length > 0) {
+      html += '<div class="env-section"><div class="env-section-header">Variables</div>';
+      html += userVars.map(([name, variable]) => {
+        const displayValue = formatValue(variable.value);
+        const typeLabel = variable.type ? `<span class="env-var-type">${escapeHtml(variable.type)}</span>` : '';
+        return `<div class="env-var"><span class="env-var-name">${escapeHtml(name)}:</span>${typeLabel}<span class="env-var-value">${escapeHtml(displayValue)}</span></div>`;
+      }).join('');
+      html += '</div>';
+    }
+
+    // Internal variables section (collapsible)
+    if (internalVars.length > 0) {
+      html += '<div class="env-section env-internal"><div class="env-section-header">Internal ($)</div>';
+      html += internalVars.map(([name, variable]) => {
+        const displayValue = formatValue(variable.value);
+        const typeLabel = variable.type ? `<span class="env-var-type">${escapeHtml(variable.type)}</span>` : '';
+        return `<div class="env-var env-var-internal"><span class="env-var-name">${escapeHtml(name)}:</span>${typeLabel}<span class="env-var-value">${escapeHtml(displayValue)}</span></div>`;
+      }).join('');
+      html += '</div>';
+    }
+
+    if (html === '') {
+      container.innerHTML = 'No variables yet.';
     } else {
-      container.innerHTML = entries.join('');
+      container.innerHTML = html;
     }
   }
 

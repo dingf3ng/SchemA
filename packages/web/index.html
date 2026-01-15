@@ -154,8 +154,39 @@
       line-height: 1.6;
     }
 
+    .env-section {
+      margin-bottom: 16px;
+    }
+
+    .env-section-header {
+      font-size: 11px;
+      font-weight: 600;
+      color: #858585;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #3e3e42;
+    }
+
+    .env-internal {
+      opacity: 0.7;
+    }
+
+    .env-internal .env-section-header {
+      color: #6a9955;
+    }
+
     .env-var {
       margin-bottom: 8px;
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .env-var-internal {
+      opacity: 0.8;
     }
 
     .env-var-name {
@@ -163,16 +194,40 @@
       font-weight: 500;
     }
 
+    .env-var-type {
+      color: #4ec9b0;
+      font-size: 10px;
+      padding: 1px 4px;
+      background: rgba(78, 201, 176, 0.1);
+      border-radius: 3px;
+      margin-left: 4px;
+    }
+
     .env-var-value {
       color: #ce9178;
       margin-left: 8px;
+      word-break: break-all;
     }
 
     .current-line-highlight {
-      background: rgba(255, 255, 0, 0.1);
-      position: absolute;
-      width: 100%;
-      pointer-events: none;
+      background: rgba(255, 255, 0, 0.15) !important;
+      border-left: 3px solid #ffd700 !important;
+    }
+
+    .current-line-glyph {
+      background: #ffd700;
+      width: 4px !important;
+      margin-left: 3px;
+    }
+
+    .current-step-marker {
+      background: rgba(255, 215, 0, 0.4) !important;
+      border-radius: 2px;
+    }
+
+    .current-step-inline {
+      border-bottom: 2px solid #ffd700 !important;
+      font-weight: bold;
     }
 
     .main-content {

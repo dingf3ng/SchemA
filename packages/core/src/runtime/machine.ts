@@ -62,6 +62,9 @@ export class Machine implements EvaluatorContext {
   private output: string[] = [];
   private trackerStack: InvariantTracker[] = [];
   private evaluator: Evaluator;
+  // Track last known source position for highlighting during value evaluation
+  private lastLine: number = 0;
+  private lastColumn: number = 0;
 
   constructor() {
     this.globalEnv = new Environment();
@@ -120,9 +123,19 @@ export class Machine implements EvaluatorContext {
     if (this.focus.kind === 'expr') {
       line = this.focus.expr.line;
       column = this.focus.expr.column;
+      // Update last known position
+      this.lastLine = line;
+      this.lastColumn = column;
     } else if (this.focus.kind === 'stmt') {
       line = this.focus.stmt.line;
       column = this.focus.stmt.column;
+      // Update last known position
+      this.lastLine = line;
+      this.lastColumn = column;
+    } else if (this.focus.kind === 'value') {
+      // Use last known position when evaluating a value
+      line = this.lastLine;
+      column = this.lastColumn;
     }
 
     return {

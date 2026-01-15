@@ -11,7 +11,7 @@ export * from './transpiler/ast-types';
 export * from './runtime/runtime-utils';
 export * from './builtins/data-structures';
 export { Stepper } from './runtime/stepper';
-export type { StepState } from './runtime/stepper';
+export type { StepState, SerializedVariable } from './runtime/stepper';
 
 
 export function run(code: string): string[] {

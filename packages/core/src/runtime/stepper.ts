@@ -14,12 +14,19 @@ import { MachineState } from './machine-utils';
 export interface StepState {
   statementIndex: number;
   statement: Statement | null;
-  environment: Map<string, RuntimeTypedBinder>;
+  environment: Record<string, SerializedVariable>;
   output: string[];
   finished: boolean;
   line: number;
   column: number;
   callStack: Array<{ functionName: string; line: number; column: number }>;
+}
+
+export interface SerializedVariable {
+  name: string;
+  value: unknown;
+  type: string;
+  isInternal: boolean;
 }
 
 export class Stepper {
@@ -65,7 +72,7 @@ export class Stepper {
       return {
         statementIndex: 0,
         statement: null,
-        environment: new Map(),
+        environment: {},
         output: [],
         finished: false,
         line: 0,
@@ -216,63 +223,120 @@ export class Stepper {
 
   /**
    * Serialize environment for display
+   * Returns a plain object (not Map) for JSON serialization compatibility with postMessage
    */
-  private serializeEnvironment(env: Environment): Map<string, RuntimeTypedBinder> {
+  private serializeEnvironment(env: Environment): Record<string, SerializedVariable> {
     const allBindings = env.getAllBindings();
-    const serialized: Map<string, RuntimeTypedBinder> = new Map();
+    const serialized: Record<string, SerializedVariable> = {};
 
     for (const [name, binder] of allBindings.entries()) {
-      // Skip internal/temporary variables
-      if (name.startsWith('$')) {
-        continue;
-      }
-      serialized.set(name, this.serializeValue(binder));
+      // Mark internal/temporary variables (starting with $) but still include them
+      const isInternal = name.startsWith('$');
+      serialized[name] = this.serializeValue(name, binder, isInternal);
     }
 
     return serialized;
   }
 
   /**
+   * Convert RuntimeType to a string representation
+   */
+  private typeToString(runtimeType: { static: { kind: string } }): string {
+    if (!runtimeType || !runtimeType.static) return 'unknown';
+    return runtimeType.static.kind;
+  }
+
+  /**
    * Serialize a runtime value for display
    */
-  private serializeValue(binder: RuntimeTypedBinder): any {
+  private serializeValue(name: string, binder: RuntimeTypedBinder, isInternal: boolean): SerializedVariable {
     const value = binder.value;
+    const type = this.typeToString(binder.type);
 
+    // Handle null/undefined
     if (value === null || value === undefined) {
-      return binder;
+      return { name, value, type, isInternal };
     }
 
     // Handle built-in functions
     if (typeof value === 'object' && 'fn' in value) {
-      return { ...binder, value: '<function>' };
+      return { name, value: '<builtin function>', type: 'function', isInternal };
     }
 
-    // Handle function declarations
+    // Handle function declarations (user-defined functions)
     if (typeof value === 'object' && 'body' in value && 'parameters' in value) {
-      return { ...binder, value: '<function>' };
+      const funcValue = value as { parameters?: Array<{ name: string }> };
+      const params = funcValue.parameters || [];
+      const paramNames = params.map(p => p.name).join(', ');
+      // The variable name IS the function name for user-defined functions
+      return { name, value: `<function(${paramNames})>`, type: 'function', isInternal };
     }
 
     // Handle primitives
     if (typeof value !== 'object') {
-      return binder;
+      return { name, value, type, isInternal };
     }
 
-    // Handle arrays
+    // Handle arrays - serialize array contents
     if (Array.isArray(value)) {
-      return {
-        ...binder,
-        value: value.map((item: any) =>
-          typeof item === 'object' && 'value' in item ? this.serializeValue(item) : item
-        )
-      };
+      const serializedArray = value.map((item: unknown, idx: number) => {
+        if (typeof item === 'object' && item !== null && 'value' in item) {
+          const itemBinder = item as RuntimeTypedBinder;
+          return this.serializeValue(`${name}[${idx}]`, itemBinder, isInternal).value;
+        }
+        return item;
+      });
+      return { name, value: serializedArray, type: 'array', isInternal };
     }
 
-    // Handle data structures
+    // Handle data structures (MinHeap, MaxHeap, Graph, etc.)
     if (value.constructor && value.constructor.name !== 'Object') {
-      return { ...binder, value: `<${value.constructor.name}>` };
+      const className = value.constructor.name;
+      // Try to get size/length info if available
+      const sizeInfo = this.getStructureInfo(value);
+      return { name, value: `<${className}${sizeInfo}>`, type: className, isInternal };
     }
 
-    // Return as-is for other objects
-    return binder;
+    // Handle plain objects - serialize recursively
+    if (typeof value === 'object') {
+      try {
+        // Attempt to create a serializable representation
+        const serialized: Record<string, unknown> = {};
+        for (const [key, val] of Object.entries(value)) {
+          if (typeof val === 'object' && val !== null && 'value' in val) {
+            serialized[key] = this.serializeValue(key, val as RuntimeTypedBinder, isInternal).value;
+          } else {
+            serialized[key] = val;
+          }
+        }
+        return { name, value: serialized, type: 'object', isInternal };
+      } catch {
+        return { name, value: '<object>', type: 'object', isInternal };
+      }
+    }
+
+    return { name, value: String(value), type: 'unknown', isInternal };
+  }
+
+  /**
+   * Get size/length info for data structures
+   */
+  private getStructureInfo(value: unknown): string {
+    if (value === null || typeof value !== 'object') return '';
+
+    const obj = value as Record<string, unknown>;
+
+    // Check for common size properties
+    if ('size' in obj && typeof obj.size === 'number') {
+      return ` size=${obj.size}`;
+    }
+    if ('length' in obj && typeof obj.length === 'number') {
+      return ` length=${obj.length}`;
+    }
+    if ('count' in obj && typeof obj.count === 'number') {
+      return ` count=${obj.count}`;
+    }
+
+    return '';
   }
 }
