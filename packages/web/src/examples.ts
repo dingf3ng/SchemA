@@ -129,7 +129,7 @@ while maxHeap.size() > 0 {
     'Data Structures': `// Data structures demo
 let myMap = Map()
 myMap["name"] = "Alice"
-myMap["age"] = 30
+myMap["age"] = "30"
 myMap["city"] = "New York"
 
 print("Map contents:")

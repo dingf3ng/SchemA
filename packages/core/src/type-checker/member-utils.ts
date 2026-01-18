@@ -56,6 +56,30 @@ export function synthArrayMember(expr: MemberExpression, objectType: { kind: 'ar
       parameters: [],
       returnType: objectType.elementType,
     };
+  } else if (expr.property.name === 'isEmpty') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'boolean' },
+    };
+  } else if (expr.property.name === 'append') {
+    return {
+      kind: 'function',
+      parameters: [{ kind: 'array', elementType: objectType.elementType }],
+      returnType: { kind: 'array', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'reverse') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'void' },
+    };
+  } else if (expr.property.name === 'clear') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'void' },
+    };
   } else {
     throw new Error(
       `Type checking: unknown array member "${expr.property.name}", at ${expr.line}, ${expr.column}`
@@ -113,6 +137,30 @@ export function synthMapMember(expr: MemberExpression, objectType: { kind: 'map'
         },
       },
     };
+  } else if (expr.property.name === 'delete') {
+    return {
+      kind: 'function',
+      parameters: [objectType.keyType],
+      returnType: { kind: 'boolean' },
+    };
+  } else if (expr.property.name === 'clear') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'void' },
+    };
+  } else if (expr.property.name === 'isEmpty') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'boolean' },
+    };
+  } else if (expr.property.name === 'getOrDefault') {
+    return {
+      kind: 'function',
+      parameters: [objectType.keyType, objectType.valueType],
+      returnType: objectType.valueType,
+    };
   } else {
     throw new Error(
       `Type checking: property "${expr.property.name}" does not exist on map type, at ${expr.line}, ${expr.column}`
@@ -145,6 +193,48 @@ export function synthSetMember(expr: MemberExpression, objectType: { kind: 'set'
       parameters: [objectType.elementType],
       returnType: { kind: 'void' },
     };
+  } else if (expr.property.name === 'clear') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'void' },
+    };
+  } else if (expr.property.name === 'isEmpty') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'boolean' },
+    };
+  } else if (expr.property.name === 'toArray') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'array', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'union') {
+    return {
+      kind: 'function',
+      parameters: [{ kind: 'set', elementType: objectType.elementType }],
+      returnType: { kind: 'set', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'intersection') {
+    return {
+      kind: 'function',
+      parameters: [{ kind: 'set', elementType: objectType.elementType }],
+      returnType: { kind: 'set', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'difference') {
+    return {
+      kind: 'function',
+      parameters: [{ kind: 'set', elementType: objectType.elementType }],
+      returnType: { kind: 'set', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'values') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'array', elementType: objectType.elementType },
+    };
   } else {
     throw new Error(
       `Type checking: property "${expr.property.name}" does not exist on set type, at ${expr.line}, ${expr.column}`
@@ -176,6 +266,24 @@ function synthHeapMember(expr: MemberExpression, objectType: { kind: 'heap', ele
       kind: 'function',
       parameters: [],
       returnType: { kind: 'int' }
+    };
+  } else if (expr.property.name === 'isEmpty') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'boolean' },
+    };
+  } else if (expr.property.name === 'clear') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'void' },
+    };
+  } else if (expr.property.name === 'toArray') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'array', elementType: objectType.elementType },
     };
   } else {
     throw new Error(
@@ -210,6 +318,54 @@ function synthHeapMapMember(expr: MemberExpression, objectType: { kind: 'heapmap
         parameters: [],
         returnType: { kind: 'int' }
       };
+    } else if (expr.property.name === 'isEmpty') {
+      return {
+        kind: 'function',
+        parameters: [],
+        returnType: { kind: 'boolean' },
+      };
+    } else if (expr.property.name === 'has') {
+      return {
+        kind: 'function',
+        parameters: [objectType.keyType],
+        returnType: { kind: 'boolean' },
+      };
+    } else if (expr.property.name === 'getPriority') {
+      return {
+        kind: 'function',
+        parameters: [objectType.keyType],
+        returnType: objectType.valueType,
+      };
+    } else if (expr.property.name === 'updatePriority') {
+      return {
+        kind: 'function',
+        parameters: [objectType.keyType, objectType.valueType],
+        returnType: { kind: 'void' },
+      };
+    } else if (expr.property.name === 'delete') {
+      return {
+        kind: 'function',
+        parameters: [objectType.keyType],
+        returnType: { kind: 'void' },
+      };
+    } else if (expr.property.name === 'clear') {
+      return {
+        kind: 'function',
+        parameters: [],
+        returnType: { kind: 'void' },
+      };
+    } else if (expr.property.name === 'entries') {
+      return {
+        kind: 'function',
+        parameters: [],
+        returnType: {
+          kind: 'array',
+          elementType: {
+            kind: 'tuple',
+            elementTypes: [objectType.keyType, objectType.valueType],
+          },
+        },
+      };
     } else {
       throw new Error(
         `Type checking: unknown heapmap member "${expr.property.name}", at ${expr.line}, ${expr.column}`
@@ -238,6 +394,78 @@ export function synthTreeMember(expr: MemberExpression, objectType: { kind: 'bin
       kind: 'function',
       parameters: [],
       returnType: { kind: 'int' },
+    };
+  } else if (expr.property.name === 'delete') {
+    return {
+      kind: 'function',
+      parameters: [objectType.elementType],
+      returnType: { kind: 'boolean' },
+    };
+  } else if (expr.property.name === 'min') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: objectType.elementType,
+    };
+  } else if (expr.property.name === 'max') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: objectType.elementType,
+    };
+  } else if (expr.property.name === 'size') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'int' },
+    };
+  } else if (expr.property.name === 'isEmpty') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'boolean' },
+    };
+  } else if (expr.property.name === 'inorder') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'array', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'preorder') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'array', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'postorder') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'array', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'clear') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'void' },
+    };
+  } else if (expr.property.name === 'left') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'binarytree', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'right') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'binarytree', elementType: objectType.elementType },
+    };
+  } else if (expr.property.name === 'value') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: objectType.elementType,
     };
   } else {
     throw new Error(
@@ -323,6 +551,66 @@ export function synthGraphMember(expr: MemberExpression, objectType: { kind: 'gr
       kind: 'function',
       parameters: [],
       returnType: { kind: 'array', elementType: objectType.nodeType },
+    };
+  } else if (expr.property.name === 'removeVertex') {
+    return {
+      kind: 'function',
+      parameters: [objectType.nodeType],
+      returnType: { kind: 'void' },
+    };
+  } else if (expr.property.name === 'removeEdge') {
+    return {
+      kind: 'function',
+      parameters: [objectType.nodeType, objectType.nodeType],
+      returnType: { kind: 'void' },
+    };
+  } else if (expr.property.name === 'getEdgeWeight') {
+    return {
+      kind: 'function',
+      parameters: [objectType.nodeType, objectType.nodeType],
+      returnType: { kind: 'int' },
+    };
+  } else if (expr.property.name === 'setEdgeWeight') {
+    return {
+      kind: 'function',
+      parameters: [objectType.nodeType, objectType.nodeType, { kind: 'int' }],
+      returnType: { kind: 'void' },
+    };
+  } else if (expr.property.name === 'degree') {
+    return {
+      kind: 'function',
+      parameters: [objectType.nodeType],
+      returnType: { kind: 'int' },
+    };
+  } else if (expr.property.name === 'inDegree') {
+    return {
+      kind: 'function',
+      parameters: [objectType.nodeType],
+      returnType: { kind: 'int' },
+    };
+  } else if (expr.property.name === 'outDegree') {
+    return {
+      kind: 'function',
+      parameters: [objectType.nodeType],
+      returnType: { kind: 'int' },
+    };
+  } else if (expr.property.name === 'edgeCount') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'int' },
+    };
+  } else if (expr.property.name === 'isEmpty') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'boolean' },
+    };
+  } else if (expr.property.name === 'clear') {
+    return {
+      kind: 'function',
+      parameters: [],
+      returnType: { kind: 'void' },
     };
   } else {
     throw new Error(

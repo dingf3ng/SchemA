@@ -2,7 +2,7 @@
 
 This document describes the built-in data structures available in SchemA and their methods.
 
-## Array<T>
+## Array\<T>
 
 A dynamic array/list that holds elements of type `T`.
 
@@ -16,19 +16,14 @@ A dynamic array/list that holds elements of type `T`.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `get` | `(int) -> T` | Get element at index |
-| `set` | `(int, T) -> void` | Set element at index |
 | `isEmpty` | `() -> boolean` | Check if array is empty |
-| `contains` | `(T) -> boolean` | Check if element exists |
-| `indexOf` | `(T) -> int` | Find index of element (-1 if not found) |
-| `slice` | `(int, int) -> Array<T>` | Return subarray from start to end index |
-| `concat` | `(Array<T>) -> Array<T>` | Concatenate two arrays |
+| `append` | `(Array<T>) -> Array<T>` | Concatenate two arrays |
 | `reverse` | `() -> void` | Reverse array in place |
 | `clear` | `() -> void` | Remove all elements |
 
 ---
 
-## Map<K, V>
+## Map\<K, V>
 
 A hash map/dictionary mapping keys of type `K` to values of type `V`.
 
@@ -53,7 +48,7 @@ A hash map/dictionary mapping keys of type `K` to values of type `V`.
 
 ---
 
-## Set<T>
+## Set\<T>
 
 A hash set containing unique elements of type `T`.
 
@@ -77,7 +72,7 @@ A hash set containing unique elements of type `T`.
 
 ---
 
-## Heap<T>
+## Heap\<T>
 
 A min-heap (priority queue) containing elements of type `T`.
 
@@ -108,6 +103,7 @@ A priority queue where elements are keyed by `K` and prioritized by `V`.
 | `pop` | `() -> K` | Removes and returns the key with minimum priority |
 | `peek` | `() -> K` | Returns the key with minimum priority without removing |
 | `size` | `() -> int` | Returns the number of elements |
+| `entries` | `() -> Array<(K, V)>` | Returns all key-value pairs as tuples |
 
 ### Suggested Additions
 
@@ -116,13 +112,13 @@ A priority queue where elements are keyed by `K` and prioritized by `V`.
 | `isEmpty` | `() -> boolean` | Check if heapmap is empty |
 | `has` | `(K) -> boolean` | Check if key exists |
 | `getPriority` | `(K) -> V` | Get priority value for a key |
-| `updatePriority` | `(K, V) -> void` | Update priority for existing key (decrease-key) |
+| `updatePriority` | `(K, V) -> void` | Update priority for existing key |
 | `delete` | `(K) -> void` | Remove a specific key |
 | `clear` | `() -> void` | Remove all elements |
 
 ---
 
-## BinaryTree<T>
+## BinaryTree\<T> & AVLTree\<T>
 
 A binary search tree containing elements of type `T`.
 
@@ -145,6 +141,9 @@ A binary search tree containing elements of type `T`.
 | `preorder` | `() -> Array<T>` | Return elements in preorder |
 | `postorder` | `() -> Array<T>` | Return elements in postorder |
 | `clear` | `() -> void` | Remove all elements |
+| `left` | `() -> BinaryTree<T>` | Get the left subtree |
+| `right` | `() -> BinaryTree<T>` | Get the right subtree |
+| `value` | `() -> T` | Get the value at the root node |
 
 ---
 
@@ -168,7 +167,7 @@ A weighted graph with nodes of type `N`.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `removeVertex` | `(N) -> void` | Remove a vertex and all its edges |
+| `removeVertex` | `(N) -> void` | Remove a vertex and all its edges (in and out) |
 | `removeEdge` | `(N, N) -> void` | Remove an edge between two vertices |
 | `getEdgeWeight` | `(N, N) -> int` | Get weight of edge between vertices |
 | `setEdgeWeight` | `(N, N, int) -> void` | Update weight of existing edge |

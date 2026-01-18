@@ -190,4 +190,182 @@ describe('Tree Traversal Tests', () => {
       expect(postOrder.length).toBe(5);
     });
   });
+
+  describe('BinaryTree left(), right(), value() methods', () => {
+    let tree: BinaryTree<number>;
+
+    beforeEach(() => {
+      tree = new BinaryTree<number>();
+    });
+
+    it('should return empty tree for left() on empty tree', () => {
+      const leftTree = tree.left();
+      expect(leftTree.isEmpty()).toBe(true);
+    });
+
+    it('should return empty tree for right() on empty tree', () => {
+      const rightTree = tree.right();
+      expect(rightTree.isEmpty()).toBe(true);
+    });
+
+    it('should throw error for value() on empty tree', () => {
+      expect(() => tree.value()).toThrow('Cannot get value from an empty tree');
+    });
+
+    it('should return correct value for root', () => {
+      tree.insert(5);
+      expect(tree.value()).toBe(5);
+    });
+
+    it('should return left subtree correctly', () => {
+      // Build tree:      5
+      //                 / \
+      //                3   7
+      //               / \
+      //              2   4
+      tree.insert(5);
+      tree.insert(3);
+      tree.insert(7);
+      tree.insert(2);
+      tree.insert(4);
+      
+      const leftTree = tree.left();
+      expect(leftTree.value()).toBe(3);
+      expect(leftTree.size()).toBe(3);
+      expect(leftTree.inOrderTraversal()).toEqual([2, 3, 4]);
+    });
+
+    it('should return right subtree correctly', () => {
+      // Build tree:      5
+      //                 / \
+      //                3   7
+      //                   / \
+      //                  6   8
+      tree.insert(5);
+      tree.insert(3);
+      tree.insert(7);
+      tree.insert(6);
+      tree.insert(8);
+      
+      const rightTree = tree.right();
+      expect(rightTree.value()).toBe(7);
+      expect(rightTree.size()).toBe(3);
+      expect(rightTree.inOrderTraversal()).toEqual([6, 7, 8]);
+    });
+
+    it('should return empty tree when no left child', () => {
+      tree.insert(5);
+      tree.insert(7);  // only right child
+      
+      const leftTree = tree.left();
+      expect(leftTree.isEmpty()).toBe(true);
+    });
+
+    it('should return empty tree when no right child', () => {
+      tree.insert(5);
+      tree.insert(3);  // only left child
+      
+      const rightTree = tree.right();
+      expect(rightTree.isEmpty()).toBe(true);
+    });
+
+    it('should allow chaining left() and right() calls', () => {
+      // Build tree:      10
+      //                 /  \
+      //                5    15
+      //               / \   / \
+      //              3   7 12  20
+      tree.insert(10);
+      tree.insert(5);
+      tree.insert(15);
+      tree.insert(3);
+      tree.insert(7);
+      tree.insert(12);
+      tree.insert(20);
+      
+      // Navigate to left->left
+      const leftLeft = tree.left().left();
+      expect(leftLeft.value()).toBe(3);
+      expect(leftLeft.size()).toBe(1);
+      
+      // Navigate to right->right
+      const rightRight = tree.right().right();
+      expect(rightRight.value()).toBe(20);
+      expect(rightRight.size()).toBe(1);
+      
+      // Navigate to left->right
+      const leftRight = tree.left().right();
+      expect(leftRight.value()).toBe(7);
+      
+      // Navigate to right->left
+      const rightLeft = tree.right().left();
+      expect(rightLeft.value()).toBe(12);
+    });
+  });
+
+  describe('AVLTree left(), right(), value() methods', () => {
+    let tree: AVLTree<number>;
+
+    beforeEach(() => {
+      tree = new AVLTree<number>();
+    });
+
+    it('should return empty tree for left() on empty tree', () => {
+      const leftTree = tree.left();
+      expect(leftTree.isEmpty()).toBe(true);
+    });
+
+    it('should return empty tree for right() on empty tree', () => {
+      const rightTree = tree.right();
+      expect(rightTree.isEmpty()).toBe(true);
+    });
+
+    it('should throw error for value() on empty tree', () => {
+      expect(() => tree.value()).toThrow('Cannot get value from an empty tree');
+    });
+
+    it('should return correct value for root', () => {
+      tree.insert(5);
+      expect(tree.value()).toBe(5);
+    });
+
+    it('should return AVLTree type for subtrees', () => {
+      tree.insert(5);
+      tree.insert(3);
+      tree.insert(7);
+      
+      const leftTree = tree.left();
+      const rightTree = tree.right();
+      
+      expect(leftTree).toBeInstanceOf(AVLTree);
+      expect(rightTree).toBeInstanceOf(AVLTree);
+    });
+
+    it('should return subtrees with correct content', () => {
+      [5, 3, 7, 2, 4, 6, 8].forEach(n => tree.insert(n));
+      
+      const leftTree = tree.left();
+      const rightTree = tree.right();
+      
+      // Note: AVL tree may rebalance, so just check content not structure
+      expect(leftTree.isEmpty()).toBe(false);
+      expect(rightTree.isEmpty()).toBe(false);
+    });
+
+    it('should allow navigation in balanced tree', () => {
+      // AVL tree will balance as we insert
+      [4, 2, 6, 1, 3, 5, 7].forEach(n => tree.insert(n));
+      
+      // The root might be 4 due to balanced insertion
+      const rootValue = tree.value();
+      expect([4, 2, 6]).toContain(rootValue);  // Could be any of these after balancing
+      
+      // Check that we can navigate
+      const leftTree = tree.left();
+      const rightTree = tree.right();
+      
+      expect(leftTree.size()).toBeGreaterThan(0);
+      expect(rightTree.size()).toBeGreaterThan(0);
+    });
+  });
 });

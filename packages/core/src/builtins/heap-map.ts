@@ -94,6 +94,63 @@ export class HeapMap<K, V> {
     this.data.forEach(fn);
   }
 
+  private findIndex(key: K): number {
+    // For RuntimeTypedBinder keys, we need to compare by value
+    const keyVal = (key as any)?.value !== undefined ? (key as any).value : key;
+    return this.data.findIndex(item => {
+      const itemKeyVal = (item.key as any)?.value !== undefined ? (item.key as any).value : item.key;
+      return itemKeyVal === keyVal;
+    });
+  }
+
+  has(key: K): boolean {
+    return this.findIndex(key) !== -1;
+  }
+
+  getPriority(key: K): V | undefined {
+    const index = this.findIndex(key);
+    if (index === -1) return undefined;
+    return this.data[index].value;
+  }
+
+  updatePriority(key: K, newValue: V): void {
+    const index = this.findIndex(key);
+    if (index === -1) {
+      throw new Error('Key not found in HeapMap');
+    }
+    const oldValue = this.data[index].value;
+    this.data[index].value = newValue;
+
+    // Determine whether to heapify up or down
+    if (this.compareFn(newValue, oldValue) < 0) {
+      this.heapifyUp(index);
+    } else {
+      this.heapifyDown(index);
+    }
+  }
+
+  delete(key: K): boolean {
+    const index = this.findIndex(key);
+    if (index === -1) return false;
+
+    if (index === this.data.length - 1) {
+      this.data.pop();
+    } else {
+      this.data[index] = this.data.pop()!;
+      this.heapifyDown(index);
+      this.heapifyUp(index);
+    }
+    return true;
+  }
+
+  clear(): void {
+    this.data = [];
+  }
+
+  entries(): Array<[K, V]> {
+    return this.data.map(item => [item.key, item.value]);
+  }
+
   toString(): string {
     return `HeapMap[${this.data.map(item => `${item.key}:${item.value}`).join(', ')}]`;
   }

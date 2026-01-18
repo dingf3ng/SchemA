@@ -811,6 +811,73 @@ export class Evaluator {
           }
         };
       }
+      if (propertyName === 'isEmpty') {
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof SchemaArray)) {
+                throw new Error('Internal: Array value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.length === 0 };
+            }
+          }
+        };
+      }
+      if (propertyName === 'append') {
+        const arrayType = object.type.static as { kind: 'array'; elementType: Type };
+        return {
+          type: { static: { kind: 'function', parameters: [{ kind: 'array', elementType: arrayType.elementType }], returnType: { kind: 'array', elementType: arrayType.elementType } }, refinements: [] },
+          value: {
+            fn: (other: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof SchemaArray)) {
+                throw new Error('Internal: Array value is undefined or invalid');
+              }
+              if (!other.value || !(other.value instanceof SchemaArray)) {
+                throw new Error('Internal: append argument must be an array');
+              }
+              const result = new SchemaArray<RuntimeTypedBinder>();
+              for (let i = 0; i < object.value.length; i++) {
+                const val = object.value.get(i);
+                if (val) result.push(val);
+              }
+              for (let i = 0; i < other.value.length; i++) {
+                const val = other.value.get(i);
+                if (val) result.push(val);
+              }
+              return { type: { static: { kind: 'array', elementType: arrayType.elementType }, refinements: [] }, value: result };
+            }
+          }
+        };
+      }
+      if (propertyName === 'reverse') {
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof SchemaArray)) {
+                throw new Error('Internal: Array value is undefined or invalid');
+              }
+              object.value.reverse();
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      }
+      if (propertyName === 'clear') {
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof SchemaArray)) {
+                throw new Error('Internal: Array value is undefined or invalid');
+              }
+              object.value.clear();
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      }
     }
 
     if (object.type.static.kind === 'map') {
@@ -963,6 +1030,60 @@ export class Evaluator {
             }
           }
         };
+      case 'delete':
+        return {
+          type: { static: { kind: 'function', parameters: [mapType.keyType], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: (key: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof SchemaMap)) {
+                throw new Error('Internal: Map value is undefined or invalid');
+              }
+              const k = runtimeTypedBinderToKey(key);
+              const existed = object.value.has(k);
+              object.value.delete(k);
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: existed };
+            }
+          }
+        };
+      case 'clear':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof SchemaMap)) {
+                throw new Error('Internal: Map value is undefined or invalid');
+              }
+              object.value.clear();
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'isEmpty':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof SchemaMap)) {
+                throw new Error('Internal: Map value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.size === 0 };
+            }
+          }
+        };
+      case 'getOrDefault':
+        return {
+          type: { static: { kind: 'function', parameters: [mapType.keyType, mapType.valueType], returnType: mapType.valueType }, refinements: [] },
+          value: {
+            fn: (key: RuntimeTypedBinder, defaultValue: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof SchemaMap)) {
+                throw new Error('Internal: Map value is undefined or invalid');
+              }
+              const k = runtimeTypedBinderToKey(key);
+              const value = object.value.get(k);
+              return value !== undefined ? value : defaultValue;
+            }
+          }
+        };
       default:
         throw new Error(`Property ${propertyName} does not exist on Map`);
     }
@@ -1042,6 +1163,109 @@ export class Evaluator {
             }
           }
         };
+      case 'clear':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof SchemaSet)) {
+                throw new Error('Internal: Set value is undefined or invalid');
+              }
+              object.value.clear();
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'isEmpty':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof SchemaSet)) {
+                throw new Error('Internal: Set value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.size === 0 };
+            }
+          }
+        };
+      case 'toArray':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: setType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof SchemaSet)) {
+                throw new Error('Internal: Set value is undefined or invalid');
+              }
+              const arr = new SchemaArray<RuntimeTypedBinder>();
+              object.value.forEach((item) => {
+                arr.push(keyToRuntimeTypedBinder(item));
+              });
+              return { type: { static: { kind: 'array', elementType: setType.elementType }, refinements: [] }, value: arr };
+            }
+          }
+        };
+      case 'union':
+        return {
+          type: { static: { kind: 'function', parameters: [{ kind: 'set', elementType: setType.elementType }], returnType: { kind: 'set', elementType: setType.elementType } }, refinements: [] },
+          value: {
+            fn: (other: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof SchemaSet)) {
+                throw new Error('Internal: Set value is undefined or invalid');
+              }
+              if (!other.value || !(other.value instanceof SchemaSet)) {
+                throw new Error('Internal: union argument must be a set');
+              }
+              const result = new SchemaSet<any>();
+              object.value.forEach((item) => result.add(item));
+              other.value.forEach((item) => result.add(item));
+              return { type: { static: { kind: 'set', elementType: setType.elementType }, refinements: [] }, value: result };
+            }
+          }
+        };
+      case 'intersection':
+        return {
+          type: { static: { kind: 'function', parameters: [{ kind: 'set', elementType: setType.elementType }], returnType: { kind: 'set', elementType: setType.elementType } }, refinements: [] },
+          value: {
+            fn: (other: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof SchemaSet)) {
+                throw new Error('Internal: Set value is undefined or invalid');
+              }
+              if (!other.value || !(other.value instanceof SchemaSet)) {
+                throw new Error('Internal: intersection argument must be a set');
+              }
+              const otherSet = other.value as SchemaSet<any>;
+              const result = new SchemaSet<any>();
+              object.value.forEach((item) => {
+                if (otherSet.has(item)) {
+                  result.add(item);
+                }
+              });
+              return { type: { static: { kind: 'set', elementType: setType.elementType }, refinements: [] }, value: result };
+            }
+          }
+        };
+      case 'difference':
+        return {
+          type: { static: { kind: 'function', parameters: [{ kind: 'set', elementType: setType.elementType }], returnType: { kind: 'set', elementType: setType.elementType } }, refinements: [] },
+          value: {
+            fn: (other: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof SchemaSet)) {
+                throw new Error('Internal: Set value is undefined or invalid');
+              }
+              if (!other.value || !(other.value instanceof SchemaSet)) {
+                throw new Error('Internal: difference argument must be a set');
+              }
+              const otherSet = other.value as SchemaSet<any>;
+              const result = new SchemaSet<any>();
+              object.value.forEach((item) => {
+                if (!otherSet.has(item)) {
+                  result.add(item);
+                }
+              });
+              return { type: { static: { kind: 'set', elementType: setType.elementType }, refinements: [] }, value: result };
+            }
+          }
+        };
       default:
         throw new Error(`Property ${propertyName} does not exist on Set`);
     }
@@ -1109,6 +1333,46 @@ export class Evaluator {
             }
           }
         };
+      case 'isEmpty':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof MinHeap || object.value instanceof MaxHeap)) {
+                throw new Error('Internal: Heap value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.size === 0 };
+            }
+          }
+        };
+      case 'clear':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof MinHeap || object.value instanceof MaxHeap)) {
+                throw new Error('Internal: Heap value is undefined or invalid');
+              }
+              object.value.clear();
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'toArray':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: heapType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof MinHeap || object.value instanceof MaxHeap)) {
+                throw new Error('Internal: Heap value is undefined or invalid');
+              }
+              const arr = new SchemaArray<RuntimeTypedBinder>();
+              const elements = object.value.toSortedArray();
+              elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+              return { type: { static: { kind: 'array', elementType: heapType.elementType }, refinements: [] }, value: arr };
+            }
+          }
+        };
       default:
         throw new Error(`Property ${propertyName} does not exist on Heap`);
     }
@@ -1173,6 +1437,105 @@ export class Evaluator {
                 throw new Error('Error: cannot peek from an empty heapmap');
               }
               return val;
+            }
+          }
+        };
+      case 'isEmpty':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                throw new Error('Internal: HeapMap value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.size === 0 };
+            }
+          }
+        };
+      case 'has':
+        return {
+          type: { static: { kind: 'function', parameters: [heapmapType.keyType], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: (key: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                throw new Error('Internal: HeapMap value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.has(key) };
+            }
+          }
+        };
+      case 'getPriority':
+        return {
+          type: { static: { kind: 'function', parameters: [heapmapType.keyType], returnType: heapmapType.valueType }, refinements: [] },
+          value: {
+            fn: (key: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                throw new Error('Internal: HeapMap value is undefined or invalid');
+              }
+              const priority = object.value.getPriority(key);
+              if (priority === undefined) {
+                throw new Error('Error: key not found in heapmap');
+              }
+              return priority;
+            }
+          }
+        };
+      case 'updatePriority':
+        return {
+          type: { static: { kind: 'function', parameters: [heapmapType.keyType, heapmapType.valueType], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: (key: RuntimeTypedBinder, newPriority: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                throw new Error('Internal: HeapMap value is undefined or invalid');
+              }
+              object.value.updatePriority(key, newPriority);
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'delete':
+        return {
+          type: { static: { kind: 'function', parameters: [heapmapType.keyType], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: (key: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                throw new Error('Internal: HeapMap value is undefined or invalid');
+              }
+              object.value.delete(key);
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'clear':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                throw new Error('Internal: HeapMap value is undefined or invalid');
+              }
+              object.value.clear();
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'entries':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: { kind: 'tuple', elementTypes: [heapmapType.keyType, heapmapType.valueType] } } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof MinHeapMap || object.value instanceof MaxHeapMap)) {
+                throw new Error('Internal: HeapMap value is undefined or invalid');
+              }
+              const arr = new SchemaArray<RuntimeTypedBinder>();
+              object.value.entries().forEach(([key, priority]: [RuntimeTypedBinder, RuntimeTypedBinder]) => {
+                const tuple: RuntimeTypedBinder = {
+                  type: { static: { kind: 'tuple', elementTypes: [heapmapType.keyType, heapmapType.valueType] }, refinements: [] },
+                  value: [key, priority]
+                };
+                arr.push(tuple);
+              });
+              return { type: { static: { kind: 'array', elementType: { kind: 'tuple', elementTypes: [heapmapType.keyType, heapmapType.valueType] } }, refinements: [] }, value: arr };
             }
           }
         };
@@ -1382,6 +1745,134 @@ export class Evaluator {
           }
         }
       }
+      case 'removeVertex':
+        return {
+          type: { static: { kind: 'function', parameters: [graphType.nodeType], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: (vertex: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              object.value.removeVertex(vertex);
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'removeEdge':
+        return {
+          type: { static: { kind: 'function', parameters: [graphType.nodeType, graphType.nodeType], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: (from: RuntimeTypedBinder, to: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              object.value.removeEdge(from, to);
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'getEdgeWeight':
+        return {
+          type: { static: { kind: 'function', parameters: [graphType.nodeType, graphType.nodeType], returnType: { kind: 'int' } }, refinements: [] },
+          value: {
+            fn: (from: RuntimeTypedBinder, to: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              const weight = object.value.getEdgeWeight(from, to);
+              if (weight === undefined) {
+                throw new Error('Error: edge not found in graph');
+              }
+              return { type: { static: { kind: 'int' }, refinements: [] }, value: weight };
+            }
+          }
+        };
+      case 'setEdgeWeight':
+        return {
+          type: { static: { kind: 'function', parameters: [graphType.nodeType, graphType.nodeType, { kind: 'int' }], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: (from: RuntimeTypedBinder, to: RuntimeTypedBinder, weight: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              object.value.setEdgeWeight(from, to, weight.value as number);
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'degree':
+        return {
+          type: { static: { kind: 'function', parameters: [graphType.nodeType], returnType: { kind: 'int' } }, refinements: [] },
+          value: {
+            fn: (vertex: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.degree(vertex) };
+            }
+          }
+        };
+      case 'inDegree':
+        return {
+          type: { static: { kind: 'function', parameters: [graphType.nodeType], returnType: { kind: 'int' } }, refinements: [] },
+          value: {
+            fn: (vertex: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.inDegree(vertex) };
+            }
+          }
+        };
+      case 'outDegree':
+        return {
+          type: { static: { kind: 'function', parameters: [graphType.nodeType], returnType: { kind: 'int' } }, refinements: [] },
+          value: {
+            fn: (vertex: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.outDegree(vertex) };
+            }
+          }
+        };
+      case 'edgeCount':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.edgeCount() };
+            }
+          }
+        };
+      case 'isEmpty':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.isEmpty() };
+            }
+          }
+        };
+      case 'clear':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof Graph)) {
+                throw new Error('Internal: Graph value is undefined or invalid');
+              }
+              object.value.clear();
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
       default:
         throw new Error(`Property ${propertyName} does not exist on Graph`);
     }
@@ -1471,6 +1962,174 @@ export class Evaluator {
                 throw new Error('Internal: Tree value is undefined or invalid');
               }
               return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.getHeight() };
+            }
+          }
+        };
+      case 'delete':
+        return {
+          type: { static: { kind: 'function', parameters: [treeType.elementType], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: (value: RuntimeTypedBinder) => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.delete(value) };
+            }
+          }
+        };
+      case 'min':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: treeType.elementType }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const min = object.value.min();
+              if (min === undefined) {
+                throw new Error('Error: cannot get min from an empty tree');
+              }
+              return min;
+            }
+          }
+        };
+      case 'max':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: treeType.elementType }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const max = object.value.max();
+              if (max === undefined) {
+                throw new Error('Error: cannot get max from an empty tree');
+              }
+              return max;
+            }
+          }
+        };
+      case 'size':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'int' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'int' }, refinements: [] }, value: object.value.size() };
+            }
+          }
+        };
+      case 'isEmpty':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'boolean' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              return { type: { static: { kind: 'boolean' }, refinements: [] }, value: object.value.isEmpty() };
+            }
+          }
+        };
+      case 'inorder':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const elements = object.value.inOrderTraversal();
+              const arr = new SchemaArray<RuntimeTypedBinder>();
+              elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+              return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
+            }
+          }
+        };
+      case 'preorder':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const elements = object.value.preOrderTraversal();
+              const arr = new SchemaArray<RuntimeTypedBinder>();
+              elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+              return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
+            }
+          }
+        };
+      case 'postorder':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'array', elementType: treeType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const elements = object.value.postOrderTraversal();
+              const arr = new SchemaArray<RuntimeTypedBinder>();
+              elements.forEach((el) => arr.push(el as RuntimeTypedBinder));
+              return { type: { static: { kind: 'array', elementType: treeType.elementType }, refinements: [] }, value: arr };
+            }
+          }
+        };
+      case 'clear':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'void' } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              object.value.clear();
+              return { type: { static: { kind: 'void' }, refinements: [] }, value: undefined };
+            }
+          }
+        };
+      case 'left':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'binarytree', elementType: treeType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const leftSubtree = object.value.left();
+              return { type: { static: { kind: 'binarytree', elementType: treeType.elementType }, refinements: [] }, value: leftSubtree };
+            }
+          }
+        };
+      case 'right':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: { kind: 'binarytree', elementType: treeType.elementType } }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const rightSubtree = object.value.right();
+              return { type: { static: { kind: 'binarytree', elementType: treeType.elementType }, refinements: [] }, value: rightSubtree };
+            }
+          }
+        };
+      case 'value':
+        return {
+          type: { static: { kind: 'function', parameters: [], returnType: treeType.elementType }, refinements: [] },
+          value: {
+            fn: () => {
+              if (!object.value || !(object.value instanceof BinaryTree || object.value instanceof AVLTree)) {
+                throw new Error('Internal: Tree value is undefined or invalid');
+              }
+              const val = object.value.value();
+              if (val === undefined) {
+                throw new Error('Error: cannot get value from an empty tree');
+              }
+              return val;
             }
           }
         };

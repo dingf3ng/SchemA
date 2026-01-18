@@ -45,6 +45,14 @@ export class SchemaArray<T> {
     return [...this.data];
   }
 
+  reverse(): void {
+    this.data.reverse();
+  }
+
+  clear(): void {
+    this.data = [];
+  }
+
   toString(): string {
     const items = this.data.map(item => {
       const rv = item as any;
@@ -278,6 +286,21 @@ export class MinHeap<T> {
     this.data.forEach(fn);
   }
 
+  clear(): void {
+    this.data = [];
+  }
+
+  toSortedArray(): T[] {
+    // Create a copy to preserve heap state
+    const copy = [...this.data];
+    const result: T[] = [];
+    while (this.data.length > 0) {
+      result.push(this.pop()!);
+    }
+    this.data = copy;
+    return result;
+  }
+
   toString(): string {
     return `MinHeap[${this.data.join(', ')}]`;
   }
@@ -384,6 +407,21 @@ export class MaxHeap<T> {
 
   forEach(fn: (item: T) => void): void {
     this.data.forEach(fn);
+  }
+
+  clear(): void {
+    this.data = [];
+  }
+
+  toSortedArray(): T[] {
+    // Create a copy to preserve heap state
+    const copy = [...this.data];
+    const result: T[] = [];
+    while (this.data.length > 0) {
+      result.push(this.pop()!);
+    }
+    this.data = copy;
+    return result;
   }
 
   toString(): string {
@@ -542,13 +580,122 @@ export class Graph<T> {
 
   getEdges(): Array<{ from: T; to: T; weight: number }> {
     const edges: Array<{ from: T; to: T; weight: number }> = [];
+    const seen = new Set<string>();
+
     for (const entry of this.adjacencyList.values()) {
       const from = entry.node;
+      const fromKey = this.keyFn(from);
       for (const edge of entry.edges) {
+        const toKey = this.keyFn(edge.to);
+
+        if (!this.directed) {
+          // For undirected graphs, create a canonical key to avoid duplicates
+          const edgeKey = fromKey < toKey ? `${fromKey}-${toKey}` : `${toKey}-${fromKey}`;
+          if (seen.has(edgeKey)) continue;
+          seen.add(edgeKey);
+        }
+
         edges.push({ from, to: edge.to, weight: edge.weight });
       }
     }
     return edges;
+  }
+
+  removeVertex(vertex: T): void {
+    const key = this.keyFn(vertex);
+    if (!this.adjacencyList.has(key)) return;
+
+    // Remove all edges pointing to this vertex
+    for (const entry of this.adjacencyList.values()) {
+      entry.edges = entry.edges.filter((e) => this.keyFn(e.to) !== key);
+    }
+
+    // Remove the vertex itself
+    this.adjacencyList.delete(key);
+  }
+
+  removeEdge(from: T, to: T): void {
+    const fromKey = this.keyFn(from);
+    const toKey = this.keyFn(to);
+
+    const fromEntry = this.adjacencyList.get(fromKey);
+    if (fromEntry) {
+      fromEntry.edges = fromEntry.edges.filter((e) => this.keyFn(e.to) !== toKey);
+    }
+
+    if (!this.directed) {
+      const toEntry = this.adjacencyList.get(toKey);
+      if (toEntry) {
+        toEntry.edges = toEntry.edges.filter((e) => this.keyFn(e.to) !== fromKey);
+      }
+    }
+  }
+
+  setEdgeWeight(from: T, to: T, weight: number): void {
+    const fromKey = this.keyFn(from);
+    const toKey = this.keyFn(to);
+
+    const fromEntry = this.adjacencyList.get(fromKey);
+    if (fromEntry) {
+      const edge = fromEntry.edges.find((e) => this.keyFn(e.to) === toKey);
+      if (edge) {
+        edge.weight = weight;
+      }
+    }
+
+    if (!this.directed) {
+      const toEntry = this.adjacencyList.get(toKey);
+      if (toEntry) {
+        const edge = toEntry.edges.find((e) => this.keyFn(e.to) === fromKey);
+        if (edge) {
+          edge.weight = weight;
+        }
+      }
+    }
+  }
+
+  degree(vertex: T): number {
+    if (this.directed) {
+      return this.inDegree(vertex) + this.outDegree(vertex);
+    }
+    const key = this.keyFn(vertex);
+    const entry = this.adjacencyList.get(key);
+    return entry ? entry.edges.length : 0;
+  }
+
+  inDegree(vertex: T): number {
+    const key = this.keyFn(vertex);
+    let count = 0;
+    for (const entry of this.adjacencyList.values()) {
+      for (const edge of entry.edges) {
+        if (this.keyFn(edge.to) === key) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  outDegree(vertex: T): number {
+    const key = this.keyFn(vertex);
+    const entry = this.adjacencyList.get(key);
+    return entry ? entry.edges.length : 0;
+  }
+
+  edgeCount(): number {
+    let count = 0;
+    for (const entry of this.adjacencyList.values()) {
+      count += entry.edges.length;
+    }
+    return this.directed ? count : count / 2;
+  }
+
+  isEmpty(): boolean {
+    return this.adjacencyList.size === 0;
+  }
+
+  clear(): void {
+    this.adjacencyList.clear();
   }
 
   toString(): string {
@@ -692,26 +839,125 @@ export class BinaryTree<T> {
   // Iterative postOrder traversal using two stacks (optimization)
   private postOrder(node: TreeNode<T> | null, result: T[]): void {
     if (!node) return;
-    
+
     const stack1: TreeNode<T>[] = [node];
     const stack2: TreeNode<T>[] = [];
-    
+
     // First pass: reverse postorder (root, right, left)
     while (stack1.length > 0) {
       const current = stack1.pop()!;
       stack2.push(current);
-      
+
       // Push left first, then right (so right is processed first)
       if (current.left) stack1.push(current.left);
       if (current.right) stack1.push(current.right);
     }
-    
+
     // Second pass: pop from stack2 to get correct postorder
     while (stack2.length > 0) {
       result.push(stack2.pop()!.value);
     }
   }
 
+  delete(value: T): boolean {
+    const originalRoot = this.root;
+    this.root = this.deleteNode(this.root, value);
+    return this.root !== originalRoot || (originalRoot !== null && this.root !== null);
+  }
+
+  protected deleteNode(node: TreeNode<T> | null, value: T): TreeNode<T> | null {
+    if (!node) return null;
+
+    const cmp = this.compareFn(value, node.value);
+    if (cmp < 0) {
+      node.left = this.deleteNode(node.left, value);
+    } else if (cmp > 0) {
+      node.right = this.deleteNode(node.right, value);
+    } else {
+      // Node found
+      if (!node.left) return node.right;
+      if (!node.right) return node.left;
+
+      // Node with two children: get inorder successor
+      let minNode = node.right;
+      while (minNode.left) {
+        minNode = minNode.left;
+      }
+      node.value = minNode.value;
+      node.right = this.deleteNode(node.right, minNode.value);
+    }
+    return node;
+  }
+
+  min(): T | undefined {
+    if (!this.root) return undefined;
+    let current = this.root;
+    while (current.left) {
+      current = current.left;
+    }
+    return current.value;
+  }
+
+  max(): T | undefined {
+    if (!this.root) return undefined;
+    let current = this.root;
+    while (current.right) {
+      current = current.right;
+    }
+    return current.value;
+  }
+
+  size(): number {
+    return this.countNodes(this.root);
+  }
+
+  private countNodes(node: TreeNode<T> | null): number {
+    if (!node) return 0;
+    return 1 + this.countNodes(node.left) + this.countNodes(node.right);
+  }
+
+  isEmpty(): boolean {
+    return this.root === null;
+  }
+
+  clear(): void {
+    this.root = null;
+  }
+
+  /**
+   * Returns a new BinaryTree containing the left subtree.
+   * Returns an empty tree if there is no left child.
+   */
+  left(): BinaryTree<T> {
+    const leftTree = new BinaryTree<T>(this.compareFn);
+    if (this.root && this.root.left) {
+      leftTree.root = this.root.left;
+    }
+    return leftTree;
+  }
+
+  /**
+   * Returns a new BinaryTree containing the right subtree.
+   * Returns an empty tree if there is no right child.
+   */
+  right(): BinaryTree<T> {
+    const rightTree = new BinaryTree<T>(this.compareFn);
+    if (this.root && this.root.right) {
+      rightTree.root = this.root.right;
+    }
+    return rightTree;
+  }
+
+  /**
+   * Returns the value at the root of the tree.
+   * Throws an error if the tree is empty.
+   */
+  value(): T {
+    if (!this.root) {
+      throw new Error('Cannot get value from an empty tree');
+    }
+    return this.root.value;
+  }
 
   toString(): string {
     return `BinaryTree[${this.inOrderTraversal().join(', ')}]`;
@@ -805,6 +1051,41 @@ export class AVLTree<T> extends BinaryTree<T> {
 
   getHeight(): number {
     return this.height(this.root);
+  }
+
+  /**
+   * Returns a new AVLTree containing the left subtree.
+   * Returns an empty tree if there is no left child.
+   */
+  left(): AVLTree<T> {
+    const leftTree = new AVLTree<T>(this.compareFn);
+    if (this.root && this.root.left) {
+      leftTree.root = this.root.left;
+    }
+    return leftTree;
+  }
+
+  /**
+   * Returns a new AVLTree containing the right subtree.
+   * Returns an empty tree if there is no right child.
+   */
+  right(): AVLTree<T> {
+    const rightTree = new AVLTree<T>(this.compareFn);
+    if (this.root && this.root.right) {
+      rightTree.root = this.root.right;
+    }
+    return rightTree;
+  }
+
+  /**
+   * Returns the value at the root of the tree.
+   * Throws an error if the tree is empty.
+   */
+  value(): T {
+    if (!this.root) {
+      throw new Error('Cannot get value from an empty tree');
+    }
+    return this.root.value;
   }
 
   toString(): string {
