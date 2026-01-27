@@ -281,4 +281,97 @@ describe('Type System', () => {
       });
     });
   });
+
+  describe('Lexical Scoping', () => {
+    it('should allow functions to access top-level variables', () => {
+      const code = `
+        let arr = []
+        let len = 0
+
+        do push(val) {
+          arr.push(val)
+          len += 1
+        }
+
+        do pull() {
+          len -= 1
+          return arr[len]
+        }
+        
+        @assert(typeof(arr) == "Array<weak>")
+      `;
+      expect(() => check(code)).not.toThrow();
+    });
+
+    it('should allow functions to read top-level variables', () => {
+      const code = `
+        let counter = 0
+
+        do getCounter() -> int {
+          return counter
+        }
+      `;
+      expect(() => check(code)).not.toThrow();
+    });
+
+    it('should allow functions to modify top-level variables', () => {
+      const code = `
+        let total = 0
+
+        do addToTotal(x: int) {
+          total += x
+        }
+      `;
+      expect(() => check(code)).not.toThrow();
+    });
+
+    it('should allow multiple functions to share top-level state', () => {
+      const code = `
+        let stack: Array<int> = []
+
+        do push(val: int) {
+          stack.push(val)
+        }
+
+        do pop() -> int {
+          return stack.pop()
+        }
+
+        do peek() -> int {
+          return stack[stack.length() - 1]
+        }
+      `;
+      expect(() => check(code)).not.toThrow();
+    });
+
+    it('should allow nested access to top-level data structures', () => {
+      const code = `
+        let data = Map()
+
+        do store(key: string, value: int) {
+          data.set(key, value)
+        }
+
+        do retrieve(key: string) -> int {
+          return data.get(key)
+        }
+      `;
+      expect(() => check(code)).not.toThrow();
+    });
+
+    it('should handle top-level variables with inferred types in functions', () => {
+      const code = `
+        let items = [1, 2, 3]
+
+        do sumItems() -> int {
+          let total = 0
+          for item in items {
+            total += item
+          }
+          return total
+        }
+      `;
+      expect(() => check(code)).not.toThrow();
+    });
+  });
 });

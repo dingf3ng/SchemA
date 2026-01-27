@@ -919,7 +919,7 @@ class TypeRefiner {
    */
   private analyzeExpressionType(expr: Expression, paramTypes: Map<string, Type>): Type {
     const ctx: TypeSynthContext = {
-      getVariableType: (name) => paramTypes.get(name),
+      getVariableType: (name) => paramTypes.get(name) ?? this.typeEnv.get(name),
       getFunctionInfo: (name) => this.functionEnv.get(name),
       typeEqualityCache: this.typeEqualityCache,
     };
