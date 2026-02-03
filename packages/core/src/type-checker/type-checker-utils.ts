@@ -24,7 +24,23 @@ export type Type =
     parameters: Type[];
     returnType: Type;
     variadic?: boolean;
+  }
+  | {
+    kind: 'struct';
+    name: string;                    // e.g., "Stack"
+    typeParameters: Type[];          // e.g., [{ kind: 'weak' }] for Stack<weak>
   };
+
+// Struct definition stored in registry - contains metadata about the struct
+export interface StructDefinition {
+  name: string;
+  typeParameterNames: string[];      // e.g., ["T"] or ["K", "V"]
+  fields: { name: string; type: Type; hasTypeParam: boolean }[];  // hasTypeParam indicates if field uses a type parameter
+  methods: Map<string, { parameters: Type[]; returnType: Type }>;
+}
+
+// Global struct registry - maps struct names to their definitions
+export const structRegistry: Map<string, StructDefinition> = new Map();
 
 export function typeToString(type: Type): string {
   switch (type.kind) {
@@ -67,6 +83,11 @@ export function typeToString(type: Type): string {
       return `(${type.elementTypes.map((t) => typeToString(t)).join(', ')})`;
     case 'function':
       return `(${type.parameters.map((p) => typeToString(p)).join(', ')}) -> ${typeToString(type.returnType)}`;
+    case 'struct':
+      if (type.typeParameters.length === 0) {
+        return type.name;
+      }
+      return `${type.name}<${type.typeParameters.map((t) => typeToString(t)).join(', ')}>`;
   }
 }
 
@@ -167,6 +188,20 @@ function typesEqualUncached(t1: Type, t2: Type, typeEqualityCache: Map<string, b
           return name1 === name2 && typesEqual(type1, type2, typeEqualityCache);
         });
       }
+    }
+
+    case 'struct': {
+      if (t2.kind !== 'struct') {
+        return false;
+      }
+      // Struct types are equal if they have the same name and compatible type parameters
+      if (t1.name !== t2.name) {
+        return false;
+      }
+      if (t1.typeParameters.length !== t2.typeParameters.length) {
+        return false;
+      }
+      return t1.typeParameters.every((p, i) => typesEqual(p, t2.typeParameters[i], typeEqualityCache));
     }
 
     default:
@@ -285,6 +320,18 @@ export function typeToAnnotation(type: Type, line: number, column: number): Type
         line,
         column
       };
+    case 'struct':
+      if (type.typeParameters.length === 0) {
+        return { type: 'TypeAnnotation', kind: 'simple', name: type.name, line, column };
+      }
+      return {
+        type: 'TypeAnnotation',
+        kind: 'generic',
+        name: type.name,
+        typeParameters: type.typeParameters.map(t => typeToAnnotation(t, line, column)),
+        line,
+        column
+      };
     default:
       return { type: 'TypeAnnotation', kind: 'simple', name: 'weak', line, column };
   }
@@ -309,6 +356,15 @@ export function resolve(annotation: TypeAnnotation): Type {
         case 'Range':
           return { kind: 'range' };
         default:
+          // Check if it's a user-defined struct type (no type parameters)
+          if (structRegistry.has(annotation.name)) {
+            const structDef = structRegistry.get(annotation.name)!;
+            return {
+              kind: 'struct',
+              name: annotation.name,
+              typeParameters: structDef.typeParameterNames.map(() => ({ kind: 'weak' as const }))
+            };
+          }
           throw new Error(`Type checking: unknown simple type ${annotation.name}`);
       }
 
@@ -365,6 +421,18 @@ export function resolve(annotation: TypeAnnotation): Type {
         return {
           kind: 'binarytree',
           elementType: resolve(annotation.typeParameters[0]),
+        };
+      }
+      // Check if it's a user-defined struct type with type parameters
+      if (structRegistry.has(annotation.name)) {
+        const structDef = structRegistry.get(annotation.name)!;
+        if (annotation.typeParameters.length !== structDef.typeParameterNames.length) {
+          throw new Error(`Struct ${annotation.name} requires exactly ${structDef.typeParameterNames.length} type parameter(s)`);
+        }
+        return {
+          kind: 'struct',
+          name: annotation.name,
+          typeParameters: annotation.typeParameters.map(t => resolve(t))
         };
       }
       throw new Error(`Type checking: unknown generic type ${annotation.name}`);

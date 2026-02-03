@@ -318,7 +318,13 @@ export function synthExpression(
           // Validate argument types against parameter types
           const argTypes = expr.arguments.map(recurse);
           if (!funcInfo.variadic) {
-            for (let i = 0; i < Math.min(argTypes.length, funcInfo.parameters.length); i++) {
+            // Validate argument count
+            if (argTypes.length !== funcInfo.parameters.length) {
+              throw new Error(
+                `Argument count mismatch in function call '${calleeName}': expected ${funcInfo.parameters.length} argument(s), got ${argTypes.length}. At ${expr.line}, ${expr.column}`
+              );
+            }
+            for (let i = 0; i < argTypes.length; i++) {
               if (!typesEqual(argTypes[i], funcInfo.parameters[i], ctx.typeEqualityCache)) {
                 throw new Error(
                   `Type mismatch in function call '${calleeName}': argument ${i + 1} expected ${typeToString(funcInfo.parameters[i])}, got ${typeToString(argTypes[i])}. At ${expr.line}, ${expr.column}`
@@ -339,6 +345,12 @@ export function synthExpression(
           if (methodType.kind === 'function') {
             // Validate argument types against method parameter types
             const argTypes = expr.arguments.map(recurse);
+            // Validate argument count (skip for variadic methods)
+            if (!methodType.variadic && argTypes.length !== methodType.parameters.length) {
+              throw new Error(
+                `Argument count mismatch in method call '${callee.property.name}': expected ${methodType.parameters.length} argument(s), got ${argTypes.length}. At ${expr.line}, ${expr.column}`
+              );
+            }
             for (let i = 0; i < Math.min(argTypes.length, methodType.parameters.length); i++) {
               if (!typesEqual(argTypes[i], methodType.parameters[i], ctx.typeEqualityCache)) {
                 throw new Error(

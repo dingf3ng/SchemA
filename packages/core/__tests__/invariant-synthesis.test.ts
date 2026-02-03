@@ -269,9 +269,9 @@ describe('Invariant Synthesis - Runtime Refinement System', () => {
 
     it('should synthesize invariants in for-each loops', () => {
       const code = `
-        let data = [1, 2, 3, 4, 5]
+        let arr = [1, 2, 3, 4, 5]
         let total = 0
-        for val in data {
+        for val in arr {
           total = total + val
         }
       `;

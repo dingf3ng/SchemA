@@ -1,6 +1,6 @@
-import { Program, Statement, Expression } from '../transpiler/ast-types';
+import { Program, Statement, Expression, StructDeclaration } from '../transpiler/ast-types';
 import { FunEnv, initializeBuiltins, TypeEnv } from './type-checker-main';
-import { resolve, Type, typesEqual, typeToAnnotation, typeToString } from './type-checker-utils';
+import { resolve, Type, typesEqual, typeToAnnotation, typeToString, structRegistry, StructDefinition } from './type-checker-utils';
 import { synthExpression, TypeSynthContext} from './expression-synth-utils';
 
 /**
@@ -69,6 +69,13 @@ export class TypeInferer {
         this.functionEnv.set(statement.name, {
           parameters: statement.parameters.map((param) => resolve(param.typeAnnotation!)),
           returnType: statement.returnType ? resolve(statement.returnType) : { kind: 'weak' },
+        });
+      } else if (statement.type === 'StructDeclaration') {
+        // Pre-register struct constructor for forward references
+        const typeParams: Type[] = statement.typeParameters.map(() => ({ kind: 'weak' as const }));
+        this.functionEnv.set(statement.name, {
+          parameters: [],
+          returnType: { kind: 'struct', name: statement.name, typeParameters: typeParams }
         });
       }
     }
@@ -247,7 +254,140 @@ export class TypeInferer {
           this.inferredReturnTypes.push({ kind: 'void' });
         }
         break;
+
+      case 'StructDeclaration': {
+        this.registerStructDeclaration(stmt);
+        break;
+      }
     }
+  }
+
+  /**
+   * Register a struct declaration: creates struct definition and constructor
+   */
+  private registerStructDeclaration(stmt: StructDeclaration): void {
+    const structName = stmt.name;
+    const typeParamNames = stmt.typeParameters;
+
+    // Create a mapping from type parameter names to weak types for field resolution
+    const typeParamMap = new Map<string, Type>();
+    for (const paramName of typeParamNames) {
+      typeParamMap.set(paramName, { kind: 'weak' });
+    }
+
+    // Process fields - infer types for fields without annotations
+    const fields: StructDefinition['fields'] = [];
+    for (const field of stmt.fields) {
+      let fieldType: Type;
+      let hasTypeParam = false;
+
+      if (field.typeAnnotation) {
+        // Check if the type annotation references a type parameter
+        if (field.typeAnnotation.kind === 'simple' && typeParamMap.has(field.typeAnnotation.name)) {
+          // Direct type parameter reference (e.g., data val: T)
+          fieldType = { kind: 'weak' };
+          hasTypeParam = true;
+        } else if (field.typeAnnotation.kind === 'generic') {
+          // Generic type that may contain type parameters (e.g., Array<T>)
+          fieldType = this.resolveTypeWithParams(field.typeAnnotation, typeParamMap);
+          hasTypeParam = this.containsTypeParam(field.typeAnnotation, typeParamMap);
+        } else {
+          fieldType = resolve(field.typeAnnotation);
+        }
+      } else {
+        // Infer type from initializer
+        fieldType = this.inferExpressionType(field.initializer);
+      }
+
+      fields.push({ name: field.name, type: fieldType, hasTypeParam });
+    }
+
+    // Process methods - create method signatures
+    const methods = new Map<string, { parameters: Type[]; returnType: Type }>();
+    for (const method of stmt.methods) {
+      const paramTypes: Type[] = [];
+      for (const param of method.parameters) {
+        if (param.typeAnnotation) {
+          if (param.typeAnnotation.kind === 'simple' && typeParamMap.has(param.typeAnnotation.name)) {
+            paramTypes.push({ kind: 'weak' });
+          } else {
+            paramTypes.push(resolve(param.typeAnnotation));
+          }
+        } else {
+          paramTypes.push({ kind: 'weak' });
+        }
+      }
+
+      let returnType: Type = { kind: 'weak' };
+      if (method.returnType) {
+        if (method.returnType.kind === 'simple' && typeParamMap.has(method.returnType.name)) {
+          returnType = { kind: 'weak' };
+        } else {
+          returnType = resolve(method.returnType);
+        }
+      }
+
+      methods.set(method.name, { parameters: paramTypes, returnType });
+    }
+
+    // Register struct definition in the global registry
+    const structDef: StructDefinition = {
+      name: structName,
+      typeParameterNames: typeParamNames,
+      fields,
+      methods
+    };
+    structRegistry.set(structName, structDef);
+
+    // Register constructor in function environment
+    // Constructor returns the struct type with weak type parameters
+    const typeParams: Type[] = typeParamNames.map(() => ({ kind: 'weak' as const }));
+    this.functionEnv.set(structName, {
+      parameters: [],
+      returnType: { kind: 'struct', name: structName, typeParameters: typeParams }
+    });
+  }
+
+  /**
+   * Resolve a type annotation, replacing type parameters with weak types
+   */
+  private resolveTypeWithParams(annotation: any, typeParamMap: Map<string, Type>): Type {
+    if (annotation.kind === 'simple') {
+      if (typeParamMap.has(annotation.name)) {
+        return { kind: 'weak' };
+      }
+      return resolve(annotation);
+    } else if (annotation.kind === 'generic') {
+      // Handle generic types like Array<T>
+      const resolvedParams = annotation.typeParameters.map((p: any) =>
+        this.resolveTypeWithParams(p, typeParamMap)
+      );
+
+      // Reconstruct the generic type with resolved parameters
+      switch (annotation.name) {
+        case 'Array':
+          return { kind: 'array', elementType: resolvedParams[0] };
+        case 'Map':
+          return { kind: 'map', keyType: resolvedParams[0], valueType: resolvedParams[1] };
+        case 'Set':
+          return { kind: 'set', elementType: resolvedParams[0] };
+        default:
+          return resolve(annotation);
+      }
+    }
+    return resolve(annotation);
+  }
+
+  /**
+   * Check if a type annotation contains any type parameters
+   */
+  private containsTypeParam(annotation: any, typeParamMap: Map<string, Type>): boolean {
+    if (annotation.kind === 'simple') {
+      return typeParamMap.has(annotation.name);
+    } else if (annotation.kind === 'generic') {
+      return annotation.typeParameters.some((p: any) => this.containsTypeParam(p, typeParamMap));
+    }
+    return false;
   }
 
   /**

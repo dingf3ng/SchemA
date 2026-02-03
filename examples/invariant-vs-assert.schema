@@ -74,20 +74,20 @@ print("Problem: Find exactly WHEN an invariant breaks in a long loop")
 print("")
 
 do findBugInLongLoop() {
-  let data = Set()
+  let items = Set()
   let duplicateCount = 0
 
   for i in 0..100 {
     // This invariant tracks exactly which iteration it fails on
     @invariant(duplicateCount < 5, "too many duplicates found")
-    @invariant(data.size() <= i + 1, "set size exceeded expected")
+    @invariant(items.size() <= i + 1, "set size exceeded expected")
 
     // Simulate some complex logic that occasionally adds duplicates
     if i % 7 == 0 && i > 0 {
       duplicateCount = duplicateCount + 1
     }
 
-    data.add(i)
+    items.add(i)
 
     // With assert, you get no iteration context:
     // assert(duplicateCount < 5, "too many duplicates")
@@ -99,7 +99,7 @@ do findBugInLongLoop() {
     // Current state:
     //   i = 35
     //   duplicateCount = 5
-    //   data = {...}
+    //   items = {...}
   }
 }
 

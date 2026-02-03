@@ -13,6 +13,7 @@ import {
   BlockStatement,
   InvariantStatement,
   AssertStatement,
+  StructDeclaration,
 } from '../transpiler/ast-types';
 import {
   SchemaArray,
@@ -154,6 +155,9 @@ export class Interpreter implements EvaluatorContext {
         case 'AssertStatement':
           this.evaluateAssertStatement(stmt);
           break;
+        case 'StructDeclaration':
+          this.evaluateStructDeclaration(stmt);
+          break;
       }
     } catch (e) {
       if (e instanceof ReturnException) {
@@ -184,6 +188,66 @@ export class Interpreter implements EvaluatorContext {
     };
 
     this.currentEnv.define(stmt.name, funcValue);
+  }
+
+  private evaluateStructDeclaration(stmt: StructDeclaration): void {
+    // Store the struct declaration for later instantiation
+    const structName = stmt.name;
+    const typeParamCount = stmt.typeParameters.length;
+
+    // Create a constructor function that creates struct instances
+    const constructorValue: RuntimeTypedBinder = {
+      value: {
+        fn: () => {
+          // Create the struct instance with initialized fields
+          const fields = new Map<string, RuntimeTypedBinder>();
+
+          // Initialize fields with their default values
+          for (const field of stmt.fields) {
+            const fieldValue = this.evaluator.evaluateExpression(field.initializer);
+            fields.set(field.name, fieldValue);
+          }
+
+          // Create the struct instance object
+          const instance = {
+            _structName: structName,
+            _fields: fields,
+            _methods: stmt.methods,
+            _evaluator: this.evaluator,
+            _interpreter: this,
+          };
+
+          // Create type parameters (all weak initially)
+          const typeParameters = Array(typeParamCount).fill({ kind: 'weak' as const });
+
+          return {
+            value: instance,
+            type: {
+              static: {
+                kind: 'struct' as const,
+                name: structName,
+                typeParameters
+              },
+              refinements: []
+            }
+          };
+        }
+      },
+      type: {
+        static: {
+          kind: 'function',
+          parameters: [],
+          returnType: {
+            kind: 'struct',
+            name: structName,
+            typeParameters: Array(typeParamCount).fill({ kind: 'weak' })
+          }
+        },
+        refinements: []
+      }
+    };
+
+    this.currentEnv.define(structName, constructorValue);
   }
 
   private evaluateVariableDeclaration(stmt: VariableDeclaration): void {

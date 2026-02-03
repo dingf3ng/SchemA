@@ -43,7 +43,10 @@ import {
   ArrayLiteralContext,
   ParameterContext,
   TypeAnnotationContext,
-  PrimaryTypeContext,
+  GenericTypeContext,
+  TypeParameterContext,
+  SimpleTypeContext,
+  ParenTypeContext,
   CallOpContext,
   MemberOpContext,
   IndexOpContext,
@@ -54,6 +57,10 @@ import {
   InvariantStatementContext,
   AssertStatementContext,
   MetaIdentifierContext,
+  StructDeclarationContext,
+  StructMemberContext,
+  DataFieldContext,
+  StructMethodDeclarationContext,
 } from '../generated/src/SchemAParser';
 import {
   Program,
@@ -86,6 +93,9 @@ import {
   MapLiteral,
   TupleLiteral,
   RecordLiteral,
+  StructDeclaration,
+  DataField,
+  MethodDeclaration,
 } from './ast-types';
 
 class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<any> {
@@ -104,6 +114,9 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
   }
 
   visitStatement(ctx: StatementContext): Statement {
+    if (ctx.structDeclaration()) {
+      return this.visit(ctx.structDeclaration()!);
+    }
     if (ctx.functionDeclaration()) {
       return this.visit(ctx.functionDeclaration()!);
     }
@@ -159,6 +172,74 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
     };
   }
 
+  visitStructDeclaration(ctx: StructDeclarationContext): StructDeclaration {
+    const name = ctx.POLY_TYPE_ID().text;
+
+    // Parse type parameters (e.g., <T> or <K, V>)
+    const typeParameters: string[] = [];
+    const typeParamList = ctx.typeParameterList();
+    if (typeParamList) {
+      for (const polyTypeId of typeParamList.POLY_TYPE_ID()) {
+        typeParameters.push(polyTypeId.text);
+      }
+    }
+
+    // Parse struct body (fields and methods)
+    const fields: DataField[] = [];
+    const methods: MethodDeclaration[] = [];
+    const structBody = ctx.structBody();
+
+    for (const memberCtx of structBody.structMember()) {
+      if (memberCtx.dataField()) {
+        fields.push(this.visit(memberCtx.dataField()!));
+      } else if (memberCtx.structMethodDeclaration()) {
+        methods.push(this.visit(memberCtx.structMethodDeclaration()!));
+      }
+    }
+
+    return {
+      type: 'StructDeclaration',
+      name,
+      typeParameters,
+      fields,
+      methods,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitDataField(ctx: DataFieldContext): DataField {
+    const name = ctx.IDENTIFIER().text;
+    const typeAnnotation = ctx.typeAnnotation() ? this.visit(ctx.typeAnnotation()!) : undefined;
+    const initializer = this.visit(ctx.expression());
+
+    return {
+      name,
+      typeAnnotation,
+      initializer,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitStructMethodDeclaration(ctx: StructMethodDeclarationContext): MethodDeclaration {
+    const name = ctx.IDENTIFIER().text;
+    const parameters: ASTParameter[] = ctx.parameterList()
+      ? ctx.parameterList()!.parameter().map(p => this.visit(p))
+      : [];
+    const returnType = ctx.typeAnnotation() ? this.visit(ctx.typeAnnotation()!) : undefined;
+    const body = this.visit(ctx.block());
+
+    return {
+      name,
+      parameters,
+      returnType,
+      body,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
   visitParameter(ctx: ParameterContext): ASTParameter {
     const name = ctx.IDENTIFIER().text;
     const typeAnnotation = ctx.typeAnnotation() ? this.visit(ctx.typeAnnotation()!) : undefined;
@@ -169,34 +250,43 @@ class ASTBuilder extends AbstractParseTreeVisitor<any> implements SchemAVisitor<
     return this.visit(ctx.primaryType());
   }
 
-  visitPrimaryType(ctx: PrimaryTypeContext): ASTTypeAnnotation {
-    if (ctx.childCount === 3 && ctx.getChild(0).text === '(') {
-      return this.visit(ctx.typeAnnotation(0));
-    }
+  visitGenericType(ctx: GenericTypeContext): ASTTypeAnnotation {
+    const name = ctx.POLY_TYPE_ID().text;
+    const typeParameters = ctx.typeAnnotation().map((t: TypeAnnotationContext) => this.visit(t));
 
-    const name = ctx.POLY_TYPE_ID() ? ctx.POLY_TYPE_ID()!.text : ctx.IDENTIFIER()!.text;
-    const typeParameters = ctx.typeAnnotation().length > 0
-      ? ctx.typeAnnotation().map(t => this.visit(t))
-      : undefined;
+    return {
+      type: 'TypeAnnotation',
+      kind: 'generic',
+      name,
+      typeParameters,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
 
-    if (!typeParameters) {
-      return {
-        type: 'TypeAnnotation',
-        kind: 'simple',
-        name,
-        line: ctx.start.line,
-        column: ctx.start.charPositionInLine + 1,
-      };
-    } else {
-      return {
-        type: 'TypeAnnotation',
-        kind: 'generic',
-        name,
-        typeParameters,
-        line: ctx.start.line,
-        column: ctx.start.charPositionInLine + 1,
-      };
-    }
+  visitTypeParameter(ctx: TypeParameterContext): ASTTypeAnnotation {
+    // Bare type parameter like T, K, V
+    return {
+      type: 'TypeAnnotation',
+      kind: 'simple',
+      name: ctx.POLY_TYPE_ID().text,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitSimpleType(ctx: SimpleTypeContext): ASTTypeAnnotation {
+    return {
+      type: 'TypeAnnotation',
+      kind: 'simple',
+      name: ctx.IDENTIFIER().text,
+      line: ctx.start.line,
+      column: ctx.start.charPositionInLine + 1,
+    };
+  }
+
+  visitParenType(ctx: ParenTypeContext): ASTTypeAnnotation {
+    return this.visit(ctx.typeAnnotation());
   }
 
   visitVariableDeclaration(ctx: VariableDeclarationContext): VariableDeclaration {

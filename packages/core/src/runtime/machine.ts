@@ -624,6 +624,13 @@ export class Machine implements EvaluatorContext {
         break;
       }
 
+      case 'StructDeclaration': {
+        // TODO: Register struct definition for instantiation
+        // For now, just return void - struct registration will be implemented later
+        this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
+        break;
+      }
+
       default:
         const _exhaustiveCheck: never = stmt;
         throw new Error(`Unsupported statement type: ${(stmt as any).type}`);

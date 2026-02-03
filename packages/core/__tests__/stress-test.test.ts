@@ -167,11 +167,11 @@ describe('Stress Tests', () => {
 
     it('should handle complex type inference with polymorphic types', () => {
       const code = `
-        do processData(data) {
+        do processData(stream) {
           let m = Map()
           let result = []
 
-          for item in data {
+          for item in stream {
             m.set(item, item * 2)
             result.push(item)
           }

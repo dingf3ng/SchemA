@@ -346,14 +346,14 @@ describe('Type System', () => {
 
     it('should allow nested access to top-level data structures', () => {
       const code = `
-        let data = Map()
+        let map = Map()
 
         do store(key: string, value: int) {
-          data.set(key, value)
+          map.set(key, value)
         }
 
         do retrieve(key: string) -> int {
-          return data.get(key)
+          return map.get(key)
         }
       `;
       expect(() => check(code)).not.toThrow();

@@ -1,4 +1,4 @@
-import { Type } from '../type-checker/type-checker-utils';
+import { Type, structRegistry } from '../type-checker/type-checker-utils';
 import {
   BlockStatement,
   Expression,
@@ -77,7 +77,7 @@ export function runtimeTypedBinderToString(binder: RuntimeTypedBinder): string {
   const { value, type } = binder;
   switch (type.static.kind) {
     case 'void':
-      return 'undefined';
+      return 'sole';
     case 'int':
     case 'float':
     case 'string':
@@ -116,6 +116,8 @@ export function runtimeTypedBinderToString(binder: RuntimeTypedBinder): string {
       return '<function>';
     case 'weak':
       return value!.toString();
+    case 'struct':
+      return `<${type.static.name} instance>`;
     default:
       const _exhaustiveCheck: never = type.static;
       throw new Error('Internal Error: Unknown type in RuntimeTypedBinderToString');
@@ -141,7 +143,17 @@ export function resolveTypeAnnotation(annotation: TypeAnnotation | undefined): T
       case 'void': return { kind: 'void' };
       case 'weak': return { kind: 'weak' };
       case 'range': return { kind: 'range' };
-      default: throw new Error(`Unknown simple type annotation: ${annotation.name}`);
+      default:
+        // Check if it's a user-defined struct type (no type parameters)
+        if (structRegistry.has(annotation.name)) {
+          const structDef = structRegistry.get(annotation.name)!;
+          return {
+            kind: 'struct',
+            name: annotation.name,
+            typeParameters: structDef.typeParameterNames.map(() => ({ kind: 'weak' as const }))
+          };
+        }
+        throw new Error(`Unknown simple type annotation: ${annotation.name}`);
     }
   } else if (annotation.kind === 'generic') {
     switch (annotation.name) {
@@ -159,7 +171,16 @@ export function resolveTypeAnnotation(annotation: TypeAnnotation | undefined): T
         return { kind: 'graph', nodeType: resolveTypeAnnotation(annotation.typeParameters[0]) };
       case 'BinaryTree':
         return { kind: 'binarytree', elementType: resolveTypeAnnotation(annotation.typeParameters[0]) };
-      default: throw new Error(`Unknown generic type annotation: ${annotation.name}`);
+      default:
+        // Check if it's a user-defined struct type with type parameters
+        if (structRegistry.has(annotation.name)) {
+          return {
+            kind: 'struct',
+            name: annotation.name,
+            typeParameters: annotation.typeParameters.map(t => resolveTypeAnnotation(t))
+          };
+        }
+        throw new Error(`Unknown generic type annotation: ${annotation.name}`);
     }
   } else if (annotation.kind === 'function') {
     return {

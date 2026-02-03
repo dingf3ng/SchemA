@@ -541,6 +541,12 @@ export class Evaluator {
         return { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } };
       }
 
+      case 'StructDeclaration': {
+        // TODO: Register struct definition for instantiation
+        // For now, just return void - struct registration will be implemented later
+        return { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } };
+      }
+
       default:
         const _exhaustiveCheck: never = stmt;
         throw new Error(`Unsupported statement type in synchronous evaluation: ${(stmt as any).type}`);
@@ -904,7 +910,88 @@ export class Evaluator {
       return this.evaluateBinaryTreeMember(object, propertyName);
     }
 
+    if (object.type.static.kind === 'struct') {
+      return this.evaluateStructMember(object, propertyName);
+    }
+
     throw new Error(`Property ${propertyName} does not exist`);
+  }
+
+  private evaluateStructMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {
+    const instance = object.value as {
+      _structName: string;
+      _fields: Map<string, RuntimeTypedBinder>;
+      _methods: any[];
+      _evaluator: Evaluator;
+      _interpreter: any;
+    };
+
+    // Find the method in the struct's methods
+    const method = instance._methods.find((m: any) => m.name === propertyName);
+    if (!method) {
+      throw new Error(`Struct ${instance._structName} has no method '${propertyName}'`);
+    }
+
+    // Return a function that, when called, executes the method body
+    // with access to the struct's fields
+    return {
+      type: {
+        static: {
+          kind: 'function',
+          parameters: method.parameters.map(() => ({ kind: 'weak' as const })),
+          returnType: { kind: 'weak' as const }
+        },
+        refinements: []
+      },
+      value: {
+        fn: (...args: RuntimeTypedBinder[]) => {
+          // Create a new environment for method execution
+          const savedEnv = this.currentEnv;
+          const methodEnv = new Environment(this.currentEnv);
+          this.currentEnv = methodEnv;
+
+          // Bind the struct's fields to the method environment
+          for (const [fieldName, fieldValue] of instance._fields) {
+            methodEnv.define(fieldName, fieldValue);
+          }
+
+          // Bind method parameters
+          for (let i = 0; i < method.parameters.length; i++) {
+            if (i < args.length) {
+              methodEnv.define(method.parameters[i].name, args[i]);
+            }
+          }
+
+          let result: RuntimeTypedBinder = { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } };
+
+          try {
+            for (const stmt of method.body.statements) {
+              this.evaluateStatement(stmt);
+            }
+          } catch (e) {
+            if (e instanceof ReturnException) {
+              result = e.value;
+            } else {
+              this.currentEnv = savedEnv;
+              throw e;
+            }
+          }
+
+          // Update the struct's fields with any modifications made during method execution
+          for (const [fieldName] of instance._fields) {
+            try {
+              const updatedValue = methodEnv.get(fieldName);
+              instance._fields.set(fieldName, updatedValue);
+            } catch {
+              // Field might not exist if it was shadowed, ignore
+            }
+          }
+
+          this.currentEnv = savedEnv;
+          return result;
+        }
+      }
+    };
   }
 
   private evaluateMapMember(object: RuntimeTypedBinder, propertyName: string): RuntimeTypedBinder {

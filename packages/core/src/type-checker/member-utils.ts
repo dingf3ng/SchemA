@@ -1,5 +1,5 @@
 import { MemberExpression } from "../transpiler/ast-types";
-import { Type, typeToString } from "./type-checker-utils";
+import { Type, typeToString, structRegistry } from "./type-checker-utils";
 
 export function synthMemberExpression(expr: MemberExpression, objectType: Type): Type {
   // Handle weak types - they are polymorphic placeholders that haven't been refined yet
@@ -30,11 +30,69 @@ export function synthMemberExpression(expr: MemberExpression, objectType: Type):
     return synthTreeMember(expr, objectType);
   } else if (objectType.kind === 'graph') {
     return synthGraphMember(expr, objectType);
+  } else if (objectType.kind === 'struct') {
+    return synthStructMember(expr, objectType);
   } else {
     throw new Error(
       `Type checking: property "${expr.property.name}" does not exist on type ${typeToString(objectType)}, at ${expr.line}, ${expr.column}`
     );
   }
+}
+
+export function synthStructMember(
+  expr: MemberExpression,
+  objectType: { kind: 'struct'; name: string; typeParameters: Type[] }
+): Type {
+  const structDef = structRegistry.get(objectType.name);
+  if (!structDef) {
+    throw new Error(
+      `Type checking: unknown struct type "${objectType.name}", at ${expr.line}, ${expr.column}`
+    );
+  }
+
+  const methodName = expr.property.name;
+  const methodInfo = structDef.methods.get(methodName);
+
+  if (!methodInfo) {
+    throw new Error(
+      `Type checking: struct "${objectType.name}" has no method "${methodName}", at ${expr.line}, ${expr.column}`
+    );
+  }
+
+  // Substitute type parameters with actual types from the instance
+  // E.g., if Stack<int> and method returns T, return int
+  const substituteTypeParams = (type: Type): Type => {
+    if (type.kind === 'weak') {
+      // Find which type parameter this corresponds to and substitute
+      // For now, use the first type parameter (simplified - proper implementation
+      // would track which weak type corresponds to which parameter)
+      if (objectType.typeParameters.length > 0) {
+        return objectType.typeParameters[0];
+      }
+      return type;
+    }
+    if (type.kind === 'array') {
+      return { kind: 'array', elementType: substituteTypeParams(type.elementType) };
+    }
+    if (type.kind === 'map') {
+      return {
+        kind: 'map',
+        keyType: substituteTypeParams(type.keyType),
+        valueType: substituteTypeParams(type.valueType)
+      };
+    }
+    if (type.kind === 'set') {
+      return { kind: 'set', elementType: substituteTypeParams(type.elementType) };
+    }
+    return type;
+  };
+
+  // Return the method as a function type with substituted type parameters
+  return {
+    kind: 'function',
+    parameters: methodInfo.parameters.map(substituteTypeParams),
+    returnType: substituteTypeParams(methodInfo.returnType)
+  };
 }
 
 export function synthArrayMember(expr: MemberExpression, objectType: { kind: 'array'; elementType: Type }): Type {

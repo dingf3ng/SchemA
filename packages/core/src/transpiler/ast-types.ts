@@ -1,5 +1,6 @@
 export type ASTNodeType =
   | 'Program'
+  | 'StructDeclaration'
   | 'FunctionDeclaration'
   | 'VariableDeclaration'
   | 'AssignmentStatement'
@@ -55,6 +56,31 @@ export interface FunctionDeclaration extends ASTNode {
 export interface Parameter {
   name: string;
   typeAnnotation?: TypeAnnotation;
+}
+
+export interface StructDeclaration extends ASTNode {
+  type: 'StructDeclaration';
+  name: string;                      // e.g., "Stack"
+  typeParameters: string[];          // e.g., ["T"] or ["K", "V"]
+  fields: DataField[];
+  methods: MethodDeclaration[];
+}
+
+export interface DataField {
+  name: string;
+  typeAnnotation?: TypeAnnotation;   // Required if references type parameter
+  initializer: Expression;
+  line: number;
+  column: number;
+}
+
+export interface MethodDeclaration {
+  name: string;
+  parameters: Parameter[];
+  returnType?: TypeAnnotation;
+  body: BlockStatement;
+  line: number;
+  column: number;
 }
 
 export interface VariableDeclarator {
@@ -275,6 +301,7 @@ export interface RecordTypeAnnotation extends BaseTypeAnnotation {
 }
 
 export type Statement =
+  | StructDeclaration
   | FunctionDeclaration
   | VariableDeclaration
   | AssignmentStatement

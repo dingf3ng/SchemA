@@ -6,7 +6,8 @@ program
     ;
 
 statement
-    : functionDeclaration
+    : structDeclaration
+    | functionDeclaration
     | variableDeclaration
     | assignmentStatement
     | ifStatement
@@ -17,6 +18,31 @@ statement
     | blockStatement
     | expressionStatement
     | metaStatement
+    ;
+
+structDeclaration
+    : 'struct' POLY_TYPE_ID typeParameterList? '{' structBody '}'
+    ;
+
+typeParameterList
+    : LT POLY_TYPE_ID (',' POLY_TYPE_ID)* GT
+    ;
+
+structBody
+    : structMember*
+    ;
+
+structMember
+    : dataField
+    | structMethodDeclaration
+    ;
+
+dataField
+    : 'data' IDENTIFIER (':' typeAnnotation)? '=' expression
+    ;
+
+structMethodDeclaration
+    : 'do' IDENTIFIER '(' parameterList? ')' ('->' typeAnnotation)? block
     ;
 
 metaStatement
@@ -49,9 +75,10 @@ typeAnnotation
     ;
 
 primaryType
-    : POLY_TYPE_ID LT (typeAnnotation (',' typeAnnotation)*)? GT
-    | IDENTIFIER
-    | '(' typeAnnotation ')'
+    : POLY_TYPE_ID LT (typeAnnotation (',' typeAnnotation)*)? GT   # GenericType
+    | POLY_TYPE_ID                                                  # TypeParameter
+    | IDENTIFIER                                                    # SimpleType
+    | '(' typeAnnotation ')'                                        # ParenType
     ;
 
 variableDeclaration
