@@ -377,5 +377,219 @@ let unique = removeDuplicates(withDups)
 print("After removing duplicates:")
 print(unique)
 
+`,
+
+    'Stack (User-Defined)': `// User-defined Stack data structure using struct
+// Demonstrates how to build your own data structures in SchemA
+
+struct Stack<T> {
+  data items: Array<T> = []
+  data length = 0
+
+  do push(val) {
+    items.push(val)
+    length += 1
+  }
+
+  do pop() {
+    if length == 0 {
+      return -1  // Empty stack
+    }
+    length -= 1
+    return items.pop()
+  }
+
+  do peek() {
+    if length == 0 {
+      return -1  // Empty stack
+    }
+    return items[length - 1]
+  }
+
+  do size() {
+    return length
+  }
+
+  do isEmpty() {
+    return length == 0
+  }
+}
+
+// Test the Stack
+print("=== Stack Demo ===")
+let stack = Stack()
+
+print("Pushing: 10, 20, 30, 40, 50")
+stack.push(10)
+stack.push(20)
+stack.push(30)
+stack.push(40)
+stack.push(50)
+
+print("Stack size:", stack.size())
+print("Top element (peek):", stack.peek())
+
+print("\\nPopping all elements:")
+while !stack.isEmpty() {
+  print(stack.pop())
+}
+
+print("\\nStack is empty:", stack.isEmpty())
+
+// Using stack for expression evaluation (reverse a sequence)
+print("\\n=== Using Stack to Reverse ===")
+let reverseStack = Stack()
+let original = [1, 2, 3, 4, 5]
+print("Original:", original)
+
+for num in original {
+  reverseStack.push(num)
+}
+
+print("Reversed:")
+while !reverseStack.isEmpty() {
+  print(reverseStack.pop())
+}
+`,
+
+    'Circular Deque': `// Circular Buffer Deque (Double-Ended Queue)
+// A fixed-capacity deque with O(1) operations using wrap-around indexing
+
+struct CircularDeque<T> {
+  data items: Array<T> = [0, 0, 0, 0, 0, 0, 0, 0]
+  data capacity = 8
+  data frontIdx = 0
+  data backIdx = 0
+  data count = 0
+
+  do pushFront(val) {
+    if count == capacity {
+      print("Deque is full!")
+      return false
+    }
+    // Wrap around: when frontIdx is 0, it wraps to capacity-1
+    frontIdx = (frontIdx - 1 + capacity) % capacity
+    items[frontIdx] = val
+    count += 1
+    return true
+  }
+
+  do pushBack(val) {
+    if count == capacity {
+      print("Deque is full!")
+      return false
+    }
+    items[backIdx] = val
+    // Wrap around: when backIdx reaches capacity, it wraps to 0
+    backIdx = (backIdx + 1) % capacity
+    count += 1
+    return true
+  }
+
+  do popFront() {
+    if count == 0 {
+      print("Deque is empty!")
+      return -1
+    }
+    let val = items[frontIdx]
+    // Wrap around when moving forward
+    frontIdx = (frontIdx + 1) % capacity
+    count -= 1
+    return val
+  }
+
+  do popBack() {
+    if count == 0 {
+      print("Deque is empty!")
+      return -1
+    }
+    // Wrap around: when backIdx is 0, it wraps to capacity-1
+    backIdx = (backIdx - 1 + capacity) % capacity
+    let val = items[backIdx]
+    count -= 1
+    return val
+  }
+
+  do peekFront() {
+    if count == 0 {
+      return -1
+    }
+    return items[frontIdx]
+  }
+
+  do peekBack() {
+    if count == 0 {
+      return -1
+    }
+    // Back points to next empty slot, so peek at backIdx - 1
+    let idx = (backIdx - 1 + capacity) % capacity
+    return items[idx]
+  }
+
+  do size() {
+    return count
+  }
+
+  do isEmpty() {
+    return count == 0
+  }
+
+  do isFull() {
+    return count == capacity
+  }
+}
+
+// Demo the CircularDeque
+print("=== Circular Deque Demo ===")
+let dq = CircularDeque()
+
+// Test wrap-around: push to front when frontIdx is 0
+print("Pushing to front: 10, 20, 30")
+dq.pushFront(10)  // frontIdx wraps to 7
+dq.pushFront(20)  // frontIdx wraps to 6
+dq.pushFront(30)  // frontIdx wraps to 5
+
+print("Pushing to back: 40, 50")
+dq.pushBack(40)   // backIdx goes to 1
+dq.pushBack(50)   // backIdx goes to 2
+
+print("\\nDeque size:", dq.size())
+print("Front element:", dq.peekFront())
+print("Back element:", dq.peekBack())
+
+print("\\nPop from front:", dq.popFront())
+print("Pop from back:", dq.popBack())
+print("Size after 2 pops:", dq.size())
+
+// Pop remaining elements
+print("\\nRemaining elements (front to back):")
+while !dq.isEmpty() {
+  print(dq.popFront())
+}
+
+// Test as a sliding window
+print("\\n=== Sliding Window Demo ===")
+let window = CircularDeque()
+let data = [1, 3, 5, 7, 9, 11, 13]
+let windowSize = 3
+
+print("Data:", data)
+print("Window size:", windowSize)
+print("\\nSliding window max at each position:")
+
+for i in ..data.length() {
+  // Add new element to back
+  window.pushBack(data[i])
+  
+  // Remove element from front if window exceeds size
+  if window.size() > windowSize {
+    window.popFront()
+  }
+  
+  // Print current window state
+  if window.size() == windowSize {
+    print("Window ends at index", i)
+  }
+}
 `
 };
