@@ -325,6 +325,48 @@ export class TypeInferer {
         } else {
           returnType = resolve(method.returnType);
         }
+      } else {
+        // Infer return type from method body
+        // Save current state
+        const savedEnv = new Map(this.typeEnv);
+        const savedInferredReturnTypes = this.inferredReturnTypes;
+        this.inferredReturnTypes = [];
+
+        // Add struct fields to type environment for method body inference
+        for (const field of fields) {
+          this.typeEnv.set(field.name, field.type);
+        }
+
+        // Add method parameters to type environment
+        for (let i = 0; i < method.parameters.length; i++) {
+          this.typeEnv.set(method.parameters[i].name, paramTypes[i]);
+        }
+
+        // Process method body to collect return types
+        this.inferStatement(method.body);
+
+        // Determine return type from collected types
+        let inferredReturnType: Type | undefined = undefined;
+        for (const typeInferred of this.inferredReturnTypes) {
+          if (!inferredReturnType) {
+            inferredReturnType = typeInferred;
+          } else if (!typesEqual(inferredReturnType, typeInferred, this.typeEqualityCache)) {
+            // Multiple return types - keep as weak for now (will be checked later)
+            inferredReturnType = { kind: 'weak' };
+            break;
+          }
+        }
+
+        if (inferredReturnType) {
+          returnType = inferredReturnType;
+        } else {
+          // No return statements - default to void
+          returnType = { kind: 'void' };
+        }
+
+        // Restore state
+        this.typeEnv = savedEnv;
+        this.inferredReturnTypes = savedInferredReturnTypes;
       }
 
       methods.set(method.name, { parameters: paramTypes, returnType });
