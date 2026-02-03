@@ -317,7 +317,20 @@ export function synthExpression(
         if (funcInfo) {
           // Validate argument types against parameter types
           const argTypes = expr.arguments.map(recurse);
-          if (!funcInfo.variadic) {
+          if (funcInfo.variadic) {
+            // For variadic functions, validate that all arguments match the first parameter type
+            // (e.g., int_max expects all int arguments)
+            if (funcInfo.parameters.length > 0) {
+              const expectedType = funcInfo.parameters[0];
+              for (let i = 0; i < argTypes.length; i++) {
+                if (!typesEqual(argTypes[i], expectedType, ctx.typeEqualityCache)) {
+                  throw new Error(
+                    `Type mismatch in function call '${calleeName}': argument ${i + 1} expected ${typeToString(expectedType)}, got ${typeToString(argTypes[i])}. At ${expr.line}, ${expr.column}`
+                  );
+                }
+              }
+            }
+          } else {
             // Validate argument count
             if (argTypes.length !== funcInfo.parameters.length) {
               throw new Error(

@@ -121,6 +121,41 @@ describe('Argument Count Validation', () => {
       const output = run(code);
       expect(output).toEqual(['']);
     });
+
+    it('should reject int_max with float arguments', () => {
+      const code = `
+        print(int_max(1.1, 1.2))
+      `;
+      expect(() => run(code)).toThrow(/Type mismatch in function call 'int_max'.*expected int.*got float/);
+    });
+
+    it('should reject int_min with float arguments', () => {
+      const code = `
+        print(int_min(1.5, 2.5))
+      `;
+      expect(() => run(code)).toThrow(/Type mismatch in function call 'int_min'.*expected int.*got float/);
+    });
+
+    it('should reject float_max with int arguments', () => {
+      const code = `
+        print(float_max(1, 2, 3))
+      `;
+      expect(() => run(code)).toThrow(/Type mismatch in function call 'float_max'.*expected float.*got int/);
+    });
+
+    it('should reject float_min with int arguments', () => {
+      const code = `
+        print(float_min(1, 2))
+      `;
+      expect(() => run(code)).toThrow(/Type mismatch in function call 'float_min'.*expected float.*got int/);
+    });
+
+    it('should reject int_max with mixed int and float arguments', () => {
+      const code = `
+        print(int_max(1, 2.5, 3))
+      `;
+      expect(() => run(code)).toThrow(/Type mismatch in function call 'int_max'.*expected int.*got float/);
+    });
   });
 
   describe('Method calls', () => {

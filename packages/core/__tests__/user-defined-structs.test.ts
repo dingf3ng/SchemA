@@ -412,5 +412,160 @@ describe('Deque (Double-Ended Queue)', () => {
     const output = run(code);
     expect(output).toEqual(['3', '2', '1']);
   });
+
+  it('should implement circular buffer deque with wrap-around', () => {
+    const code = `
+      struct CircularDeque<T> {
+        data items: Array<T> = [0, 0, 0, 0, 0, 0, 0, 0]
+        data capacity = 8
+        data frontIdx = 0
+        data backIdx = 0
+        data count = 0
+
+        do pushFront(val) {
+          if count == capacity {
+            return false
+          }
+          frontIdx = (frontIdx - 1 + capacity) % capacity
+          items[frontIdx] = val
+          count += 1
+          return true
+        }
+
+        do pushBack(val) {
+          if count == capacity {
+            return false
+          }
+          items[backIdx] = val
+          backIdx = (backIdx + 1) % capacity
+          count += 1
+          return true
+        }
+
+        do popFront() {
+          if count == 0 {
+            return -1
+          }
+          let val = items[frontIdx]
+          frontIdx = (frontIdx + 1) % capacity
+          count -= 1
+          return val
+        }
+
+        do popBack() {
+          if count == 0 {
+            return -1
+          }
+          backIdx = (backIdx - 1 + capacity) % capacity
+          let val = items[backIdx]
+          count -= 1
+          return val
+        }
+
+        do size() {
+          return count
+        }
+
+        do isEmpty() {
+          return count == 0
+        }
+
+        do isFull() {
+          return count == capacity
+        }
+      }
+
+      let dq = CircularDeque()
+      
+      // Test wrap-around: push to front when frontIdx is 0
+      // frontIdx starts at 0, so pushFront should wrap to index 7
+      dq.pushFront(10)  // frontIdx wraps to 7
+      dq.pushFront(20)  // frontIdx wraps to 6
+      dq.pushFront(30)  // frontIdx wraps to 5
+      
+      print(dq.size())
+      print(dq.popFront())  // Should get 30 from index 5
+      print(dq.popFront())  // Should get 20 from index 6
+      print(dq.popFront())  // Should get 10 from index 7
+      print(dq.isEmpty())
+      
+      // Test mixed operations with wrap-around
+      dq.pushBack(1)
+      dq.pushBack(2)
+      dq.pushFront(0)
+      print(dq.popFront())  // 0
+      print(dq.popBack())   // 2
+      print(dq.popFront())  // 1
+    `;
+    const output = run(code);
+    expect(output).toEqual(['3', '30', '20', '10', 'true', '0', '2', '1']);
+  });
+
+  it('should handle circular buffer when full', () => {
+    const code = `
+      struct CircularDeque<T> {
+        data items: Array<T> = [0, 0, 0, 0]
+        data capacity = 4
+        data frontIdx = 0
+        data backIdx = 0
+        data count = 0
+
+        do pushFront(val) {
+          if count == capacity {
+            return false
+          }
+          frontIdx = (frontIdx - 1 + capacity) % capacity
+          items[frontIdx] = val
+          count += 1
+          return true
+        }
+
+        do pushBack(val) {
+          if count == capacity {
+            return false
+          }
+          items[backIdx] = val
+          backIdx = (backIdx + 1) % capacity
+          count += 1
+          return true
+        }
+
+        do popFront() {
+          if count == 0 {
+            return -1
+          }
+          let val = items[frontIdx]
+          frontIdx = (frontIdx + 1) % capacity
+          count -= 1
+          return val
+        }
+
+        do isFull() {
+          return count == capacity
+        }
+
+        do size() {
+          return count
+        }
+      }
+
+      let dq = CircularDeque()
+      print(dq.pushBack(1))
+      print(dq.pushBack(2))
+      print(dq.pushFront(0))
+      print(dq.pushFront(-1))
+      print(dq.isFull())
+      print(dq.pushBack(99))  // Should fail, deque is full
+      print(dq.size())
+      
+      // Pop all and verify order
+      print(dq.popFront())
+      print(dq.popFront())
+      print(dq.popFront())
+      print(dq.popFront())
+    `;
+    const output = run(code);
+    expect(output).toEqual(['true', 'true', 'true', 'true', 'true', 'false', '4', '-1', '0', '1', '2']);
+  });
 });
 });
