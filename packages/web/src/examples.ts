@@ -379,7 +379,7 @@ print(unique)
 
 `,
 
-    'Stack (User-Defined)': `// User-defined Stack data structure using struct
+    'Stack': `// User-defined Stack data structure using struct
 // Demonstrates how to build your own data structures in SchemA
 
 struct Stack<T> {
@@ -570,16 +570,16 @@ while !dq.isEmpty() {
 // Test as a sliding window
 print("\\n=== Sliding Window Demo ===")
 let window = CircularDeque()
-let data = [1, 3, 5, 7, 9, 11, 13]
+let items = [1, 3, 5, 7, 9, 11, 13]
 let windowSize = 3
 
-print("Data:", data)
+print("Data:", items)
 print("Window size:", windowSize)
 print("\\nSliding window max at each position:")
 
-for i in ..data.length() {
+for i in ..items.length() {
   // Add new element to back
-  window.pushBack(data[i])
+  window.pushBack(items[i])
   
   // Remove element from front if window exceeds size
   if window.size() > windowSize {
@@ -588,7 +588,9 @@ for i in ..data.length() {
   
   // Print current window state
   if window.size() == windowSize {
-    print("Window ends at index", i)
+    for j in ..window.size() {
+      print(window.items[(window.frontIdx + j) % window.capacity], " ")
+    }
   }
 }
 `
