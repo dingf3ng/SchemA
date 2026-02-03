@@ -567,31 +567,5 @@ while !dq.isEmpty() {
   print(dq.popFront())
 }
 
-// Test as a sliding window
-print("\\n=== Sliding Window Demo ===")
-let window = CircularDeque()
-let items = [1, 3, 5, 7, 9, 11, 13]
-let windowSize = 3
-
-print("Data:", items)
-print("Window size:", windowSize)
-print("\\nSliding window max at each position:")
-
-for i in ..items.length() {
-  // Add new element to back
-  window.pushBack(items[i])
-  
-  // Remove element from front if window exceeds size
-  if window.size() > windowSize {
-    window.popFront()
-  }
-  
-  // Print current window state
-  if window.size() == windowSize {
-    for j in ..window.size() {
-      print(window.items[(window.frontIdx + j) % window.capacity], " ")
-    }
-  }
-}
 `
 };
