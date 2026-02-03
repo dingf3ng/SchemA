@@ -625,8 +625,64 @@ export class Machine implements EvaluatorContext {
       }
 
       case 'StructDeclaration': {
-        // TODO: Register struct definition for instantiation
-        // For now, just return void - struct registration will be implemented later
+        // Register struct constructor in the environment
+        const structName = stmt.name;
+        const typeParamCount = stmt.typeParameters.length;
+        const structStmt = stmt; // Capture for closure
+
+        // Create a constructor function that creates struct instances
+        const constructorValue: RuntimeTypedBinder = {
+          value: {
+            fn: () => {
+              // Create the struct instance with initialized fields
+              const fields = new Map<string, RuntimeTypedBinder>();
+
+              // Initialize fields with their default values
+              for (const field of structStmt.fields) {
+                const fieldValue = this.evaluator.evaluateExpression(field.initializer);
+                fields.set(field.name, fieldValue);
+              }
+
+              // Create the struct instance object
+              const instance = {
+                _structName: structName,
+                _fields: fields,
+                _methods: structStmt.methods,
+                _evaluator: this.evaluator,
+                _machine: this,
+              };
+
+              // Create type parameters (all weak initially)
+              const typeParameters = Array(typeParamCount).fill({ kind: 'weak' as const });
+
+              return {
+                value: instance,
+                type: {
+                  static: {
+                    kind: 'struct' as const,
+                    name: structName,
+                    typeParameters
+                  },
+                  refinements: []
+                }
+              };
+            }
+          },
+          type: {
+            static: {
+              kind: 'function',
+              parameters: [],
+              returnType: {
+                kind: 'struct',
+                name: structName,
+                typeParameters: Array(typeParamCount).fill({ kind: 'weak' })
+              }
+            },
+            refinements: []
+          }
+        };
+
+        this.currentEnv.define(structName, constructorValue);
         this.focus = { kind: 'value', value: { value: new Sole(), type: { static: { kind: 'void' }, refinements: [] } } };
         break;
       }
